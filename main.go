@@ -7,6 +7,7 @@ import (
 	"embed"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"openv6/internal/agent"
+	"openv6/internal/logbuf"
 	"openv6/internal/netcfg"
 	"openv6/internal/panel"
 	"openv6/internal/proto"
@@ -103,6 +105,8 @@ func runServer(args []string) error {
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		return err
 	}
+	logs := logbuf.New(5000)
+	log.SetOutput(io.MultiWriter(os.Stderr, logs))
 	st, err := store.Open(filepath.Join(*data, "openv6.db"))
 	if err != nil {
 		return err
@@ -116,7 +120,9 @@ func runServer(args []string) error {
 	web, _ := fs_sub(webFS, "web")
 	exe, _ := os.Executable()
 	srv := panel.New(st, web, *data, port, exe)
+	srv.PanelLogs = logs
 	ctx := signalContext()
+	go srv.RunBackground(ctx)
 
 	if !*noLocal {
 		local, err := st.LocalNode()
@@ -172,7 +178,10 @@ func runAgent(args []string) error {
 	if *panelURL == "" || *token == "" {
 		return fmt.Errorf("-panel and -token are required")
 	}
-	ag := agent.New(agent.Config{PanelURL: *panelURL, Token: *token, DataDir: *data, DryRun: *dry, InsecureTLS: *insecure})
+	logs := logbuf.New(2000)
+	log.SetOutput(io.MultiWriter(os.Stderr, logs))
+	ag := agent.New(agent.Config{PanelURL: *panelURL, Token: *token, DataDir: *data, DryRun: *dry, InsecureTLS: *insecure,
+		Logs: logs, AllowUpdate: true})
 	ag.Run(signalContext())
 	return nil
 }
@@ -224,6 +233,25 @@ func runInstall(args []string) error {
 	unit := fmt.Sprintf(unitTmpl, mode, strings.Join(quoted, " "))
 	if err := os.WriteFile("/etc/systemd/system/"+name+".service", []byte(unit), 0o600); err != nil {
 		return err
+	}
+	// kernel limits for many addresses / connections, persistent across reboots
+	if err := os.WriteFile("/etc/sysctl.d/99-openv6.conf", []byte(netcfg.SysctlConf()), 0o644); err == nil {
+		_ = exec.Command("sysctl", "-q", "-p", "/etc/sysctl.d/99-openv6.conf").Run()
+	}
+	// if ufw is active, let the LAN reach the panel (proxy ports are opened by the agent)
+	if mode == "server" && netcfg.UFWActive() {
+		port := "8080"
+		for i, a := range args {
+			if (a == "-listen" || a == "--listen") && i+1 < len(args) {
+				if _, p, err := net.SplitHostPort(args[i+1]); err == nil {
+					port = p
+				}
+			}
+		}
+		for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+			_ = exec.Command("ufw", "allow", "from", cidr, "to", "any", "port", port, "proto", "tcp", "comment", "openv6 panel").Run()
+		}
+		fmt.Println("ufw is active: opened the panel port " + port + " for LAN addresses")
 	}
 	for _, c := range [][]string{{"daemon-reload"}, {"enable", name}, {"restart", name}} {
 		if out, err := exec.Command("systemctl", c...).CombinedOutput(); err != nil {

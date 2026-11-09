@@ -3,7 +3,7 @@
 // works as long as it can reach the panel.
 package proto
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // SyncRequest is sent by an agent every few seconds.
 type SyncRequest struct {
@@ -15,6 +15,17 @@ type SyncRequest struct {
 	Applied      map[int64]Applied    `json:"applied"` // current status per proxy
 	Results      []CommandResult      `json:"results"`
 	Errors       []string             `json:"errors"`
+	Checks       []SystemCheck        `json:"checks"` // preflight / health of the machine
+	Logs         []string             `json:"logs"`   // new log lines since the last successful sync
+	Arch         string               `json:"arch"`
+}
+
+// SystemCheck is one line of the node's self-diagnosis shown in the panel.
+type SystemCheck struct {
+	ID     string `json:"id"`     // stable key, translated by the UI
+	OK     bool   `json:"ok"`     // false = problem
+	Warn   bool   `json:"warn"`   // true = not fatal
+	Detail string `json:"detail"` // value or error text
 }
 
 type NetState struct {
@@ -45,9 +56,13 @@ type Applied struct {
 }
 
 type CommandResult struct {
-	ID     string `json:"id"`
-	OK     bool   `json:"ok"`
-	Output string `json:"output"`
+	ID      string `json:"id"`
+	OK      bool   `json:"ok"`
+	Output  string `json:"output"`
+	IP      string `json:"ip,omitempty"`
+	Latency int    `json:"latency,omitempty"` // ms
+	Country string `json:"country,omitempty"`
+	Org     string `json:"org,omitempty"`
 }
 
 // SyncResponse carries the desired state for the node.
@@ -60,6 +75,7 @@ type SyncResponse struct {
 	Proxies    []ProxySpec `json:"proxies"`
 	Commands   []Command   `json:"commands"`
 	Interval   int         `json:"interval"` // seconds until next sync
+	Firewall   bool        `json:"firewall"` // manage ufw rules for proxy ports
 }
 
 type PoolSpec struct {
@@ -82,6 +98,8 @@ type ProxySpec struct {
 
 type Command struct {
 	ID      string `json:"id"`
-	Type    string `json:"type"` // test_proxy | test_v6
+	Type    string `json:"type"` // test_proxy | test_v6 | update
 	ProxyID int64  `json:"proxy_id,omitempty"`
+	Version string `json:"version,omitempty"` // update: expected version
+	URL     string `json:"url,omitempty"`     // update: binary download URL
 }

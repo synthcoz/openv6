@@ -29,11 +29,13 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported architecture", 404)
 		return
 	}
-	p := filepath.Join(s.DataDir, "bin", "openv6-linux-"+arch)
-	if _, err := os.Stat(p); err != nil {
-		if runtime.GOOS == "linux" && runtime.GOARCH == arch && s.SelfExe != "" {
-			p = s.SelfExe
-		} else {
+	// our own binary is always the freshest for our architecture
+	var p string
+	if runtime.GOOS == "linux" && runtime.GOARCH == arch && s.SelfExe != "" {
+		p = s.SelfExe
+	} else {
+		p = filepath.Join(s.DataDir, "bin", "openv6-linux-"+arch)
+		if _, err := os.Stat(p); err != nil {
 			http.Error(w, fmt.Sprintf("no binary for linux/%s on this panel: copy it to %s", arch, p), 404)
 			return
 		}

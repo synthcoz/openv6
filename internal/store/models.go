@@ -303,16 +303,23 @@ type Proxy struct {
 	ConnsTotal   int64  `json:"conns_total"`
 	CheckAt      int64  `json:"check_at"`
 	CheckResult  string `json:"check_result"`
+	CheckOK      int    `json:"check_ok"` // -1 never checked, 0 failed, 1 ok
+	CheckLatency int    `json:"check_latency"`
+	CheckCountry string `json:"check_country"`
+	CheckOrg     string `json:"check_org"`
+	FailStreak   int    `json:"fail_streak"`
+	Label        string `json:"label"`
 }
 
-const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result`
+const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label`
 
 func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var p Proxy
 	var fb, en int
 	var subnet int64
 	if err := r.Scan(&p.ID, &p.NodeID, &p.PoolID, &p.Port, &p.Protocol, &p.AuthUser, &p.AuthPass, &subnet, &p.Suffix, &fb, &en,
-		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult); err != nil {
+		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult,
+		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label); err != nil {
 		return nil, err
 	}
 	p.Subnet = uint64(subnet)
@@ -397,9 +404,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 	defer tx.Rollback()
 	for _, p := range ps {
 		p.CreatedAt = Now()
-		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
-			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt)
+		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
+			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label)
 		if err != nil {
 			return err
 		}
@@ -409,8 +416,8 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 }
 
 func (s *Store) UpdateProxy(p *Proxy) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=? WHERE id=?`,
-		p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.ID)
+	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=? WHERE id=?`,
+		p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.ID)
 	return err
 }
 
@@ -450,9 +457,64 @@ func (s *Store) AddStats(nodeID int64, d map[int64]StatDelta) error {
 	return tx.Commit()
 }
 
-func (s *Store) SetCheck(id int64, result string) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET check_at=?,check_result=? WHERE id=?`, Now(), result, id)
-	return err
+type CheckRecord struct {
+	At      int64  `json:"at"`
+	OK      bool   `json:"ok"`
+	IP      string `json:"ip"`
+	Latency int    `json:"latency"`
+	Error   string `json:"error"`
+}
+
+// RecordCheck stores a health-check result and returns the proxy's fail
+// streak before and after, so callers can detect state transitions.
+func (s *Store) RecordCheck(id int64, c CheckRecord, country, org string) (before, after int, err error) {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+	if err := tx.QueryRow(`SELECT fail_streak FROM proxies WHERE id=?`, id).Scan(&before); err != nil {
+		return 0, 0, err
+	}
+	after = 0
+	result := "OK " + c.IP
+	if !c.OK {
+		after = before + 1
+		result = "FAIL " + c.Error
+	}
+	if c.OK {
+		_, err = tx.Exec(`UPDATE proxies SET check_at=?,check_result=?,check_ok=1,check_latency=?,check_country=?,check_org=?,fail_streak=0 WHERE id=?`,
+			c.At, result, c.Latency, country, org, id)
+	} else {
+		_, err = tx.Exec(`UPDATE proxies SET check_at=?,check_result=?,check_ok=0,check_latency=0,fail_streak=? WHERE id=?`, c.At, result, after, id)
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := tx.Exec(`INSERT INTO checks(proxy_id,at,ok,ip,latency,error) VALUES(?,?,?,?,?,?)`, id, c.At, b2i(c.OK), c.IP, c.Latency, c.Error); err != nil {
+		return 0, 0, err
+	}
+	_, _ = tx.Exec(`DELETE FROM checks WHERE proxy_id=? AND id <= (SELECT id FROM checks WHERE proxy_id=? ORDER BY id DESC LIMIT 1 OFFSET 200)`, id, id)
+	return before, after, tx.Commit()
+}
+
+func (s *Store) ListChecks(proxyID int64, limit int) ([]CheckRecord, error) {
+	rows, err := s.DB.Query(`SELECT at,ok,ip,latency,error FROM checks WHERE proxy_id=? ORDER BY id DESC LIMIT ?`, proxyID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CheckRecord{}
+	for rows.Next() {
+		var c CheckRecord
+		var ok int
+		if err := rows.Scan(&c.At, &ok, &c.IP, &c.Latency, &c.Error); err != nil {
+			return nil, err
+		}
+		c.OK = ok == 1
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ResetStats(ids []int64) error {

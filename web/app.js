@@ -140,7 +140,7 @@ function renderShell() {
     </aside>
     <main class="main" id="page"></main>
   </div>`;
-  $('#langBtn').onclick = () => { LANG = LANG === 'vi' ? 'en' : 'vi'; store('v6p_lang', LANG); renderShell(); };
+  $('#langBtn').onclick = () => { LANG = LANG === 'vi' ? 'en' : 'vi'; store('v6p_lang', LANG); api('PUT', '/api/settings', { lang: LANG }).catch(() => {}); renderShell(); };
   $('#themeBtn').onclick = () => {
     const cur = document.documentElement.getAttribute('data-theme');
     const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -164,7 +164,7 @@ function renderPage() {
 // ---------- dashboard ----------
 async function pageDashboard() {
   const draw = async () => {
-    const [d, nodes] = await Promise.all([api('GET', '/api/dashboard'), api('GET', '/api/nodes')]);
+    const [d, nodes, u] = await Promise.all([api('GET', '/api/dashboard'), api('GET', '/api/nodes'), api('GET', '/api/update').catch(() => ({}))]);
     const st = d.status || {};
     const warnings = [];
     for (const n of nodes) {
@@ -172,6 +172,9 @@ async function pageDashboard() {
       for (const e of n.errors || []) warnings.push(`<div class="alert err"><b>${esc(n.name)}:</b> ${esc(e)}</div>`);
       if (n.online && !n.net.has_v6_route) warnings.push(`<div class="alert err">${esc(t('warn_no_v6', { name: n.name }))}</div>`);
     }
+    if (u.newer) warnings.unshift(`<div class="alert info">${t('update_available', { v: esc(u.latest) })} <a href="#settings">${t('nav_settings')} →</a></div>`);
+    const failing = d.failing || 0;
+    if (failing) warnings.push(`<div class="alert err">${t('warn_failing', { n: failing })} <a href="#proxies">${t('nav_proxies')} →</a></div>`);
     if (d.proxies > 1 && d.subnets === 1) warnings.push(`<div class="alert info">${t('warn_same_64')}</div>`);
     $('#page').innerHTML = `<h1>${t('nav_dashboard')}</h1>
       ${warnings.join('')}
@@ -211,7 +214,7 @@ function filteredProxies() {
   const f = state.filter; const q = f.q.trim().toLowerCase();
   return state.proxies.filter((p) => (!f.node || String(p.node_id) === f.node) && (!f.tag || p.tag === f.tag) &&
     (!f.status || p.status === f.status) &&
-    (!q || [p.port, p.ip, p.auth_user, p.note, p.tag, p.node_name].join(' ').toLowerCase().includes(q)));
+    (!q || [p.port, p.label, p.ip, p.auth_user, p.note, p.tag, p.node_name].join(' ').toLowerCase().includes(q)));
 }
 
 async function pageProxies() {
@@ -230,10 +233,11 @@ async function pageProxies() {
         <option value="set_tag">${t('act_set_tag')}</option><option value="set_protocol">${t('act_set_protocol')}</option>
         <option value="fallback_on">${t('act_fallback_on')}</option><option value="fallback_off">${t('act_fallback_off')}</option>
         <option value="reset_stats">${t('act_reset_stats')}</option><option value="delete">${t('act_delete')}</option></select>
+      <button id="btnCheckAll" title="${t('check_all_hint')}">${t('check_all')}</button>
       <button id="btnExport">${t('export')}</button>
     </div>
     <div class="table-wrap"><table><thead><tr>
-      <th><input type="checkbox" id="selAll"></th><th>${t('port')}</th><th>${t('connect_to')}</th><th>${t('auth')}</th><th>${t('ipv6_out')}</th>
+      <th><input type="checkbox" id="selAll"></th><th>${t('name_port')}</th><th>${t('connect_to')}</th><th>${t('auth')}</th><th>${t('ipv6_out')}</th>
       <th>${t('protocol')}</th><th>${t('status')}</th><th>${t('traffic')}</th><th>${t('conns')}</th><th>${t('tag_note')}</th><th>${t('last_check')}</th><th></th>
     </tr></thead><tbody id="ptbody"></tbody></table></div>`;
   const f = state.filter;
@@ -245,9 +249,27 @@ async function pageProxies() {
   $('#selAll').onchange = (e) => { for (const p of filteredProxies()) e.target.checked ? state.selected.add(p.id) : state.selected.delete(p.id); drawProxyRows(); };
   $('#btnCreate').onclick = () => openCreate();
   $('#btnExport').onclick = () => openExport();
+  $('#btnCheckAll').onclick = async (e) => {
+    e.target.disabled = true;
+    try { const r = await api('POST', '/api/checks/run', {}); toast(t('check_queued', { n: r.queued })); } catch (err) { toast(err.message, true); }
+    setTimeout(() => { e.target.disabled = false; }, 5000);
+  };
   $('#bulkAction').onchange = (e) => { const a = e.target.value; e.target.value = ''; if (a) bulkAction(a); };
   drawProxyRows();
   every(5000, async () => { try { await loadProxies(); drawProxyRows(); } catch (e) { /* ignore */ } });
+}
+
+function shortOrg(o) { return String(o || '').replace(/^AS\d+\s+/, '').replace(/ (Company|Corporation|Joint Stock).*$/i, ''); }
+
+function checkCell(p) {
+  if (p.check_ok === 1) {
+    return `<span title="${esc(p.check_org)} · ${fmtTime(p.check_at)}"><span style="color:var(--ok)">✓</span> ${p.check_latency} ms
+      <div class="muted">${esc(p.check_country || '')}${p.check_org ? ' · ' + esc(shortOrg(p.check_org)) : ''} · ${ago(p.check_at)}</div></span>`;
+  }
+  if (p.check_ok === 0) {
+    return `<span title="${esc(p.check_result)}"><span style="color:var(--err)">✗</span> ${esc(t('check_failed_n', { n: p.fail_streak }))}<div class="muted">${ago(p.check_at)}</div></span>`;
+  }
+  return '<span class="muted">—</span>';
 }
 
 function drawProxyRows() {
@@ -268,10 +290,10 @@ function drawProxyRows() {
   $('#ptbody').innerHTML = list.map((p) => {
     const hp = (p.host.includes(':') ? `[${p.host}]` : p.host) + ':' + p.port;
     const line = p.auth_user ? `${hp}:${p.auth_user}:${p.auth_pass}` : hp;
-    const check = p.check_result ? `<span class="${p.check_result.startsWith('OK') ? '' : 'muted'}" title="${esc(p.check_result)}">${p.check_result.startsWith('OK') ? '✓' : '✗'} ${ago(p.check_at)}</span>` : '—';
+    const check = checkCell(p);
     return `<tr data-id="${p.id}">
       <td><input type="checkbox" class="sel" ${state.selected.has(p.id) ? 'checked' : ''}></td>
-      <td><b>${p.port}</b></td>
+      <td>${p.label ? `<b>${esc(p.label)}</b><div class="muted small">:${p.port}</div>` : `<b>${p.port}</b>`}</td>
       <td><span class="copy mono" data-copy="${esc(line)}" title="${t('click_copy')}">${esc(hp)}</span><div class="muted small">${esc(p.node_name)}</div></td>
       <td class="mono small">${p.auth_user ? `${esc(p.auth_user)}<br><span class="muted">${esc(p.auth_pass)}</span>` : `<span class="muted">${t('no_auth')}</span>`}</td>
       <td class="mono small"><span class="copy" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}</span>${p.ipv4_fallback ? ` <span class="badge warn" title="${t('fallback_hint')}">v4</span>` : ''}</td>
@@ -351,6 +373,7 @@ function openCreate() {
       <label class="field">${t('auth')}<select name="auth"><option value="random">${t('auth_random')}</option><option value="none">${t('auth_none')}</option><option value="fixed">${t('auth_fixed')}</option></select></label>
       <label class="field fixed-auth" hidden>${t('username')}<input name="user"></label>
       <label class="field fixed-auth" hidden>${t('password')}<input name="pass"></label>
+      <label class="field">${t('label_prefix')}<input name="label_prefix" placeholder="FB, TikTok…"></label>
       <label class="field">${t('tag')}<input name="tag" placeholder="facebook, tiktok…"></label>
       <label class="field">${t('note')}<input name="note"></label>
       <label class="field">${t('expires_days')}<input name="expires_days" type="number" min="0" value="0"></label>
@@ -391,7 +414,7 @@ function openCreate() {
       const body = {
         node_id: Number(form.node_id.value), pool_id: Number(form.pool_id.value), count: Number(form.count.value),
         start_port: Number(form.start_port.value), protocol: form.protocol.value, auth: form.auth.value,
-        user: form.user.value, pass: form.pass.value, tag: form.tag.value, note: form.note.value,
+        user: form.user.value, pass: form.pass.value, tag: form.tag.value, label_prefix: form.label_prefix.value, note: form.note.value,
         expires_days: Number(form.expires_days.value), spread: form.spread.checked, ipv4_fallback: form.ipv4_fallback.checked,
       };
       try {
@@ -407,6 +430,7 @@ function openEdit(p) {
   const exp = p.expires_at ? new Date(p.expires_at * 1000).toISOString().slice(0, 10) : '';
   modal(`<h2>${t('edit')} — ${t('port')} ${p.port}</h2>
     <form id="ef"><div class="form-grid">
+      <label class="field">${t('label')}<input name="label" value="${esc(p.label)}" placeholder="${t('label_ph')}"></label>
       <label class="field">${t('port')}<input name="port" type="number" min="1024" max="65535" value="${p.port}"></label>
       <label class="field">${t('protocol')}<select name="protocol"><option value="both">HTTP + SOCKS5</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
       <label class="field">${t('username')}<input name="auth_user" value="${esc(p.auth_user)}"></label>
@@ -421,12 +445,17 @@ function openEdit(p) {
       <label class="check"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> ${t('enabled')}</label>
       <label class="check"><input type="checkbox" name="ipv4_fallback" ${p.ipv4_fallback ? 'checked' : ''}> ${t('ipv4_fallback')}</label>
     </div>
+    <h3>${t('check_history')}</h3><div id="hist" class="small muted">…</div>
     <div id="efErr"></div>
     <div class="actions"><button type="button" class="danger" id="del">${t('act_delete')}</button><div class="spacer"></div>
       <button type="button" id="cancel">${t('cancel')}</button><button class="primary" type="submit">${t('save')}</button></div></form>`,
   (m) => {
     const form = $('#ef', m);
     form.protocol.value = p.protocol;
+    api('GET', `/api/proxies/${p.id}/checks`).then((h) => {
+      $('#hist', m).innerHTML = h.length ? `<div class="table-wrap"><table><tbody>${h.slice(0, 10).map((c) => `<tr><td>${fmtTime(c.at)}</td>
+        <td>${c.ok ? '<span style="color:var(--ok)">✓</span> ' + c.latency + ' ms' : '<span style="color:var(--err)">✗</span> ' + esc(c.error)}</td></tr>`).join('')}</tbody></table></div>` : t('never');
+    }).catch(() => {});
     $('#cancel', m).onclick = closeModal;
     $('#del', m).onclick = async () => {
       if (!(await confirmBox(t('confirm_delete', { n: 1 })))) return;
@@ -436,7 +465,7 @@ function openEdit(p) {
     form.onsubmit = async (e) => {
       e.preventDefault();
       const body = {
-        port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
+        label: form.label.value, port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
         tag: form.tag.value, note: form.note.value, enabled: form.enabled.checked, ipv4_fallback: form.ipv4_fallback.checked,
         expires_at: form.expires.value ? Math.floor(new Date(form.expires.value + 'T23:59:59').getTime() / 1000) : 0,
       };
@@ -449,25 +478,52 @@ function openEdit(p) {
   });
 }
 
+// Formats each anti-detect browser accepts when pasting a proxy list (from
+// public guides; users are told to try a few proxies first).
+const EXPORT_PRESETS = {
+  custom: { name: '' },
+  multilogin: { name: 'Multilogin', format: 'host:port:user:pass', scheme: 'http' },
+  gologin: { name: 'GoLogin', format: 'scheme://host:port:user:pass', scheme: 'socks5' },
+  dolphin: { name: 'Dolphin {Anty}', format: 'url', scheme: 'socks5' },
+  ixbrowser: { name: 'ixBrowser', format: 'host:port:user:pass', scheme: 'socks5' },
+  sphere: { name: 'Linken Sphere 2', format: 'host:port@user:pass', scheme: 'socks5' },
+  adspower: { name: 'AdsPower', format: 'host:port:user:pass', scheme: 'socks5' },
+};
+
 function openExport() {
   const ids = state.selected.size ? [...state.selected] : filteredProxies().map((p) => p.id);
   if (!ids.length) { toast(t('no_proxies'), true); return; }
   modal(`<h2>${t('export')} (${ids.length})</h2>
     <div class="form-grid">
+      <label class="field">${t('export_for')}<select id="xp">${Object.keys(EXPORT_PRESETS).map((k) => `<option value="${k}">${esc(EXPORT_PRESETS[k].name || t('custom'))}</option>`).join('')}</select></label>
       <label class="field">${t('format')}<select id="xf">
         <option value="host:port:user:pass">host:port:user:pass</option>
         <option value="user:pass@host:port">user:pass@host:port</option>
         <option value="url">scheme://user:pass@host:port</option>
+        <option value="scheme://host:port:user:pass">scheme://host:port:user:pass</option>
+        <option value="host:port@user:pass">host:port@user:pass</option>
         <option value="csv">CSV</option><option value="json">JSON</option></select></label>
       <label class="field">${t('scheme')}<select id="xs"><option value="http">http</option><option value="socks5">socks5</option></select></label>
       <label class="field">${t('host_override')}<input id="xh" placeholder="${t('auto')}"></label>
     </div>
     <p class="hint">${t('export_hint')}</p>
+    <p class="hint" id="xnote"></p>
     <textarea id="xt" rows="12" readonly></textarea>
     <div class="actions"><button id="xd">${t('download')}</button><button class="primary" id="xc">${t('copy')}</button><button id="cancel">${t('close')}</button></div>`,
   (m) => {
-    const fmt = store('v6p_export_fmt'); if (fmt) $('#xf', m).value = fmt;
+    const applyPreset = () => {
+      const pr = EXPORT_PRESETS[$('#xp', m).value];
+      if (pr.format) { $('#xf', m).value = pr.format; $('#xs', m).value = pr.scheme; }
+      $('#xf', m).disabled = $('#xs', m).disabled = !!pr.format;
+      $('#xnote', m).textContent = pr.format ? t('preset_note') : '';
+    };
+    const saved = store('v6p_export_preset');
+    if (saved && EXPORT_PRESETS[saved]) $('#xp', m).value = saved;
+    const fmt = store('v6p_export_fmt'); if (fmt && !EXPORT_PRESETS[$('#xp', m).value].format) $('#xf', m).value = fmt;
+    applyPreset();
+    $('#xp', m).onchange = () => { applyPreset(); load(); };
     const load = async () => {
+      store('v6p_export_preset', $('#xp', m).value);
       store('v6p_export_fmt', $('#xf', m).value);
       try {
         const r = await api('POST', '/api/proxies/export', { ids, format: $('#xf', m).value, scheme: $('#xs', m).value, host: $('#xh', m).value });
@@ -513,6 +569,8 @@ function nodeCard(n) {
       ${n.is_local ? `<span class="badge offline">${t('local')}</span>` : ''}
       <div class="spacer"></div>
       <button class="small" data-a="test">${t('test_v6')}</button>
+      <button class="small" data-a="logs">${t('logs')}</button>
+      ${n.outdated ? `<button class="small primary" data-a="update">${t('update_node', { v: esc(n.agent_version) })}</button>` : ''}
       ${n.is_local ? '' : `<button class="small" data-a="install">${t('install_cmd')}</button><button class="small" data-a="rotate">${t('rotate_token')}</button><button class="small danger" data-a="delete">${t('act_delete')}</button>`}
     </div>
     ${(n.errors || []).map((e) => `<div class="alert err">${esc(e)}</div>`).join('')}
@@ -523,6 +581,8 @@ function nodeCard(n) {
       <div>${t('ipv6_iface')}</div><div>${esc(n.net.default_iface || '—')} ${ifaces.map((i) => `<div class="mono small">${esc(i.name)}: ${esc((i.prefixes || []).join(', ') || '—')}</div>`).join('')}</div>
       <div>${t('ipv4')}</div><div class="mono small">LAN: ${esc((n.net.lan_v4 || []).join(', ') || '—')} · WAN: ${esc(n.net.public_v4 || '—')}</div>
       <div>${t('proxies')}</div><div>${n.proxies}</div>
+      <div>${t('system_checks')}</div><div class="checks">${(n.checks || []).map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${c.ok ? '✓' : (c.warn ? '!' : '✗')} ${esc(t('chk_' + c.id))}</span>`).join(' ') || '—'}
+        ${(n.checks || []).filter((c) => !c.ok).map((c) => `<div class="hint">${esc(t('chk_' + c.id))}: ${esc(t('chkfix_' + c.id))}${c.detail ? ' (' + esc(c.detail) + ')' : ''}</div>`).join('')}</div>
     </div>
     <h3>${t('settings')}</h3>
     <form class="form-grid" data-form="node">
@@ -554,6 +614,11 @@ function bindNodeCard(card, n) {
     catch (err) { toast(err.message, true); }
     e.target.disabled = false;
   };
+  act('logs').onclick = () => openLogs(n);
+  if (act('update')) act('update').onclick = async (e) => {
+    e.target.disabled = true;
+    try { await api('POST', `/api/nodes/${n.id}/update`, {}); toast(t('update_sent')); } catch (err) { toast(err.message, true); }
+  };
   if (act('install')) act('install').onclick = async () => showInstall(await api('GET', `/api/nodes/${n.id}/install`), n.name);
   if (act('rotate')) act('rotate').onclick = async () => { if (await confirmBox(t('confirm_rotate'))) showInstall(await api('POST', `/api/nodes/${n.id}/rotate-token`, {}), n.name); };
   if (act('delete')) act('delete').onclick = async () => {
@@ -574,6 +639,30 @@ function bindNodeCard(card, n) {
     if (!(await confirmBox(t('confirm_delete_pool')))) return;
     try { await api('DELETE', '/api/pools/' + b.dataset.delpool); renderPage(); } catch (err) { toast(err.message, true); }
   };
+}
+
+function openLogs(n) {
+  modal(`<div class="row"><h2 style="margin:0">${t('logs')} — ${esc(n.name)}</h2><div class="spacer"></div>
+      <input id="lq" placeholder="${t('filter')}" style="width:160px"></div>
+    <pre id="logbox" class="cmd" style="height:420px;overflow:auto;white-space:pre-wrap;margin-top:12px"></pre>
+    <div class="actions"><label class="check small"><input type="checkbox" id="lauto" checked> ${t('auto_refresh')}</label><div class="spacer"></div>
+      <button id="lcopy">${t('copy')}</button><button id="lclose">${t('close')}</button></div>`,
+  (m) => {
+    $('.modal', document).style.maxWidth = '960px';
+    const box = $('#logbox', m);
+    const load = async () => {
+      if (!document.body.contains(box)) return;
+      const r = await api('GET', `/api/nodes/${n.id}/logs?n=1000&q=${encodeURIComponent($('#lq', m).value)}`);
+      const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+      box.textContent = r.lines.join('\n') || t('no_logs');
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    };
+    load().then(() => { box.scrollTop = box.scrollHeight; });
+    const timer = setInterval(() => { if (!document.body.contains(box)) clearInterval(timer); else if ($('#lauto', m).checked) load().catch(() => {}); }, 3000);
+    $('#lq', m).oninput = () => load();
+    $('#lcopy', m).onclick = () => copyText(box.textContent);
+    $('#lclose', m).onclick = closeModal;
+  });
 }
 
 function openAddNode() {
@@ -615,29 +704,110 @@ async function pageEvents() {
 
 // ---------- settings ----------
 async function pageSettings() {
-  const s = await api('GET', '/api/settings');
+  const [s, u] = await Promise.all([api('GET', '/api/settings'), api('GET', '/api/update').catch(() => ({}))]);
+  const tog = (k) => `<label class="check"><input type="checkbox" name="${k}" ${s[k] === '1' ? 'checked' : ''}> ${t(k)}</label>`;
   $('#page').innerHTML = `<h1>${t('nav_settings')}</h1>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
-    <form class="card" id="sf"><h2>${t('panel')}</h2>
-      <label class="field">${t('panel_url')}<input name="panel_url" value="${esc(s.panel_url)}" placeholder="${esc(s.detected_url)}"></label>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+
+    <div class="card" id="upd"><h2>${t('updates')}</h2>
+      <div class="kv"><div>${t('current_version')}</div><div>v${esc(u.current || '')}</div>
+        <div>${t('latest_version')}</div><div>${u.latest ? esc(u.latest) : (u.error ? `<span class="muted">${esc(u.error)}</span>` : '—')}</div></div>
+      ${u.newer ? `<div class="alert info" style="margin-top:12px">${t('update_available', { v: esc(u.latest) })}</div>` : `<p class="small muted">${u.latest ? t('up_to_date') : ''}</p>`}
+      ${u.newer && !u.managed ? `<p class="hint">${t('update_not_managed')}</p>` : ''}
+      ${(u.outdated_nodes || []).length ? `<p class="small">${t('outdated_nodes', { list: esc(u.outdated_nodes.join(', ')) })}</p>` : ''}
+      <div class="row" style="margin-top:8px">
+        ${u.newer && u.managed ? `<button class="primary" id="btnUpd">${t('update_now', { v: esc(u.latest) })}</button>` : ''}
+        ${(u.outdated_nodes || []).length ? `<button id="btnUpdNodes">${t('update_nodes')}</button>` : ''}
+        <button id="btnUpdCheck">${t('check_updates')}</button>
+        ${u.url ? `<a class="btn" href="${esc(u.url)}" target="_blank" rel="noopener">${t('release_notes')}</a>` : ''}
+      </div></div>
+
+    <form class="card" id="tgf"><h2>${t('telegram')}</h2>
+      <p class="hint" style="margin-top:0">${t('telegram_hint')}</p>
+      <label class="field">${t('telegram_token')}<input name="telegram_token" autocomplete="off" placeholder="${s.telegram_token_set ? t('telegram_token_saved') : '123456:ABC…'}"></label>
+      <label class="field" style="margin-top:8px">${t('telegram_chat')}<input name="telegram_chat" value="${esc(s.telegram_chat)}" placeholder="123456789"></label>
+      <h3>${t('notify_when')}</h3>
+      <div style="display:grid;gap:6px">${tog('notify_node_offline')}${tog('notify_proxy_fail')}${tog('notify_prefix_change')}${tog('notify_update')}</div>
+      <div class="row" style="margin-top:12px"><button class="primary" type="submit">${t('save')}</button><button type="button" id="tgTest">${t('send_test')}</button></div></form>
+
+    <form class="card" id="opf"><h2>${t('operation')}</h2>
+      <label class="field">${t('check_interval')}<select name="check_interval_min">
+        ${[0, 5, 10, 15, 30, 60].map((v) => `<option value="${v}" ${String(v) === s.check_interval_min ? 'selected' : ''}>${v ? t('every_n_min', { n: v }) : t('off')}</option>`).join('')}</select></label>
+      <p class="hint">${t('check_interval_hint')}</p>
+      <label class="check" style="margin-top:8px"><input type="checkbox" name="auto_firewall" ${s.auto_firewall === '1' ? 'checked' : ''}> ${t('auto_firewall')}</label>
+      <p class="hint">${t('auto_firewall_hint')}</p>
+      <label class="field" style="margin-top:8px">${t('instance_name')}<input name="instance_name" value="${esc(s.instance_name)}" placeholder="${t('instance_name_ph')}"></label>
+      <label class="field" style="margin-top:8px">${t('panel_url')}<input name="panel_url" value="${esc(s.panel_url)}" placeholder="${esc(s.detected_url)}"></label>
       <p class="hint">${t('panel_url_hint')}</p>
       <button class="primary" type="submit">${t('save')}</button></form>
+
+    <div class="card"><h2>${t('backup')}</h2>
+      <p class="small muted" style="margin-top:0">${t('backup_hint')}</p>
+      <div class="row"><a class="btn primary" href="/api/backup" download>${t('download_backup')}</a>
+        <label class="btn">${t('restore')}<input type="file" id="restoreFile" accept=".json,application/json" hidden></label></div></div>
+
     <form class="card" id="pf"><h2>${t('change_password')}</h2>
       <label class="field">${t('current_password')}<input name="current" type="password" autocomplete="current-password" required></label>
       <label class="field" style="margin-top:8px">${t('new_password')}<input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
       <div style="margin-top:12px"><button class="primary" type="submit">${t('save')}</button></div></form>
+
     <div class="card"><h2>${t('language')}</h2>
       <div class="row"><button id="lvi" class="${LANG === 'vi' ? 'primary' : ''}">Tiếng Việt</button><button id="len" class="${LANG === 'en' ? 'primary' : ''}">English</button></div>
       <h3>${t('about')}</h3><p class="small muted">${t('about_text')}</p></div>
     </div>`;
-  $('#sf').onsubmit = async (e) => { e.preventDefault(); try { await api('PUT', '/api/settings', { panel_url: e.target.panel_url.value }); toast(t('saved')); } catch (err) { toast(err.message, true); } };
+  const save = async (body) => { try { await api('PUT', '/api/settings', body); toast(t('saved')); } catch (err) { toast(err.message, true); } };
+  $('#tgf').onsubmit = (e) => {
+    e.preventDefault(); const f = e.target;
+    const body = { telegram_chat: f.telegram_chat.value };
+    if (f.telegram_token.value.trim()) body.telegram_token = f.telegram_token.value.trim();
+    for (const k of ['notify_node_offline', 'notify_proxy_fail', 'notify_prefix_change', 'notify_update']) body[k] = f[k].checked ? '1' : '0';
+    save(body).then(() => renderPage());
+  };
+  $('#tgTest').onclick = async (e) => {
+    e.target.disabled = true;
+    try { await api('POST', '/api/settings/telegram-test', {}); toast(t('telegram_sent')); } catch (err) { toast(err.message, true); }
+    e.target.disabled = false;
+  };
+  $('#opf').onsubmit = (e) => {
+    e.preventDefault(); const f = e.target;
+    save({ check_interval_min: f.check_interval_min.value, auto_firewall: f.auto_firewall.checked ? '1' : '0', instance_name: f.instance_name.value, panel_url: f.panel_url.value });
+  };
+  $('#btnUpdCheck').onclick = async () => { await api('GET', '/api/update?refresh=1').catch(() => {}); renderPage(); };
+  if ($('#btnUpd')) $('#btnUpd').onclick = async (e) => {
+    if (!(await confirmBox(t('confirm_update', { v: u.latest })))) return;
+    e.target.disabled = true; e.target.textContent = t('updating');
+    try {
+      await api('POST', '/api/update/panel', {});
+      toast(t('update_restarting'));
+      // wait for the panel to come back with the new version
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try { const x = await (await fetch('/api/update')).json(); if (x.current && x.current !== u.current) { location.reload(); return; } } catch (err) { /* restarting */ }
+      }
+      location.reload();
+    } catch (err) { toast(err.message, true); e.target.disabled = false; e.target.textContent = t('update_now', { v: u.latest }); }
+  };
+  if ($('#btnUpdNodes')) $('#btnUpdNodes').onclick = async () => {
+    try { const r = await api('POST', '/api/update/nodes', {}); toast(t('update_sent_n', { n: r.commands ? r.commands.length : 0 })); } catch (err) { toast(err.message, true); }
+  };
+  $('#restoreFile').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!(await confirmBox(t('confirm_restore')))) return;
+    try {
+      const r = await fetch('/api/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await f.text() });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || r.statusText);
+      toast(t('restored')); setTimeout(() => location.reload(), 1200);
+    } catch (err) { toast(err.message, true); }
+  };
   $('#pf').onsubmit = async (e) => {
     e.preventDefault();
     try { await api('POST', '/api/account/password', { current: e.target.current.value, new: e.target.new.value }); toast(t('saved')); renderLogin(false); }
     catch (err) { toast(err.message, true); }
   };
-  $('#lvi').onclick = () => { LANG = 'vi'; store('v6p_lang', 'vi'); renderShell(); };
-  $('#len').onclick = () => { LANG = 'en'; store('v6p_lang', 'en'); renderShell(); };
+  const setLang = (l) => { LANG = l; store('v6p_lang', l); api('PUT', '/api/settings', { lang: l }).catch(() => {}); renderShell(); };
+  $('#lvi').onclick = () => setLang('vi');
+  $('#len').onclick = () => setLang('en');
 }
 
 // ---------- boot ----------

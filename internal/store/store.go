@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -60,7 +61,50 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return &Store{DB: db}, nil
+	st := &Store{DB: db}
+	if err := st.migrate(); err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return st, nil
+}
+
+// migrations are applied in order; never edit or reorder an existing entry.
+var migrations = []string{
+	// 1: health checks
+	`ALTER TABLE proxies ADD COLUMN check_ok INTEGER NOT NULL DEFAULT -1;
+	 ALTER TABLE proxies ADD COLUMN check_latency INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE proxies ADD COLUMN check_country TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE proxies ADD COLUMN check_org TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE proxies ADD COLUMN fail_streak INTEGER NOT NULL DEFAULT 0;
+	 CREATE TABLE IF NOT EXISTS checks (
+	   id INTEGER PRIMARY KEY, proxy_id INTEGER NOT NULL REFERENCES proxies(id) ON DELETE CASCADE,
+	   at INTEGER NOT NULL, ok INTEGER NOT NULL, ip TEXT NOT NULL DEFAULT '', latency INTEGER NOT NULL DEFAULT 0,
+	   error TEXT NOT NULL DEFAULT '');
+	 CREATE INDEX IF NOT EXISTS checks_proxy ON checks(proxy_id, at);`,
+	// 2: profile name shown as the main label of a proxy
+	`ALTER TABLE proxies ADD COLUMN label TEXT NOT NULL DEFAULT '';`,
+}
+
+func (s *Store) migrate() error {
+	v, _ := strconv.Atoi(s.GetSetting("schema_version", "0"))
+	for i := v; i < len(migrations); i++ {
+		tx, err := s.DB.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(migrations[i]); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("migration %d: %w", i+1, err)
+		}
+		if _, err := tx.Exec(`INSERT INTO settings(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(i+1)); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Now() int64 { return time.Now().Unix() }
