@@ -168,7 +168,7 @@ func (s *Server) handleMagic(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.Store.CreateSession(uid, sessionTTL)
 	if err == nil {
 		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: sess, Path: "/", HttpOnly: true,
-			SameSite: http.SameSiteLaxMode, MaxAge: sessionTTL})
+			SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil, MaxAge: sessionTTL})
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

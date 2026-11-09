@@ -961,11 +961,6 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 					logErr(w, err)
 					return
 				}
-				for _, q := range ps { // ports of the selection are being reassigned
-					if q.RelayNodeID == rid && q.NodeID != rid {
-						delete(relayUsed, relayPub(q))
-					}
-				}
 			}
 			if p.RelayNodeID == rid {
 				continue
@@ -1206,11 +1201,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
-	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name", "update_repo"}
+	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name"}
 
 var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
 	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
-	"lang": "vi", "update_repo": "synthcoz/openv6"}
+	"lang": "vi"}
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"detected_url": s.panelURL(r)}

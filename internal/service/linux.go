@@ -253,3 +253,6 @@ func StopSelf() {
 	}
 	_ = exec.Command("systemctl", "stop", "--no-block", "openv6-server").Run()
 }
+
+// SecureDataDir keeps the data folder private to root.
+func SecureDataDir(dir string) { _ = os.Chmod(dir, 0o700) }

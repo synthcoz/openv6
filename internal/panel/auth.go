@@ -2,8 +2,14 @@ package panel
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -75,7 +81,8 @@ func clientIP(r *http.Request) string {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"setup_required": s.Store.UserCount() == 0, "user": nil}
+	setup := s.Store.UserCount() == 0
+	out := map[string]any{"setup_required": setup, "user": nil, "setup_code_required": setup && !s.setupTrusted(r)}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		if u, err := s.Store.SessionUser(c.Value); err == nil {
 			out["user"] = u
@@ -87,6 +94,56 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 type credentials struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Code     string `json:"code,omitempty"` // first-time setup code (remote setup only)
+}
+
+// setupTrusted: setup without a code is allowed from this machine or the
+// local network, addressed by IP or a local name (blocks DNS rebinding).
+func (s *Server) setupTrusted(r *http.Request) bool {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	a := ap.Addr().Unmap()
+	if !(a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() || cgnatNet.Contains(a)) {
+		return false
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(strings.ToLower(host), "[]")
+	if _, err := netip.ParseAddr(host); err == nil {
+		return true
+	}
+	return host == "localhost" || !strings.Contains(host, ".") || strings.HasSuffix(host, ".local") ||
+		strings.HasSuffix(host, ".lan") || strings.HasSuffix(host, ".home") || strings.HasSuffix(host, ".ts.net")
+}
+
+var cgnatNet = netip.MustParsePrefix("100.64.0.0/10")
+
+// SetupCode returns the one-time code for remote first-time setup, creating
+// it (and setup-code.txt, readable by root/admins only) when needed.
+func (s *Server) SetupCode() string {
+	if s.Store.UserCount() > 0 {
+		return ""
+	}
+	code := s.Store.GetSetting("setup_code", "")
+	if code == "" {
+		code = randDigits(8)
+		_ = s.Store.SetSetting("setup_code", code)
+	}
+	_ = os.WriteFile(filepath.Join(s.DataDir, "setup-code.txt"), []byte(code+"\n"), 0o600)
+	return code
+}
+
+func randDigits(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		k, _ := rand.Int(rand.Reader, big.NewInt(10))
+		b[i] = byte('0' + k.Int64())
+	}
+	return string(b)
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
@@ -99,6 +156,20 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	// a fresh panel on a VPS must not be claimable by whoever finds it first
+	if !s.setupTrusted(r) {
+		ip := clientIP(r)
+		if s.tooManyFailures(ip) {
+			fail(w, http.StatusTooManyRequests, "too many failed attempts, wait 5 minutes")
+			return
+		}
+		want := s.SetupCode()
+		if want == "" || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(c.Code)), []byte(want)) != 1 {
+			s.recordFailure(ip)
+			fail(w, http.StatusForbidden, "setup code required: it is printed by the installer and in the log ("+filepath.Join(s.DataDir, "setup-code.txt")+")")
+			return
+		}
+	}
 	c.Username = strings.TrimSpace(c.Username)
 	if c.Username == "" || len(c.Password) < 8 {
 		fail(w, 400, "username required and password must be at least 8 characters")
@@ -109,6 +180,8 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Store.AddEvent(0, "info", "admin account created: "+c.Username)
+	_, _ = s.Store.DB.Exec(`DELETE FROM settings WHERE key='setup_code'`)
+	_ = os.Remove(filepath.Join(s.DataDir, "setup-code.txt"))
 	s.startSession(w, r, c)
 }
 
@@ -176,22 +249,41 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// failKey groups IPv6 clients by /64: one home or VPS gets a whole /64, so
+// counting single addresses would be trivial to bypass.
+func failKey(ip string) string {
+	if a, err := netip.ParseAddr(ip); err == nil && a.Unmap().Is6() {
+		p, _ := a.Prefix(64)
+		return p.String()
+	}
+	return ip
+}
+
 func (s *Server) tooManyFailures(ip string) bool {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	cut := time.Now().Add(-5 * time.Minute)
-	var keep []time.Time
-	for _, t := range s.failures[ip] {
-		if t.After(cut) {
-			keep = append(keep, t)
+	total := 0
+	for k, ts := range s.failures { // prune: the map never grows without bound
+		var keep []time.Time
+		for _, t := range ts {
+			if t.After(cut) {
+				keep = append(keep, t)
+			}
 		}
+		if len(keep) == 0 {
+			delete(s.failures, k)
+			continue
+		}
+		s.failures[k] = keep
+		total += len(keep)
 	}
-	s.failures[ip] = keep
-	return len(keep) >= 10
+	return len(s.failures[failKey(ip)]) >= 10 || total >= 200
 }
 
 func (s *Server) recordFailure(ip string) {
 	s.loginMu.Lock()
-	s.failures[ip] = append(s.failures[ip], time.Now())
+	k := failKey(ip)
+	s.failures[k] = append(s.failures[k], time.Now())
 	s.loginMu.Unlock()
 }

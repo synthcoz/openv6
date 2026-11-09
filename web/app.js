@@ -180,7 +180,7 @@ function bindLangSeg(root, after) {
   };
 }
 
-function renderLogin(setup) {
+function renderLogin(setup, needCode) {
   stopTimer();
   document.documentElement.lang = LANG;
   $('#app').innerHTML = `<div class="center"><form class="card login" id="loginForm">
@@ -189,15 +189,16 @@ function renderLogin(setup) {
       <p class="muted small" style="margin:0">${setup ? t('setup_hint') : t('login_sub')}</p></div>
     <label class="field">${t('username')}<input name="username" autocomplete="username" required value="${setup ? 'admin' : ''}"></label>
     <label class="field">${t('password')}<input name="password" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required minlength="${setup ? 8 : 1}"></label>
+    ${setup && needCode ? `<label class="field">${t('setup_code')}<input name="code" inputmode="numeric" autocomplete="one-time-code" required><span class="hint">${t('setup_code_hint')}</span></label>` : ''}
     <div id="loginErr"></div>
     <button class="primary" type="submit" style="justify-content:center">${setup ? t('create_account') : t('login')}</button>
   </form></div>`;
-  bindLangSeg($('#loginLang'), () => renderLogin(setup));
+  bindLangSeg($('#loginLang'), () => renderLogin(setup, needCode));
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      const r = await api('POST', setup ? '/api/setup' : '/api/login', { username: f.get('username'), password: f.get('password') });
+      const r = await api('POST', setup ? '/api/setup' : '/api/login', { username: f.get('username'), password: f.get('password'), code: f.get('code') || '' });
       state.user = r.user; renderShell();
     } catch (err) { $('#loginErr').innerHTML = `<div class="alert err">${icon('alert')}<div>${esc(err.message)}</div></div>`; }
   };
@@ -1552,7 +1553,7 @@ async function pageSettings() {
   applyTheme();
   try {
     const s = await (await fetch('/api/status')).json();
-    if (s.setup_required) renderLogin(true);
+    if (s.setup_required) renderLogin(true, s.setup_code_required);
     else if (!s.user) renderLogin(false);
     else { state.user = s.user; renderShell(); }
   } catch (e) {

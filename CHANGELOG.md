@@ -23,6 +23,19 @@
   - lỗi gán IPv6: tự áp dụng lại cấu hình mạng.
   Việc ảnh hưởng tài khoản như đổi IPv6 vẫn để bạn tự bấm. Mở từ trang Tổng quan, thẻ máy chủ hoặc menu tài khoản.
 - Dropdown không còn bị cắt chữ: nhãn ngắn gọn, mũi tên thống nhất. Bỏ hiệu ứng làm mờ nền để giao diện mượt hơn khi điều khiển từ xa (Parsec, RDP).
+- **Bảo mật (rà soát trước khi bán):**
+  - Thư mục dữ liệu (token node, mật khẩu proxy, khoá relay) giờ chỉ SYSTEM/Admin đọc được. Icon khay và log chuyển sang `C:\ProgramData\openv6\shared` (macOS: `openv6-shared`).
+  - Không đổi được nguồn tải bản cập nhật qua dashboard hay file sao lưu. Trước đây đó là đường để chạy mã lạ với quyền SYSTEM/root.
+  - Proxy không đi vào được 127.0.0.1, mạng LAN, link-local hay metadata của VPS. Nhờ vậy không ai dùng proxy này để vào proxy khác hoặc vào máy chủ.
+  - Panel mới cài, nếu mở từ Internet (ví dụ trên VPS), phải nhập **mã cài đặt**. Mã do lệnh cài in ra và có trong file `setup-code.txt`. Mở từ máy này hoặc mạng LAN thì không cần mã.
+  - Giới hạn đăng nhập sai tính theo cả dải /64 và có giới hạn chung. Thêm Content-Security-Policy. Giới hạn số kết nối chờ trên relay.
+- **Ổn định (rà soát lần cuối):**
+  - Rút cáp, đổi Wi-Fi hay máy ngủ dậy thì proxy tự áp dụng lại trong vòng khoảng 10 giây, không phải chờ 1 phút.
+  - Mất card mạng tạm thời: không còn xoá hết IPv6 rồi vẫn báo "OK"; openv6 giữ nguyên và thử lại.
+  - Bấm Sửa tường lửa / mạng Private không còn làm ngắt toàn bộ proxy.
+  - "Chia sẻ qua relay" không còn cấp trùng port trên VPS.
+  - Nếu file dữ liệu mất số phiên bản, proxy không còn bị đổi sang phạm vi Internet.
+  - Kết quả "khởi động lại / cập nhật" luôn được gửi về trước khi tiến trình khởi động lại.
 
 ## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
 

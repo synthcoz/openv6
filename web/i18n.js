@@ -2,6 +2,7 @@
 /* Translations. Add a language by adding a new top-level key with the same entries. */
 const I18N = {
   vi: {
+    setup_code: 'Mã cài đặt', setup_code_hint: 'Bạn đang mở từ ngoài mạng nhà. Mã in ra khi cài (lệnh cài trên VPS) hoặc trong file setup-code.txt ở thư mục dữ liệu.',
     chkbad_network_private: 'Mạng đang ở chế độ Public', chkbad_firewall: 'Tường lửa có thể chặn proxy', chkbad_ipv6_prefix: 'Chưa có dải IPv6',
     chkbad_ipv6_iface: 'Không tìm thấy card mạng có IPv6', chkbad_ipv6_route: 'Không có router IPv6', chkbad_vpn_captures: 'VPN đang chiếm đường đi của proxy',
     chkbad_root: 'openv6 không chạy với quyền quản trị', chkbad_kernel_tuning: 'Chưa tăng được giới hạn hệ thống',
@@ -197,6 +198,7 @@ const I18N = {
     language: 'Ngôn ngữ', about: 'Giới thiệu', about_text: 'openv6 tạo proxy IPv6 tĩnh (HTTP + SOCKS5) từ dải IPv6 của mạng nhà, VPS hoặc homelab. Mỗi proxy có port, tài khoản và IPv6 riêng, cố định cho tới khi bạn đổi.',
   },
   en: {
+    setup_code: 'Setup code', setup_code_hint: 'You are connecting from outside the local network. The code is printed by the installer (VPS install command) and saved in setup-code.txt in the data folder.',
     chkbad_network_private: 'Network is set to Public', chkbad_firewall: 'Firewall may block proxies', chkbad_ipv6_prefix: 'No IPv6 prefix',
     chkbad_ipv6_iface: 'No network card with IPv6', chkbad_ipv6_route: 'No IPv6 router', chkbad_vpn_captures: 'A VPN captures proxy traffic',
     chkbad_root: 'openv6 is not running as administrator', chkbad_kernel_tuning: 'System limits not raised',

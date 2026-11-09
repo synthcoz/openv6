@@ -46,3 +46,32 @@ func TestMigrateRepairs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Losing schema_version must not re-run migration 3, which would turn
+// password-protected LAN proxies into Internet proxies.
+func TestMissingVersionKeepsScope(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "x.db")
+	st, err := Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, _ := st.CreateNode("n", "", true)
+	if err := st.CreatePool(&Pool{NodeID: n.ID, Name: "a", CIDR: "2001:db8::/64", Mode: "addr"}); err != nil {
+		t.Fatal(err)
+	}
+	pools, _ := st.ListPools(n.ID)
+	if err := st.CreateProxies([]*Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", AuthUser: "u", AuthPass: "p", Suffix: "::1", Enabled: true, Scope: "lan"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = st.DB.Exec(`DELETE FROM settings WHERE key='schema_version'`)
+	st.DB.Close()
+	st, err = Open(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.DB.Close()
+	ps, _ := st.ListProxies(ProxyFilter{})
+	if len(ps) != 1 || ps[0].Scope != "lan" {
+		t.Fatalf("scope changed: %+v", ps[0].Scope)
+	}
+}

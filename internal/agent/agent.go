@@ -83,6 +83,8 @@ type Agent struct {
 	// so the 5 s heartbeat stays cheap and never stalls
 	lastHash  string
 	lastApply time.Time
+	lastOK    bool
+	force     bool // apply again without wiping addresses (after a fix)
 	netCache  proto.NetState
 	netAt     time.Time
 	netIface  string
@@ -147,7 +149,7 @@ func (a *Agent) Run(ctx context.Context) {
 			if restart {
 				log.Printf("agent: restarting into the updated binary")
 				a.proxies.Close()
-				os.Exit(0) // systemd (Restart=always) starts the new binary
+				os.Exit(3) // non-zero: systemd, launchd and Windows recovery all restart it
 			}
 			if resp.Interval > 0 {
 				interval = time.Duration(resp.Interval) * time.Second
@@ -309,7 +311,20 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 		}
 		cfgs = append(cfgs, c)
 	}
-	addrErrs, errs := a.net.Apply(want)
+	var addrErrs map[netip.Addr]error
+	var errs []error
+	if iface == "" && len(want.Addrs) > 0 {
+		// interface gone for a moment (resume, Wi-Fi reconnect): keep the
+		// addresses we have and report every proxy as waiting, so the next
+		// tick retries instead of wiping everything and claiming success
+		addrErrs = map[netip.Addr]error{}
+		for ip := range want.Addrs {
+			addrErrs[ip] = fmt.Errorf("no network card with IPv6 right now; retrying")
+		}
+		errs = append(errs, fmt.Errorf("no IPv6 network card found (cable unplugged or Wi-Fi reconnecting?)"))
+	} else {
+		addrErrs, errs = a.net.Apply(want)
+	}
 	if st.IPv6Disabled {
 		errs = append(errs, fmt.Errorf("IPv6 is disabled on this machine (net.ipv6.conf.*.disable_ipv6=1)"))
 	}
@@ -395,7 +410,14 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	for _, e := range errs {
 		errStrs = append(errStrs, e.Error())
 	}
+	allOK := len(errs) == 0
+	for _, ap := range applied {
+		if !ap.OK {
+			allOK = false
+		}
+	}
 	a.mu.Lock()
+	a.lastOK = allOK
 	a.fwManaged = r.Firewall
 	a.bypassStatus, a.bypassErr = bypassStatus, bypassErr
 	a.applied = applied
@@ -415,10 +437,19 @@ func (a *Agent) maybeApply(r *proto.SyncResponse) {
 	b, _ := json.Marshal(cp)
 	sum := sha256.Sum256(b)
 	h := hex.EncodeToString(sum[:])
+	// local facts the panel does not know about: which card is primary, its
+	// index (changes when an adapter resets), the router, vanished addresses
+	st := a.detectCached(r.Iface)
+	local := fmt.Sprintf("%s|%d|%s|%d", st.PrimaryIface, netcfg.IfIndex(st.PrimaryIface), st.Gateway, a.net.MissingManaged())
+	sum2 := sha256.Sum256([]byte(h + local))
+	h = hex.EncodeToString(sum2[:])
 	a.mu.Lock()
-	force := a.reapply
+	force := a.reapply || a.force
+	a.force = false
+	lastOK := a.lastOK
 	a.mu.Unlock()
-	if !force && h == a.lastHash && time.Since(a.lastApply) < resyncEvery {
+	due := time.Since(a.lastApply) >= resyncEvery || (!lastOK && time.Since(a.lastApply) >= 15*time.Second)
+	if !force && h == a.lastHash && !due {
 		a.mu.Lock()
 		a.iface = r.Iface
 		a.mu.Unlock()
@@ -451,7 +482,7 @@ func (a *Agent) detectCached(iface string) proto.NetState {
 	a.mu.Lock()
 	st, at, same := a.netCache, a.netAt, a.netIface == iface
 	a.mu.Unlock()
-	if same && !at.IsZero() && time.Since(at) < 15*time.Second {
+	if same && !at.IsZero() && time.Since(at) < 10*time.Second {
 		return st
 	}
 	st = a.net.Detect(iface)
@@ -463,6 +494,7 @@ func (a *Agent) detectCached(iface string) proto.NetState {
 
 func (a *Agent) runCommand(c proto.Command) {
 	res := proto.CommandResult{ID: c.ID}
+	restart := false
 	switch c.Type {
 	case "test_proxy":
 		a.testSem <- struct{}{}
@@ -505,9 +537,7 @@ func (a *Agent) runCommand(c proto.Command) {
 		}
 		res.OK, res.Output = true, "restarting"
 		log.Printf("agent: restart requested from the panel")
-		a.mu.Lock()
-		a.restartPending = true
-		a.mu.Unlock()
+		restart = true
 	case "fix":
 		out, err := a.net.Fix(c.Fix)
 		if err != nil {
@@ -520,7 +550,7 @@ func (a *Agent) runCommand(c proto.Command) {
 				a.mu.Unlock()
 			}
 			a.mu.Lock()
-			a.reapply = true
+			a.force = true
 			a.netAt = time.Time{}
 			a.mu.Unlock()
 		}
@@ -541,9 +571,7 @@ func (a *Agent) runCommand(c proto.Command) {
 		} else {
 			res.OK, res.Output = true, "updated to "+c.Version+", restarting"
 			log.Printf("agent: updated to %s", c.Version)
-			a.mu.Lock()
-			a.restartPending = true
-			a.mu.Unlock()
+			restart = true
 		}
 	default:
 		res.Output = "unknown command"
@@ -551,6 +579,9 @@ func (a *Agent) runCommand(c proto.Command) {
 	a.mu.Lock()
 	a.results = append(a.results, res)
 	delete(a.running, c.ID)
+	if restart { // same critical section: the result is queued before Run may exit
+		a.restartPending = true
+	}
 	a.mu.Unlock()
 }
 

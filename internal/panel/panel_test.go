@@ -443,3 +443,36 @@ func TestTrayShutdown(t *testing.T) {
 		t.Fatal("OnShutdown not called")
 	}
 }
+
+func TestRemoteSetupNeedsCode(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.DB.Close() })
+	srv := New(st, fstest.MapFS{"index.html": {Data: []byte("ok")}}, dir, 8080, "")
+	code := srv.SetupCode()
+	h := srv.Handler()
+	try := func(remote, host, code string) int {
+		b, _ := json.Marshal(map[string]string{"username": "admin", "password": "password123", "code": code})
+		req := httptest.NewRequest("POST", "/api/setup", bytes.NewReader(b))
+		req.RemoteAddr, req.Host = remote, host
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if c := try("203.0.113.9:5555", "203.0.113.1:8080", ""); c != 403 {
+		t.Fatalf("remote without code: %d", c)
+	}
+	if c := try("127.0.0.1:5555", "evil.example.com:8080", "000"); c != 403 { // DNS rebinding
+		t.Fatalf("rebinding: %d", c)
+	}
+	if c := try("203.0.113.9:5555", "203.0.113.1:8080", code); c != 200 {
+		t.Fatalf("remote with code: %d", c)
+	}
+	if srv.SetupCode() != "" {
+		t.Fatal("code kept after setup")
+	}
+}

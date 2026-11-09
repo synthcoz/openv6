@@ -193,13 +193,26 @@ func (s *Server) Connected() []int64 {
 	return out
 }
 
+// at most this many node handshakes at once: unauthenticated connections
+// cannot pile up (each one may wait up to 15 s for its token)
+const maxHandshakes = 32
+
+// at most this many relayed client connections per public port
+const maxPublicConns = 4096
+
 func (s *Server) acceptControl(ln net.Listener) {
+	sem := make(chan struct{}, maxHandshakes)
 	for {
 		c, err := ln.Accept()
 		if err != nil {
 			return
 		}
-		go s.handleControl(c)
+		select {
+		case sem <- struct{}{}:
+			go func() { defer func() { <-sem }(); s.handleControl(c) }()
+		default:
+			_ = c.Close()
+		}
 	}
 }
 
@@ -246,12 +259,20 @@ func (s *Server) handleControl(c net.Conn) {
 }
 
 func (s *Server) acceptPublic(p *pubListener) {
+	sem := make(chan struct{}, maxPublicConns)
 	for {
 		c, err := p.ln.Accept()
 		if err != nil {
 			return
 		}
+		select {
+		case sem <- struct{}{}:
+		default:
+			_ = c.Close()
+			continue
+		}
 		go func() {
+			defer func() { <-sem }()
 			s.mu.Lock()
 			sess := s.sessions[p.client]
 			s.mu.Unlock()

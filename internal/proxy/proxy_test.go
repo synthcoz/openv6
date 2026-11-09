@@ -277,3 +277,21 @@ func TestLimits(t *testing.T) {
 	}
 	t.Logf("256 KiB at 64 KiB/s took %v", el)
 }
+
+func TestBlockPrivateTargets(t *testing.T) {
+	out := netip.MustParseAddr("2a01:4f8::10")
+	for _, s := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "169.254.169.254", "fd00:ec2::254", "fe80::1", "100.64.1.1", "::ffff:127.0.0.1", "0.0.0.0"} {
+		if got, _ := filterTargets(out, []netip.Addr{netip.MustParseAddr(s)}); len(got) != 0 {
+			t.Errorf("%s not blocked", s)
+		}
+	}
+	for _, s := range []string{"2606:4700::1111", "1.1.1.1", "2001:4860:4860::8888"} {
+		if got, _ := filterTargets(out, []netip.Addr{netip.MustParseAddr(s)}); len(got) != 1 {
+			t.Errorf("%s blocked", s)
+		}
+	}
+	// lab setups with a private outbound address are not filtered
+	if got, _ := filterTargets(netip.MustParseAddr("127.0.0.1"), []netip.Addr{netip.MustParseAddr("127.0.0.1")}); len(got) != 1 {
+		t.Error("loopback lab setup filtered")
+	}
+}

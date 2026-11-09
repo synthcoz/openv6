@@ -24,6 +24,7 @@ func SetTrayAutostart(on bool) error                      { return errUnsupporte
 func StartServiceElevated() error                         { return errUnsupported }
 func StartService() error                                 { return errUnsupported }
 func StopSelf()                                           {}
+func SecureDataDir(string)                                {}
 
 func Status() string      { return "unknown" }
 func LogPath() string     { return "" }

@@ -28,7 +28,11 @@ func programData() string {
 
 func DataDir() string      { return filepath.Join(programData(), "openv6") }
 func AgentDataDir() string { return filepath.Join(programData(), "openv6", "agent-only") }
-func TrayInfoPath() string { return filepath.Join(programData(), "openv6", "tray.json") }
+func TrayInfoPath() string { return filepath.Join(SharedDir(), "tray.json") }
+
+// SharedDir holds what the tray app (running as the signed-in user) must
+// read: tray.json and the logs. Everything else in DataDir is private.
+func SharedDir() string { return filepath.Join(programData(), "openv6", "shared") }
 
 func BinPath() string {
 	pf := os.Getenv("ProgramFiles")
@@ -247,7 +251,7 @@ func Status() string {
 	return "unknown"
 }
 
-func LogPath() string { return filepath.Join(DataDir(), "openv6.log") }
+func LogPath() string { return filepath.Join(SharedDir(), "openv6.log") }
 
 // shareTrayDir lets every local user read the tray connection file.
 func shareTrayDir(dir string) {
@@ -287,3 +291,24 @@ func startDirect() error {
 // StopSelf is called by the running server before it exits on purpose: on
 // Windows a clean return already marks the service stopped (no restart).
 func StopSelf() {}
+
+// SecureDataDir makes a data folder readable by SYSTEM and Administrators
+// only (it holds node tokens, proxy passwords and keys). ProgramData lets
+// every user read by default, so inheritance is cut here.
+func SecureDataDir(dir string) {
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		return
+	}
+	run := func(args ...string) {
+		cmd := exec.Command("icacls", args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+		_ = cmd.Run()
+	}
+	run(dir, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "/Q")
+	run(dir, "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "/Q") // Users, Authenticated Users, Everyone
+	if filepath.Clean(dir) == filepath.Clean(DataDir()) {
+		_ = os.MkdirAll(SharedDir(), 0o755)
+		shareTrayDir(SharedDir())
+		_ = os.Remove(filepath.Join(dir, "tray.json")) // older versions kept it here
+	}
+}

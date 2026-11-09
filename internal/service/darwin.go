@@ -17,7 +17,7 @@ const binPath = "/usr/local/bin/openv6"
 
 func DataDir() string      { return "/Library/Application Support/openv6" }
 func AgentDataDir() string { return "/Library/Application Support/openv6-agent" }
-func TrayInfoPath() string { return "/Library/Application Support/openv6/tray.json" }
+func TrayInfoPath() string { return "/Library/Application Support/openv6-shared/tray.json" }
 func BinPath() string      { return binPath }
 
 // Managed reports whether launchd started us from our plist.
@@ -194,4 +194,13 @@ func StopSelf() {
 		return
 	}
 	_ = exec.Command("launchctl", "bootout", "system/com.openv6.server").Start()
+}
+
+// SecureDataDir keeps the data folder private to root (the tray info lives
+// in openv6-shared instead).
+func SecureDataDir(dir string) {
+	_ = os.Chmod(dir, 0o700)
+	if filepath.Clean(dir) == filepath.Clean(DataDir()) {
+		_ = os.Remove(filepath.Join(dir, "tray.json")) // older versions kept it here
+	}
 }

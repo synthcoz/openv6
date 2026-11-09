@@ -90,7 +90,7 @@ func main() {
 		mode, rest := os.Args[2], os.Args[3:]
 		// a crash in the background service would otherwise leave no trace
 		_ = os.MkdirAll(service.DataDir(), 0o700)
-		if f, ferr := os.OpenFile(filepath.Join(service.DataDir(), "openv6-crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+		if f, ferr := os.OpenFile(filepath.Join(logDir(service.DataDir(), service.DataDir()), "openv6-crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
 			_ = debug.SetCrashOutput(f, debug.CrashOptions{})
 		}
 		err = service.RunService(func(ctx context.Context) error {
@@ -120,7 +120,7 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		if os.Args[1] == "service-run" { // no console: keep the reason in the log file
-			if f, ferr := os.OpenFile(filepath.Join(service.DataDir(), "openv6.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+			if f, ferr := os.OpenFile(filepath.Join(logDir(service.DataDir(), service.DataDir()), "openv6.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
 				fmt.Fprintf(f, "%s openv6 %s could not start: %v\n", time.Now().Format("2006/01/02 15:04:05"), proto.Version, err)
 				f.Close()
 			}
@@ -138,6 +138,16 @@ func signalContext() context.Context {
 }
 
 // logToFile adds a log file in the data dir (Windows services have no console).
+// logDir is where log files go: next to the tray info for the installed
+// service (so the tray can show them), otherwise in the data folder.
+func logDir(data, defaultData string) string {
+	if p := service.LogPath(); p != "" && runtime.GOOS == "windows" && filepath.Clean(data) == filepath.Clean(defaultData) {
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		return filepath.Dir(p)
+	}
+	return data
+}
+
 func logToFile(dir string, extra io.Writer) {
 	w := []io.Writer{os.Stderr, extra}
 	if runtime.GOOS == "windows" {
@@ -164,8 +174,9 @@ func runServer(ctx context.Context, args []string) error {
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		return err
 	}
+	service.SecureDataDir(*data)
 	logs := logbuf.New(5000)
-	logToFile(*data, logs)
+	logToFile(logDir(*data, service.DataDir()), logs)
 	st, err := store.Open(filepath.Join(*data, "openv6.db"))
 	if err != nil {
 		return err
@@ -180,6 +191,9 @@ func runServer(ctx context.Context, args []string) error {
 	srv := panel.New(st, web, *data, port, exe)
 	srv.PanelLogs = logs
 	srv.TrayToken = store.RandomToken(24)
+	if code := srv.SetupCode(); code != "" {
+		log.Printf("first-time setup code: %s (needed only when you open the dashboard from outside this machine and LAN)", code)
+	}
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	srv.OnShutdown = func() {
@@ -250,6 +264,7 @@ func runAgent(ctx context.Context, args []string) error {
 		return fmt.Errorf("-panel and -token are required")
 	}
 	_ = os.MkdirAll(*data, 0o700)
+	service.SecureDataDir(*data)
 	logs := logbuf.New(2000)
 	logToFile(*data, logs)
 	ag := agent.New(agent.Config{PanelURL: *panelURL, Token: *token, DataDir: *data, DryRun: *dry, InsecureTLS: *insecure,

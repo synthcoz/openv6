@@ -76,5 +76,5 @@ Get-Service openv6
 ```
 
 ```powershell
-Get-Content C:\ProgramData\openv6\openv6.log -Tail 50
+Get-Content C:\ProgramData\openv6\shared\openv6.log -Tail 50
 ```

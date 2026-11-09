@@ -187,6 +187,8 @@ func (m *Manager) SyncFirewall(ports []int) error {
 	if m.DryRun || len(ports) == 0 {
 		return nil
 	}
+	fwMu.Lock()
+	defer fwMu.Unlock()
 	fwOnce.Do(func() {
 		exe, err := os.Executable()
 		if err != nil {
@@ -204,6 +206,7 @@ func (m *Manager) SyncFirewall(ports []int) error {
 
 var (
 	fwOnce sync.Once
+	fwMu   sync.Mutex
 	fwErr  error
 
 	profMu    sync.Mutex
@@ -244,9 +247,12 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 		}
 	}
 	c = append(c, proto.SystemCheck{ID: "network_private", OK: !pub, Warn: true, Detail: strings.Join(cats, ", ")})
-	fw := proto.SystemCheck{ID: "firewall", OK: fwErr == nil, Warn: true, Detail: "Windows Defender Firewall"}
-	if fwErr != nil {
-		fw.Detail = fwErr.Error()
+	fwMu.Lock()
+	ferr := fwErr
+	fwMu.Unlock()
+	fw := proto.SystemCheck{ID: "firewall", OK: ferr == nil, Warn: true, Detail: "Windows Defender Firewall"}
+	if ferr != nil {
+		fw.Detail = ferr.Error()
 	}
 	c = append(c, fw)
 	return c
@@ -263,7 +269,9 @@ func (m *Manager) Fix(id string) (string, error) {
 		_ = runNetsh("advfirewall", "firewall", "delete", "rule", "name=openv6")
 		err = runNetsh("advfirewall", "firewall", "add", "rule", "name=openv6", "dir=in", "action=allow",
 			"program="+exe, "enable=yes", "profile=private,domain")
+		fwMu.Lock()
 		fwErr = err
+		fwMu.Unlock()
 		if err != nil {
 			return "", err
 		}

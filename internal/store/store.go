@@ -112,7 +112,10 @@ func (s *Store) migrate() error {
 	if err := s.repairSettings(); err != nil {
 		return fmt.Errorf("settings table: %w (%s)", err, s.describe("settings"))
 	}
-	v, _ := strconv.Atoi(s.GetSetting("schema_version", "0"))
+	v, err := strconv.Atoi(s.GetSetting("schema_version", ""))
+	if err != nil {
+		v = s.inferVersion()
+	}
 	for i := v; i < len(migrations); i++ {
 		for _, stmt := range strings.Split(migrations[i], ";") {
 			stmt = strings.TrimSpace(stmt)
@@ -128,6 +131,33 @@ func (s *Store) migrate() error {
 		}
 	}
 	return nil
+}
+
+// inferVersion works out the schema version from the columns present when
+// the stored version is missing, so data-changing migrations (e.g. 3, which
+// sets the sharing scope) never run twice.
+func (s *Store) inferVersion() int {
+	has := func(table, col string) bool {
+		for _, c := range s.columns(table) {
+			if strings.EqualFold(c, col) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("proxies", "max_conns"):
+		return 5
+	case has("nodes", "paused"):
+		return 4
+	case has("proxies", "scope"):
+		return 3
+	case has("proxies", "label"):
+		return 2
+	case has("proxies", "check_ok"):
+		return 1
+	}
+	return 0
 }
 
 func alreadyApplied(err error) bool {
@@ -183,8 +213,9 @@ func (s *Store) repairSettings() error {
 		return err
 	}
 	if len(cols) >= 2 {
-		_, _ = s.DB.Exec(fmt.Sprintf(`INSERT OR IGNORE INTO settings(key,value) SELECT %q, CAST(%q AS TEXT) FROM %s WHERE %q IS NOT NULL AND %q IS NOT NULL`,
-			cols[0], cols[1], old, cols[0], cols[1]))
+		q := func(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + `"` }
+		_, _ = s.DB.Exec(fmt.Sprintf(`INSERT OR IGNORE INTO settings(key,value) SELECT %s, CAST(%s AS TEXT) FROM %s WHERE %s IS NOT NULL AND %s IS NOT NULL`,
+			q(cols[0]), q(cols[1]), q(old), q(cols[0]), q(cols[1])))
 	}
 	return nil
 }
