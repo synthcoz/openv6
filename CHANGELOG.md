@@ -5,6 +5,10 @@
 - **Thoát từ icon khay giờ tắt hẳn openv6:** chuột phải icon → **Thoát openv6** sẽ dừng toàn bộ proxy, dịch vụ nền và icon. Trước đây chỉ đóng icon, còn proxy vẫn chạy.
 - **Mở lại:** bấm biểu tượng openv6 (Desktop hoặc menu Start) là openv6 tự chạy lại và mở dashboard, không hiện hộp hỏi quyền Administrator. Khởi động lại máy cũng tự chạy như bình thường.
 - Trên Linux và macOS, dịch vụ cũng không tự bật lại sau khi thoát từ icon khay.
+- **Sửa lỗi không khởi động được sau khi cập nhật lên v0.6.0** trên một số máy: `migrate: SQL logic error: table settings has no column named value`.
+  - Bước nâng cấp dữ liệu giờ chạy từng lệnh một và bỏ qua phần đã làm rồi.
+  - Nếu bảng cài đặt bị hỏng, openv6 tự dựng lại và giữ nguyên proxy, node và các thiết lập khác.
+- Khi dịch vụ không khởi động được hoặc bị crash, lý do được ghi vào `openv6.log` / `openv6-crash.log` trong thư mục dữ liệu.
 
 ## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
 

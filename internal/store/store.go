@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -104,24 +105,86 @@ var migrations = []string{
 	   created_at INTEGER NOT NULL, last_used INTEGER NOT NULL DEFAULT 0);`,
 }
 
+// migrate brings the schema up to date. Each statement runs on its own and
+// steps that were already applied (duplicate column, existing table) are
+// skipped, so a half-applied or unusual database still upgrades.
 func (s *Store) migrate() error {
+	if err := s.repairSettings(); err != nil {
+		return fmt.Errorf("settings table: %w (%s)", err, s.describe("settings"))
+	}
 	v, _ := strconv.Atoi(s.GetSetting("schema_version", "0"))
 	for i := v; i < len(migrations); i++ {
-		tx, err := s.DB.Begin()
-		if err != nil {
+		for _, stmt := range strings.Split(migrations[i], ";") {
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" {
+				continue
+			}
+			if _, err := s.DB.Exec(stmt); err != nil && !alreadyApplied(err) {
+				return fmt.Errorf("migration %d (%s): %w", i+1, firstLine(stmt), err)
+			}
+		}
+		if err := s.SetSetting("schema_version", strconv.Itoa(i+1)); err != nil {
+			return fmt.Errorf("save schema version %d: %w (%s)", i+1, err, s.describe("settings"))
+		}
+	}
+	return nil
+}
+
+func alreadyApplied(err error) bool {
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "duplicate column") || strings.Contains(m, "already exists")
+}
+
+func firstLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 70 {
+		s = s[:70] + "…"
+	}
+	return s
+}
+
+func (s *Store) columns(table string) []string {
+	rows, err := s.DB.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		_ = rows.Scan(&n)
+		out = append(out, n)
+	}
+	return out
+}
+
+func (s *Store) describe(table string) string {
+	return table + " columns: " + strings.Join(s.columns(table), ",")
+}
+
+// repairSettings rebuilds the settings table if it lacks key/value columns,
+// keeping its rows when the shape allows it.
+func (s *Store) repairSettings() error {
+	cols := s.columns("settings")
+	has := map[string]bool{}
+	for _, c := range cols {
+		has[strings.ToLower(c)] = true
+	}
+	if has["key"] && has["value"] {
+		return nil
+	}
+	old := fmt.Sprintf("settings_old_%d", time.Now().Unix())
+	if len(cols) > 0 {
+		if _, err := s.DB.Exec(`ALTER TABLE settings RENAME TO ` + old); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(migrations[i]); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-		if _, err := tx.Exec(`INSERT INTO settings(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(i+1)); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+	}
+	if _, err := s.DB.Exec(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	if len(cols) >= 2 {
+		_, _ = s.DB.Exec(fmt.Sprintf(`INSERT OR IGNORE INTO settings(key,value) SELECT %q, CAST(%q AS TEXT) FROM %s WHERE %q IS NOT NULL AND %q IS NOT NULL`,
+			cols[0], cols[1], old, cols[0], cols[1]))
 	}
 	return nil
 }
