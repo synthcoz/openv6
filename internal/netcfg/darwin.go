@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"openv6/internal/proto"
 )
@@ -110,6 +111,7 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 			delete(m.st.Addrs, a)
 		}
 	}
+	var added []string
 	if len(d.Addrs) > 0 && d.Iface == "" {
 		errs = append(errs, fmt.Errorf("no IPv6 interface found"))
 	} else {
@@ -133,10 +135,40 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 				continue
 			}
 			m.st.Addrs[s] = d.Iface
+			added = append(added, s)
 		}
+	}
+	if len(added) > 0 && !m.DryRun {
+		waitDAD(d.Iface, added)
 	}
 	m.save()
 	return addrErrs, errs
+}
+
+// waitDAD waits (max 4s) until macOS finished duplicate address detection:
+// a "tentative" address cannot be used as a source yet.
+func waitDAD(iface string, addrs []string) {
+	for i := 0; i < 40; i++ {
+		out, err := exec.Command("ifconfig", iface, "inet6").Output()
+		if err != nil {
+			return
+		}
+		pending := false
+		for _, line := range strings.Split(string(out), "\n") {
+			if !strings.Contains(line, "tentative") {
+				continue
+			}
+			for _, a := range addrs {
+				if strings.Contains(line, a+" ") || strings.Contains(line, a+"%") {
+					pending = true
+				}
+			}
+		}
+		if !pending {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func (m *Manager) ApplyBypass(d BypassDesired) error { return nil }
