@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request: # build every installer to validate it, never publish
   workflow_dispatch:
 permissions:
   contents: write
@@ -26,7 +27,9 @@ jobs:
             TAG="v$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' internal/proto/proto.go | tr -d '"')"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -118,6 +121,7 @@ jobs:
 
   publish:
     needs: [plan, linux, windows, macos]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
