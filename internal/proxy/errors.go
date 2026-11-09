@@ -57,7 +57,7 @@ func Classify(err error) string {
 // IPv6 servers are queried from src (the proxy's own address), so with VPN
 // bypass routing the lookup leaves through the same NIC as the proxy and is
 // not filtered by a VPN's DNS (some VPNs drop AAAA answers).
-func NewResolver(servers []string, src netip.Addr) *net.Resolver {
+func NewResolver(servers []string, src netip.Addr, ifIndex int) *net.Resolver {
 	var v6, v4 []string
 	for _, s := range servers {
 		a, err := netip.ParseAddr(strings.TrimSpace(s))
@@ -79,14 +79,16 @@ func NewResolver(servers []string, src netip.Addr) *net.Resolver {
 		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			var lastErr error
 			for _, srv := range v6 {
-				d := net.Dialer{Timeout: 4 * time.Second}
+				var local net.Addr
 				if src.Is6() {
 					if strings.HasPrefix(network, "udp") {
-						d.LocalAddr = &net.UDPAddr{IP: src.AsSlice()}
+						local = &net.UDPAddr{IP: src.AsSlice()}
 					} else {
-						d.LocalAddr = &net.TCPAddr{IP: src.AsSlice()}
+						local = &net.TCPAddr{IP: src.AsSlice()}
 					}
 				}
+				d := BindDialer(local, ifIndex)
+				d.Timeout = 4 * time.Second
 				c, err := d.DialContext(ctx, network, srv)
 				if err == nil {
 					return c, nil

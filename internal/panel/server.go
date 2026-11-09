@@ -35,6 +35,9 @@ type Server struct {
 
 	// PanelLogs holds this process's own log output (panel + local agent).
 	PanelLogs *logbuf.Buffer
+	// TrayToken authorizes the local tray app (see tray.go).
+	TrayToken string
+	magic     map[string]time.Time // one-time login links from the tray
 }
 
 func New(st *store.Store, web fs.FS, dataDir string, port int, exe string) *Server {
@@ -42,7 +45,7 @@ func New(st *store.Store, web fs.FS, dataDir string, port int, exe string) *Serv
 		Store: st, WebFS: web, DataDir: dataDir, ListenPort: port, SelfExe: exe,
 		pending: map[int64][]pendingCmd{}, results: map[string]*commandState{},
 		failures: map[string][]time.Time{}, live: map[int64]*liveState{}, logs: map[int64]*logbuf.Buffer{},
-		mon: monitor{nodeOnline: map[int64]bool{}},
+		mon: monitor{nodeOnline: map[int64]bool{}}, magic: map[string]time.Time{},
 	}
 }
 
@@ -56,6 +59,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/agent/sync", s.handleAgentSync)
 	mux.HandleFunc("GET /install.sh", s.handleInstallScript)
 	mux.HandleFunc("GET /download/{arch}", s.handleDownload)
+	mux.HandleFunc("GET /download/{os}/{arch}", s.handleDownload)
+	mux.HandleFunc("GET /install.ps1", s.handleInstallPS1)
+	mux.HandleFunc("GET /auth/magic", s.handleMagic)
+	mux.Handle("GET /api/tray/status", s.trayAuth(s.handleTrayStatus))
+	mux.Handle("POST /api/tray/login", s.trayAuth(s.handleTrayLogin))
+	mux.Handle("POST /api/tray/{action}", s.trayAuth(s.handleTrayAction))
 
 	// authenticated
 	a := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.auth(h)) }
@@ -88,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 	a("POST /api/nodes/{id}/update", s.handleUpdateNodes)
 	a("POST /api/nodes/{id}/restart", s.handleNodeRestart)
 	a("POST /api/nodes/{id}/reapply", s.handleNodeReapply)
+	a("POST /api/nodes/{id}/pause", s.handleNodePause)
 	a("GET /api/backup", s.handleBackup)
 	a("POST /api/restore", s.handleRestore)
 	a("GET /api/nodes/{id}/logs", s.handleNodeLogs)

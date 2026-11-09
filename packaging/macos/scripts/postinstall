@@ -1,0 +1,10 @@
+#!/bin/sh
+# Installs the launchd service and starts the tray for the logged-in user.
+/usr/local/bin/openv6 install server
+U=$(stat -f%Su /dev/console)
+if [ -n "$U" ] && [ "$U" != "root" ]; then
+  UID_=$(id -u "$U")
+  launchctl bootstrap "gui/$UID_" "/Users/$U/Library/LaunchAgents/com.openv6.tray.plist" 2>/dev/null || true
+  sudo -u "$U" open "http://127.0.0.1:8080/" 2>/dev/null || true
+fi
+exit 0

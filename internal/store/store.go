@@ -90,6 +90,8 @@ var migrations = []string{
 	 ALTER TABLE checks ADD COLUMN code TEXT NOT NULL DEFAULT '';
 	 ALTER TABLE nodes ADD COLUMN bypass INTEGER NOT NULL DEFAULT 1;
 	 ALTER TABLE nodes ADD COLUMN dns TEXT NOT NULL DEFAULT '';`,
+	// 4: pause all proxies of a node (tray / dashboard)
+	`ALTER TABLE nodes ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate() error {

@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.4.0
+
+**Chạy trên Windows, macOS và Linux như một ứng dụng hoàn chỉnh**
+- **Windows 10/11:** bộ cài `openv6-setup-windows-amd64.exe` (Next → Install).
+  - Dịch vụ Windows chạy nền, tự khởi động cùng máy và tự chạy lại khi lỗi.
+  - IPv6 của proxy được gán với `skipassource` nên không ảnh hưởng địa chỉ của chính máy.
+  - Mỗi kết nối proxy được gắn vào card mạng thật (`IPV6_UNICAST_IF`), nên vẫn đi đúng IPv6 nhà mạng khi bật VPN hoặc WARP.
+  - Tự thêm luật Windows Firewall cho mạng Private; cảnh báo khi mạng đang đặt là Public.
+- **macOS:** gói `openv6-macos.pkg` (Intel và Apple Silicon). Chạy nền bằng launchd. IPv6 được gán bằng `ifconfig alias pltime 0`, kết nối gắn vào card mạng thật (`IPV6_BOUND_IF`), tự cho phép qua tường lửa ứng dụng của macOS.
+- **Linux:** thêm gói `.deb`; lệnh cài một dòng vẫn dùng được như cũ.
+- **Icon khay hệ thống** (Windows, macOS, Linux có hỗ trợ AppIndicator):
+  - đổi màu theo trạng thái (xanh / vàng / đỏ / xám);
+  - mở dashboard và tự đăng nhập bằng liên kết dùng một lần;
+  - tạm dừng / tiếp tục proxy, kiểm tra tất cả, áp dụng lại mạng;
+  - bật/tắt tự chạy khi đăng nhập, đổi ngôn ngữ, báo khi có bản mới, khởi động dịch vụ khi dịch vụ đang dừng.
+- Icon ứng dụng được vẽ bằng code, không cần file ảnh.
+- Tạm dừng toàn bộ proxy của một node (từ icon khay hoặc dashboard).
+- Lệnh cài node trong dashboard có 3 tab Linux / Windows (PowerShell) / macOS.
+
+**Tối ưu**
+- Agent nội bộ của panel trao đổi trực tiếp với panel, không còn tự gọi HTTP mỗi 5 giây.
+- Card mạng đi ra được xác định bằng một socket UDP, không cần chạy lệnh ngoài; cách này dùng được trên mọi hệ điều hành.
+- Cập nhật một nút bấm hoạt động trên cả 3 hệ điều hành. Trên Windows, file `.exe` đang chạy được đổi tên trước khi thay bằng bản mới.
+
+**Kiểm thử**
+- CI chạy trên **Windows và macOS thật**: gán IPv6 thật vào card mạng (kiểm tra cả `SkipAsSource` trên Windows), bind socket vào địa chỉ đó, chấp nhận tuỳ chọn gắn card mạng, rồi dọn sạch.
+- CI cài thử, chạy và gỡ dịch vụ (Windows Service, launchd).
+- CI build chéo cho 6 nền tảng.
+
 ## v0.3.0
 
 **Chạy ổn định khi máy bật VPN (Cloudflare WARP, Tailscale, WireGuard, VPN thương mại)**

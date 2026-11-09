@@ -105,6 +105,7 @@ type Node struct {
 	IsLocal    bool   `json:"is_local"`
 	Bypass     bool   `json:"bypass"`
 	DNS        string `json:"dns"` // "" system | comma separated resolver IPs
+	Paused     bool   `json:"paused"`
 	LastSeen   int64  `json:"last_seen"`
 	StateJSON  string `json:"-"`
 	CreatedAt  int64  `json:"created_at"`
@@ -112,15 +113,15 @@ type Node struct {
 
 const DefaultAllowCIDRs = "127.0.0.0/8\n10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16\n100.64.0.0/10\n::1/128\nfc00::/7\nfe80::/10"
 
-const nodeCols = `id,name,token,entry_host,iface,allow_cidrs,is_local,last_seen,state_json,created_at,bypass,dns`
+const nodeCols = `id,name,token,entry_host,iface,allow_cidrs,is_local,last_seen,state_json,created_at,bypass,dns,paused`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	var n Node
-	var local, bypass int
-	if err := r.Scan(&n.ID, &n.Name, &n.Token, &n.EntryHost, &n.Iface, &n.AllowCIDRs, &local, &n.LastSeen, &n.StateJSON, &n.CreatedAt, &bypass, &n.DNS); err != nil {
+	var local, bypass, paused int
+	if err := r.Scan(&n.ID, &n.Name, &n.Token, &n.EntryHost, &n.Iface, &n.AllowCIDRs, &local, &n.LastSeen, &n.StateJSON, &n.CreatedAt, &bypass, &n.DNS, &paused); err != nil {
 		return nil, err
 	}
-	n.IsLocal, n.Bypass = local == 1, bypass == 1
+	n.IsLocal, n.Bypass, n.Paused = local == 1, bypass == 1, paused == 1
 	return &n, nil
 }
 
@@ -189,6 +190,11 @@ func (s *Store) ListNodes() ([]*Node, error) {
 
 func (s *Store) UpdateNode(n *Node) error {
 	_, err := s.DB.Exec(`UPDATE nodes SET name=?,entry_host=?,iface=?,allow_cidrs=?,bypass=?,dns=? WHERE id=?`, n.Name, n.EntryHost, n.Iface, n.AllowCIDRs, b2i(n.Bypass), n.DNS, n.ID)
+	return err
+}
+
+func (s *Store) SetNodePaused(id int64, paused bool) error {
+	_, err := s.DB.Exec(`UPDATE nodes SET paused=? WHERE id=?`, b2i(paused), id)
 	return err
 }
 

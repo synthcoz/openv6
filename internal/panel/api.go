@@ -263,7 +263,9 @@ func (s *Server) handleInstallCmd(w http.ResponseWriter, r *http.Request) {
 	}
 	pu := s.panelURL(r)
 	cmd := fmt.Sprintf("curl -fsSL %s/install.sh | sudo bash -s -- agent --panel %s --token %s", pu, pu, n.Token)
-	writeJSON(w, 200, map[string]string{"command": cmd, "panel_url": pu, "token": n.Token})
+	win := fmt.Sprintf("& ([scriptblock]::Create((irm %s/install.ps1))) -Token %s", pu, n.Token)
+	mac := fmt.Sprintf("curl -fsSL -o /tmp/openv6 %s/download/darwin/$(uname -m | sed s/x86_64/amd64/) && chmod +x /tmp/openv6 && sudo /tmp/openv6 install agent -panel %s -token %s", pu, pu, n.Token)
+	writeJSON(w, 200, map[string]string{"command": cmd, "command_windows": win, "command_macos": mac, "panel_url": pu, "token": n.Token})
 }
 
 // ---- pools ----
@@ -429,6 +431,8 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 		switch {
 		case !p.Enabled:
 			v.Status = "disabled"
+		case nm[p.NodeID] != nil && nm[p.NodeID].Paused:
+			v.Status = "paused"
 		case p.ExpiresAt > 0 && p.ExpiresAt < now:
 			v.Status = "expired"
 		case !online || live == nil:

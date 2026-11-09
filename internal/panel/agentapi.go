@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,6 +91,28 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	resp, err := s.processSync(node, &req)
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, resp)
+}
+
+// LocalSync lets the in-process agent of this machine sync without HTTP.
+func (s *Server) LocalSync(ctx context.Context, token string, req *proto.SyncRequest) (*proto.SyncResponse, error) {
+	node, err := s.Store.NodeByToken(token)
+	if err != nil {
+		return nil, err
+	}
+	// round-trip through JSON so the agent never shares memory with the panel
+	b, _ := json.Marshal(req)
+	var cp proto.SyncRequest
+	_ = json.Unmarshal(b, &cp)
+	return s.processSync(node, &cp)
+}
+
+func (s *Server) processSync(node *store.Node, req *proto.SyncRequest) (*proto.SyncResponse, error) {
 	wasOffline := time.Now().Unix()-node.LastSeen > onlineWindow
 
 	// stats
@@ -102,8 +125,7 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 		active[id] = st.Active
 	}
 	if err := s.Store.AddStats(node.ID, deltas); err != nil {
-		logErr(w, err)
-		return
+		return nil, err
 	}
 	// command results
 	type checkDone struct {
@@ -150,7 +172,7 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 	b, _ := json.Marshal(req)
 	_ = s.Store.TouchNode(node.ID, string(b))
 	s.stateMu.Lock()
-	s.live[node.ID] = &liveState{At: time.Now(), Req: req, Active: active, Applied: req.Applied}
+	s.live[node.ID] = &liveState{At: time.Now(), Req: *req, Active: active, Applied: req.Applied}
 	s.stateMu.Unlock()
 	if wasOffline {
 		s.Store.AddEvent(node.ID, "info", fmt.Sprintf("node %q online (%s, agent %s)", node.Name, req.Hostname, req.AgentVersion))
@@ -179,11 +201,10 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := s.desiredState(node)
 	if err != nil {
-		logErr(w, err)
-		return
+		return nil, err
 	}
 	resp.Commands = cmds
-	writeJSON(w, 200, resp)
+	return resp, nil
 }
 
 // DNS presets selectable per node.
@@ -261,7 +282,7 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 	}
 	now := time.Now().Unix()
 	for _, p := range proxies {
-		if !p.Enabled || (p.ExpiresAt > 0 && p.ExpiresAt < now) {
+		if node.Paused || !p.Enabled || (p.ExpiresAt > 0 && p.ExpiresAt < now) {
 			continue
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,

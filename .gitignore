@@ -1,3 +1,7 @@
 dist/
 devdata/
 *.db
+*.syso
+openv6.png
+packaging/windows/*.exe
+packaging/windows/*.ico

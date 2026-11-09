@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -32,6 +33,25 @@ type Config struct {
 	Scope string
 	// Resolver used for target hostnames; nil = system resolver.
 	Resolver *net.Resolver
+	// BindIf, when > 0, pins outgoing sockets to this interface index
+	// (Windows/macOS VPN bypass; ignored on Linux).
+	BindIf int
+}
+
+// Dialer returns a net.Dialer for this proxy's outbound connections.
+func (c *Config) Dialer(local net.Addr) *net.Dialer {
+	d := &net.Dialer{LocalAddr: local}
+	if c.BindIf > 0 {
+		idx := c.BindIf
+		d.Control = func(network, _ string, rc syscall.RawConn) error { return bindToInterface(network, rc, idx) }
+	}
+	return d
+}
+
+// BindDialer is Dialer for callers outside the package (health checks, DNS).
+func BindDialer(local net.Addr, ifIndex int) *net.Dialer {
+	c := Config{BindIf: ifIndex}
+	return c.Dialer(local)
 }
 
 func (c *Config) bindAddr() string {
@@ -270,7 +290,7 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 	}
 	var lastErr error = ErrNoIPv6
 	for _, a := range primary {
-		d := net.Dialer{LocalAddr: &net.TCPAddr{IP: cfg.OutIP.AsSlice()}}
+		d := cfg.Dialer(&net.TCPAddr{IP: cfg.OutIP.AsSlice()})
 		c, err := d.DialContext(ctx, netw, netip.AddrPortFrom(a, uint16(port)).String())
 		if err == nil {
 			return c, nil

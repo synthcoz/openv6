@@ -1,23 +1,23 @@
 name: release
-# Publishes a GitHub Release with Linux binaries whenever main contains a
+# Builds every platform and publishes a GitHub Release when main contains a
 # version (internal/proto/proto.go) that has no release yet, or a v* tag is pushed.
 on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request: # build every installer to validate it, never publish
   workflow_dispatch:
 permissions:
   contents: write
 jobs:
-  build:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.ver.outputs.tag }}
+      exists: ${{ steps.ver.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Determine version
-        id: ver
+      - id: ver
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -27,29 +27,124 @@ jobs:
             TAG="v$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' internal/proto/proto.go | tr -d '"')"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "release $TAG already exists, nothing to do"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.ver.outputs.exists == 'false'
-        run: go vet ./... && go test ./...
-      - if: steps.ver.outputs.exists == 'false'
-        run: make dist
+
+  linux:
+    needs: plan
+    if: needs.plan.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./... && go test ./...
+      - run: make dist
+      - name: .deb packages
+        run: |
+          cd dist
+          for a in amd64 arm64 arm; do ../packaging/linux/build-deb.sh "${{ needs.plan.outputs.tag }}" $a openv6-linux-$a; done
+          ls -la
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/openv6-linux-*
+            dist/*.deb
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        shell: bash
+        run: |
+          go run ./tools/mkicons -png openv6.png -ico packaging/windows/openv6.ico
+          # embed the icon into the executables (best effort)
+          go run github.com/tc-hib/go-winres@v0.3.3 simply --icon openv6.png --manifest cli || echo "icon embedding skipped"
+          CGO_ENABLED=0 go build -ldflags "-s -w" -o packaging/windows/openv6.exe .
+          CGO_ENABLED=0 go build -ldflags "-s -w -H windowsgui" -o packaging/windows/openv6-tray.exe .
+          mkdir -p dist
+          cp packaging/windows/openv6.exe dist/openv6-windows-amd64.exe
+          cp packaging/windows/openv6-tray.exe dist/openv6-tray-windows-amd64.exe
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        env:
+          OPENV6_VERSION: ${{ needs.plan.outputs.tag }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc packaging\windows\openv6.iss
+          Copy-Item packaging\windows\openv6-setup-windows-amd64.exe dist\
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  macos:
+    needs: plan
+    if: needs.plan.outputs.exists == 'false'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build (cgo for the tray)
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 GOARCH=arm64 go build -ldflags "-s -w" -o dist/openv6-darwin-arm64 .
+          CGO_ENABLED=1 GOARCH=amd64 go build -ldflags "-s -w" -o dist/openv6-darwin-amd64 .
+          lipo -create -output openv6-universal dist/openv6-darwin-arm64 dist/openv6-darwin-amd64
+      - name: Package (.pkg)
+        run: |
+          mkdir -p pkgroot/usr/local/bin
+          cp openv6-universal pkgroot/usr/local/bin/openv6
+          V="${{ needs.plan.outputs.tag }}"
+          pkgbuild --root pkgroot --scripts packaging/macos/scripts --identifier com.openv6.pkg \
+            --version "${V#v}" --install-location / dist/openv6-macos.pkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  publish:
+    needs: [plan, linux, windows, macos]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
       - name: Publish release
-        if: steps.ver.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.ver.outputs.tag }}
+          TAG: ${{ needs.plan.outputs.tag }}
         run: |
+          ls -la out
           cat > notes.md <<'EOF'
-          Cài trên Zorin / Ubuntu / Debian:
+          **Windows 10/11:** tải `openv6-setup-windows-amd64.exe`, chạy và bấm Next. Windows có thể cảnh báo "Unknown publisher" (bộ cài chưa ký số): chọn *More info → Run anyway*.
 
+          **macOS:** tải `openv6-macos.pkg`. Lần đầu mở: bấm phải → *Open* (gói chưa được Apple ký số).
+
+          **Ubuntu / Zorin / Debian:**
           ```bash
           curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
           ```
+          hoặc tải file `.deb` rồi `sudo apt install ./openv6_*.deb`.
 
-          Hướng dẫn từng bước: docs/ZORIN.md
+          Xem CHANGELOG.md để biết thay đổi.
           EOF
-          gh release create "$TAG" dist/openv6-linux-* --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
