@@ -122,3 +122,8 @@ td.wrap { white-space: normal; }
 @media (max-width: 600px) { .kv { grid-template-columns: 1fr; } }
 .cmd { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: var(--mono);
   font-size: 12px; word-break: break-all; }
+
+.errbox { color: var(--err); max-width: 300px; white-space: normal; margin-top: 4px; }
+.errbox div { color: var(--text); opacity: .85; }
+.errbox details { margin-top: 2px; color: var(--muted); }
+.errbox code { word-break: break-all; }

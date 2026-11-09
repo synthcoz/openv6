@@ -39,6 +39,7 @@ type commandState struct {
 	Latency int       `json:"latency,omitempty"`
 	Country string    `json:"country,omitempty"`
 	Org     string    `json:"org,omitempty"`
+	Code    string    `json:"code,omitempty"`
 	Created time.Time `json:"created"`
 }
 
@@ -115,6 +116,7 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 		if st, ok := s.results[res.ID]; ok && st.NodeID == node.ID {
 			st.Done, st.OK, st.Output = true, res.OK, res.Output
 			st.IP, st.Latency, st.Country, st.Org = res.IP, res.Latency, res.Country, res.Org
+			st.Code = res.Code
 			if st.Type == "test_proxy" && st.ProxyID > 0 {
 				checks = append(checks, checkDone{st.ProxyID, res})
 			}
@@ -157,6 +159,9 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 	// auto pools follow the interface's current /64
 	iface := node.Iface
 	if iface == "" {
+		iface = req.Net.PrimaryIface
+	}
+	if iface == "" {
 		iface = req.Net.DefaultIface
 	}
 	if pfx := firstPrefix(req.Net, iface); pfx != "" {
@@ -179,6 +184,30 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Commands = cmds
 	writeJSON(w, 200, resp)
+}
+
+// DNS presets selectable per node.
+var dnsPresets = map[string][]string{
+	"cloudflare": {"2606:4700:4700::1111", "2606:4700:4700::1001", "1.1.1.1"},
+	"google":     {"2001:4860:4860::8888", "2001:4860:4860::8844", "8.8.8.8"},
+	"quad9":      {"2620:fe::fe", "2620:fe::9", "9.9.9.9"},
+}
+
+func dnsServers(v string) []string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "system" {
+		return nil
+	}
+	if p, ok := dnsPresets[v]; ok {
+		return p
+	}
+	var out []string
+	for _, f := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
+		if a, err := netip.ParseAddr(strings.TrimSpace(f)); err == nil {
+			out = append(out, a.String())
+		}
+	}
+	return out
 }
 
 func firstPrefix(st proto.NetState, iface string) string {
@@ -214,6 +243,8 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 	pm := map[int64]*store.Pool{}
 	resp := &proto.SyncResponse{NodeID: node.ID, NodeName: node.Name, Iface: node.Iface, Interval: 5,
 		Firewall: s.Store.GetSetting("auto_firewall", "1") == "1",
+		Bypass:   node.Bypass,
+		DNS:      dnsServers(node.DNS),
 		Pools:    []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
 	for _, p := range pools {
 		pm[p.ID] = p
@@ -234,7 +265,7 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 			continue
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
-			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback}
+			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope}
 		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
 			spec.IP = ip.String()
 		}

@@ -13,3 +13,5 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./... && go test ./...
       - run: node --check web/app.js && node --check web/i18n.js
+      - name: VPN bypass routing on a real kernel (isolated network namespace)
+        run: ./scripts/netns-test.sh

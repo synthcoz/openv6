@@ -275,3 +275,39 @@ func (s *Server) handleCheckNow(w http.ResponseWriter, r *http.Request) {
 	n := s.queueChecks(store.ProxyFilter{})
 	writeJSON(w, 200, map[string]int{"queued": n})
 }
+
+// handleNodeRestart restarts a node's service. For the local node this
+// restarts the whole panel process (systemd brings it back).
+func (s *Server) handleNodeRestart(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	if !n.IsLocal {
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "restart"}))
+		return
+	}
+	if os.Getenv("INVOCATION_ID") == "" {
+		fail(w, 400, "the panel is not running as a systemd service; restart it manually")
+		return
+	}
+	s.Store.AddEvent(n.ID, "info", "panel restart requested")
+	log.Printf("restart requested from the web UI")
+	writeJSON(w, 200, map[string]bool{"ok": true, "panel": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go func() { time.Sleep(time.Second); os.Exit(0) }()
+}
+
+// handleNodeReapply removes and re-installs all addresses and routes on a node.
+func (s *Server) handleNodeReapply(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: network configuration re-applied", n.Name))
+	writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+}

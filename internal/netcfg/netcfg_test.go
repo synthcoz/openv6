@@ -1,7 +1,10 @@
 package netcfg
 
 import (
+	"bufio"
+
 	"net/netip"
+	"openv6/internal/proto"
 	"strings"
 	"testing"
 )
@@ -49,5 +52,51 @@ func TestApplyCommands(t *testing.T) {
 	}
 	if strings.Join(cmds, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("commands:\n%s", strings.Join(cmds, "\n"))
+	}
+}
+
+func TestVPNKindAndPrimary(t *testing.T) {
+	for name, want := range map[string]string{"CloudflareWARP": "warp", "tailscale0": "tailscale", "wg0": "wireguard",
+		"nordlynx": "nordvpn", "proton0": "protonvpn", "ipv6leakintrf0": "protonvpn", "tun0": "openvpn", "ztabc": "zerotier",
+		"enp3s0": "", "wlp2s0": "", "eth0": ""} {
+		if got := vpnKind(name); got != want {
+			t.Errorf("vpnKind(%s)=%q want %q", name, got, want)
+		}
+	}
+	ifs := []proto.Interface{
+		{Name: "CloudflareWARP", Prefixes: []string{"2606:4700:110:8000::/64"}},
+		{Name: "enp3s0", Prefixes: []string{"2405:4802:1:2::/64"}},
+	}
+	// WARP owns the default route: still pick the physical NIC
+	if got := choosePrimary(ifs, "", "CloudflareWARP"); got != "enp3s0" {
+		t.Fatalf("primary %q", got)
+	}
+	if got := choosePrimary(ifs, "wlp2s0", "enp3s0"); got != "wlp2s0" {
+		t.Fatalf("configured iface ignored: %q", got)
+	}
+}
+
+func TestULAExcluded(t *testing.T) {
+	// Tailscale ULA must never become a proxy prefix
+	addrs, _ := parseIfInet6(strings.NewReader("fd7a115ca1e000000000000000000001 05 40 00 80 tailscale0\n"))
+	if ifs := interfacesFrom(addrs, nil); len(ifs) != 0 {
+		t.Fatalf("ULA leaked: %+v", ifs)
+	}
+}
+
+func TestParseDefaultRoutes(t *testing.T) {
+	in := "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000211223344556677 00000400 00000001 00000000 00000003 enp3s0\n" +
+		"00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 00000001 00000001 00000000 00000001 CloudflareWARP\n"
+	rs := parseDefaultRoutes(bufio.NewScanner(strings.NewReader(in)))
+	if len(rs) != 2 || rs[0].Iface != "CloudflareWARP" || rs[1].Gateway != "fe80::211:2233:4455:6677" {
+		t.Fatalf("%+v", rs)
+	}
+}
+
+func TestParseRuleSelectors(t *testing.T) {
+	out := "100:\tfrom 2405:4802:1:2::abcd lookup 6464\n100:\tfrom 2001:db8::/48 lookup 6464\n"
+	m := parseRuleSelectors(out)
+	if !m["2405:4802:1:2::abcd/128"] || !m["2001:db8::/48"] || len(m) != 2 {
+		t.Fatalf("%v", m)
 	}
 }

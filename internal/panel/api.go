@@ -37,6 +37,7 @@ type nodeView struct {
 	Pools    []*store.Pool       `json:"pools"`
 	Entry    string              `json:"entry"` // effective entry host
 	Checks   []proto.SystemCheck `json:"checks"`
+	Uptime   int64               `json:"uptime"` // seconds since the agent started
 	Outdated bool                `json:"outdated"`
 	Extra    map[string]string   `json:"extra,omitempty"`
 }
@@ -47,6 +48,9 @@ func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
 	_ = json.Unmarshal([]byte(n.StateJSON), &req)
 	v.Hostname, v.OS, v.Version, v.Net = req.Hostname, req.OS, req.AgentVersion, req.Net
 	v.Checks = req.Checks
+	if req.StartedAt > 0 && v.Online {
+		v.Uptime = time.Now().Unix() - req.StartedAt
+	}
 	if v.Checks == nil {
 		v.Checks = []proto.SystemCheck{}
 	}
@@ -144,6 +148,8 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		EntryHost  *string `json:"entry_host"`
 		Iface      *string `json:"iface"`
 		AllowCIDRs *string `json:"allow_cidrs"`
+		Bypass     *bool   `json:"bypass"`
+		DNS        *string `json:"dns"`
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -157,6 +163,17 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Iface != nil {
 		n.Iface = strings.TrimSpace(*b.Iface)
+	}
+	if b.Bypass != nil {
+		n.Bypass = *b.Bypass
+	}
+	if b.DNS != nil {
+		v := strings.TrimSpace(*b.DNS)
+		if _, preset := dnsPresets[v]; !preset && v != "" && v != "system" && len(dnsServers(v)) == 0 {
+			fail(w, 400, "DNS must be system, cloudflare, google, quad9 or a list of IP addresses")
+			return
+		}
+		n.DNS = v
 	}
 	if b.AllowCIDRs != nil {
 		var lines []string
@@ -364,6 +381,7 @@ type proxyView struct {
 	Host     string `json:"host"`   // entry host clients connect to
 	Status   string `json:"status"` // ok | error | offline | disabled | expired | pending
 	Error    string `json:"error,omitempty"`
+	Code     string `json:"code,omitempty"`
 	Active   int64  `json:"active"`
 	Subnet64 string `json:"subnet64"`
 }
@@ -393,6 +411,9 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 	out := make([]proxyView, 0, len(ps))
 	for _, p := range ps {
 		v := proxyView{Proxy: p, Host: hosts[p.NodeID]}
+		if p.Scope == "local" {
+			v.Host = "127.0.0.1"
+		}
 		if n := nm[p.NodeID]; n != nil {
 			v.NodeName = n.Name
 		}
@@ -417,7 +438,7 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 				if a.OK && a.IP == v.IP {
 					v.Status = "ok"
 				} else if a.Error != "" {
-					v.Status, v.Error = "error", a.Error
+					v.Status, v.Error, v.Code = "error", a.Error, a.Code
 				} else {
 					v.Status = "pending"
 				}
@@ -467,6 +488,7 @@ type bulkReq struct {
 	Note         string `json:"note"`
 	ExpiresDays  int    `json:"expires_days"`
 	LabelPrefix  string `json:"label_prefix"` // "FB" -> "FB 01", "FB 02"…
+	Scope        string `json:"scope"`        // local | lan | any
 }
 
 func (s *Server) reservedPort(p int) bool {
@@ -493,6 +515,13 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Protocol != "both" && b.Protocol != "http" && b.Protocol != "socks5" {
 		fail(w, 400, "protocol must be both, http or socks5")
+		return
+	}
+	if b.Scope == "" {
+		b.Scope = "lan"
+	}
+	if err := validScope(b.Scope, b.Auth != "none"); err != nil {
+		fail(w, 400, err.Error())
 		return
 	}
 	if b.Auth == "fixed" && (b.User == "" || b.Pass == "") {
@@ -544,7 +573,8 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		used[port] = true
 		p := &store.Proxy{NodeID: b.NodeID, PoolID: pool.ID, Port: port, Protocol: b.Protocol, Enabled: true,
-			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires}
+			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires,
+			Scope: b.Scope}
 		if b.Spread && subnetCount > 1 {
 			for {
 				sn := v6.RandomSubnet(subnetCount)
@@ -589,6 +619,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		Enabled      *bool   `json:"enabled"`
 		Note         *string `json:"note"`
 		Label        *string `json:"label"`
+		Scope        *string `json:"scope"`
 		Tag          *string `json:"tag"`
 		ExpiresAt    *int64  `json:"expires_at"`
 		IP           *string `json:"ip"` // set a specific address inside the pool
@@ -621,6 +652,13 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.AuthPass != nil {
 		p.AuthPass = *b.AuthPass
+	}
+	if b.Scope != nil {
+		p.Scope = *b.Scope
+	}
+	if err := validScope(p.Scope, p.AuthUser != ""); err != nil {
+		fail(w, 400, err.Error())
+		return
 	}
 	if (p.AuthUser == "") != (p.AuthPass == "") {
 		fail(w, 400, "set both user and password, or neither")
@@ -749,7 +787,17 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 			}
 			p.AuthPass = randString(12)
 		case "remove_auth":
+			if p.Scope == "any" {
+				fail(w, 400, fmt.Sprintf("proxy :%d is shared to the Internet and must keep a password; change its sharing scope first", p.Port))
+				return
+			}
 			p.AuthUser, p.AuthPass = "", ""
+		case "set_scope":
+			if err := validScope(b.Value, p.AuthUser != ""); err != nil {
+				fail(w, 400, fmt.Sprintf(":%d: %v", p.Port, err))
+				return
+			}
+			p.Scope = b.Value
 		case "set_tag":
 			p.Tag = strings.TrimSpace(b.Value)
 		case "set_protocol":
@@ -772,6 +820,19 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, map[string]int{"affected": len(ps)})
+}
+
+func validScope(scope string, hasAuth bool) error {
+	switch scope {
+	case "local", "lan":
+		return nil
+	case "any":
+		if !hasAuth {
+			return errors.New("a proxy shared to the Internet must have a username and password (otherwise anyone could use it)")
+		}
+		return nil
+	}
+	return errors.New("scope must be local, lan or any")
 }
 
 // ---- export ----

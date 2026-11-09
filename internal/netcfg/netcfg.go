@@ -71,43 +71,61 @@ func parseIfInet6(r io.Reader) ([]ifAddr, error) {
 	return out, sc.Err()
 }
 
-func defaultV6Iface() string {
-	f, err := os.Open("/proc/net/ipv6_route")
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		fs := strings.Fields(sc.Text())
-		// dest dest_plen src src_plen nexthop metric refcnt use flags iface
-		if len(fs) >= 10 && fs[0] == strings.Repeat("0", 32) && fs[1] == "00" && fs[9] != "lo" {
-			return fs[9]
-		}
-	}
-	return ""
-}
-
 // Detect returns the node's IPv6 network state. "managed" addresses (added by
 // this agent) are excluded so they are never mistaken for the base prefix.
-func (m *Manager) Detect() proto.NetState {
-	st := proto.NetState{}
-	st.DefaultIface = defaultV6Iface()
-	st.HasV6Route = st.DefaultIface != ""
-	addrs, err := readIfInet6()
-	if err != nil {
-		return st
+// configured is the interface chosen in the panel ("" = automatic).
+func (m *Manager) Detect(configured string) proto.NetState {
+	st := proto.NetState{VPNs: detectVPNs(), Bypass: "off"}
+	routes := defaultRoutes()
+	for _, r := range routes {
+		if vpnKind(r.Iface) == "" {
+			st.DefaultIface = r.Iface
+			break
+		}
 	}
-	st.Interfaces = interfacesFrom(addrs, m.managedSet())
+	if st.DefaultIface == "" && len(routes) > 0 {
+		st.DefaultIface = routes[0].Iface
+	}
+	st.HasV6Route = len(routes) > 0
+	if addrs, err := readIfInet6(); err == nil {
+		st.Interfaces = interfacesFrom(addrs, m.managedSet())
+	}
+	st.PrimaryIface = choosePrimary(st.Interfaces, configured, st.DefaultIface)
+	st.IPv6Disabled = ipv6Disabled(st.PrimaryIface)
+	st.EgressIface = egressIface()
+	// router of the primary interface; remembered because some VPNs remove
+	// the physical default route while they are connected
+	m.mu.Lock()
+	for _, r := range routes {
+		if r.Iface == st.PrimaryIface && r.Gateway != "" {
+			st.Gateway = r.Gateway
+			if m.st.Gateways[r.Iface] != r.Gateway {
+				m.st.Gateways[r.Iface] = r.Gateway
+				m.save()
+			}
+			break
+		}
+	}
+	if st.Gateway == "" {
+		st.Gateway = m.st.Gateways[st.PrimaryIface]
+	}
+	m.mu.Unlock()
+	if st.PrimaryIface != "" && st.Gateway != "" {
+		st.HasV6Route = true
+	}
 	return st
 }
+
+// ula reports fc00::/7 (Tailscale fd7a:115c:a1e0::/48, ZeroTier, home ULAs):
+// never usable as an Internet source.
+func ula(a netip.Addr) bool { b := a.As16(); return b[0]&0xfe == 0xfc }
 
 func interfacesFrom(addrs []ifAddr, managed map[netip.Addr]bool) []proto.Interface {
 	var out []proto.Interface
 	byIf := map[string]*proto.Interface{}
 	var names []string
 	for _, a := range addrs {
-		if a.Scope != 0 || a.Iface == "lo" || !a.Addr.IsGlobalUnicast() || managed[a.Addr] {
+		if a.Scope != 0 || a.Iface == "lo" || !a.Addr.IsGlobalUnicast() || ula(a.Addr) || managed[a.Addr] {
 			continue
 		}
 		it := byIf[a.Iface]
@@ -148,8 +166,9 @@ func contains(xs []string, s string) bool {
 // ---- applying ----
 
 type installed struct {
-	Addrs  map[string]string `json:"addrs"`  // ip -> iface
-	Routes map[string]bool   `json:"routes"` // cidr installed as local route on lo
+	Addrs    map[string]string `json:"addrs"`    // ip -> iface
+	Routes   map[string]bool   `json:"routes"`   // cidr installed as local route on lo
+	Gateways map[string]string `json:"gateways"` // iface -> last known IPv6 router
 }
 
 type Manager struct {
@@ -161,15 +180,18 @@ type Manager struct {
 }
 
 func NewManager(dataDir string) *Manager {
-	m := &Manager{statePath: filepath.Join(dataDir, "netstate.json"), st: installed{Addrs: map[string]string{}, Routes: map[string]bool{}}}
+	m := &Manager{statePath: filepath.Join(dataDir, "netstate.json")}
 	if b, err := os.ReadFile(m.statePath); err == nil {
 		_ = json.Unmarshal(b, &m.st)
-		if m.st.Addrs == nil {
-			m.st.Addrs = map[string]string{}
-		}
-		if m.st.Routes == nil {
-			m.st.Routes = map[string]bool{}
-		}
+	}
+	if m.st.Addrs == nil {
+		m.st.Addrs = map[string]string{}
+	}
+	if m.st.Routes == nil {
+		m.st.Routes = map[string]bool{}
+	}
+	if m.st.Gateways == nil {
+		m.st.Gateways = map[string]string{}
 	}
 	m.Run = runIP
 	return m
@@ -275,5 +297,6 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 
 // Cleanup removes everything this agent installed.
 func (m *Manager) Cleanup() {
+	_ = m.ApplyBypass(BypassDesired{})
 	m.Apply(Desired{})
 }

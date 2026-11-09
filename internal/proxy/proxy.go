@@ -26,6 +26,19 @@ type Config struct {
 	User, Pass   string
 	OutIP        netip.Addr // outbound IPv6 source
 	IPv4Fallback bool
+	// Scope controls who may connect: "local" (this machine only, bound to
+	// 127.0.0.1), "lan" (node whitelist, default private ranges) or "any"
+	// (anyone with the password; without a password it falls back to lan).
+	Scope string
+	// Resolver used for target hostnames; nil = system resolver.
+	Resolver *net.Resolver
+}
+
+func (c *Config) bindAddr() string {
+	if c.Scope == "local" {
+		return fmt.Sprintf("127.0.0.1:%d", c.Port)
+	}
+	return fmt.Sprintf(":%d", c.Port)
 }
 
 func (c *Config) authRequired() bool { return c.User != "" }
@@ -68,12 +81,23 @@ type listener struct {
 // SetAllow sets the client source whitelist used by proxies without auth.
 func (m *Manager) SetAllow(p []netip.Prefix) { m.allow.Store(&p) }
 
-func (m *Manager) clientAllowed(addr net.Addr) bool {
+func (m *Manager) clientAllowed(cfg *Config, addr net.Addr) bool {
 	ap, err := netip.ParseAddrPort(addr.String())
 	if err != nil {
 		return false
 	}
 	a := ap.Addr().Unmap()
+	if a.IsLoopback() {
+		return true
+	}
+	switch cfg.Scope {
+	case "local":
+		return false
+	case "any":
+		if cfg.authRequired() {
+			return true
+		}
+	}
 	for _, p := range *m.allow.Load() {
 		if p.Contains(a) {
 			return true
@@ -94,7 +118,7 @@ func (m *Manager) Apply(cfgs []Config) map[int64]error {
 	}
 	for port, l := range m.listeners {
 		c, ok := want[port]
-		if !ok || l.cfg.Load().ID != c.ID {
+		if !ok || l.cfg.Load().ID != c.ID || l.cfg.Load().bindAddr() != c.bindAddr() {
 			l.close()
 			delete(m.listeners, port)
 		}
@@ -109,7 +133,7 @@ func (m *Manager) Apply(cfgs []Config) map[int64]error {
 			}
 			continue
 		}
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		ln, err := net.Listen("tcp", c.bindAddr())
 		if err != nil {
 			errs[c.ID] = err
 			continue
@@ -177,8 +201,8 @@ func (l *listener) handle(c net.Conn) {
 		_ = c.Close()
 	}()
 	cfg := l.cfg.Load()
-	if !cfg.authRequired() && !l.m.clientAllowed(c.RemoteAddr()) {
-		return // silently drop: not whitelisted and no credentials configured
+	if !l.m.clientAllowed(cfg, c.RemoteAddr()) {
+		return // silently drop: outside the proxy's sharing scope
 	}
 	_ = c.SetReadDeadline(time.Now().Add(30 * time.Second))
 	br := bufio.NewReader(c)
@@ -218,7 +242,11 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 	if a, err := netip.ParseAddr(host); err == nil {
 		addrs = []netip.Addr{a.Unmap()}
 	} else {
-		ips, err := l.m.Resolver.LookupNetIP(ctx, "ip", host)
+		res := l.m.Resolver
+		if cfg.Resolver != nil {
+			res = cfg.Resolver
+		}
+		ips, err := res.LookupNetIP(ctx, "ip", host)
 		if err != nil {
 			return nil, err
 		}

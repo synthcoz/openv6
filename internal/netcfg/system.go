@@ -128,19 +128,43 @@ func (m *Manager) SyncFirewall(ports []int) error {
 // ---- self-diagnosis ----
 
 // SystemChecks returns the machine diagnosis displayed on the node page.
-func (m *Manager) SystemChecks(st proto.NetState, iface string, tuneFailed []string, fwManaged bool) []proto.SystemCheck {
+// Check IDs are translated by the UI (chk_<id>, chkfix_<id>).
+func (m *Manager) SystemChecks(st proto.NetState, tuneFailed []string, fwManaged bool) []proto.SystemCheck {
 	var c []proto.SystemCheck
 	_, ipErr := exec.LookPath("ip")
 	c = append(c, proto.SystemCheck{ID: "iproute2", OK: ipErr == nil || m.DryRun})
-	c = append(c, proto.SystemCheck{ID: "ipv6_route", OK: st.HasV6Route, Detail: st.DefaultIface})
+	c = append(c, proto.SystemCheck{ID: "root", OK: os.Geteuid() == 0 || m.DryRun})
+	c = append(c, proto.SystemCheck{ID: "ipv6_enabled", OK: !st.IPv6Disabled})
+	c = append(c, proto.SystemCheck{ID: "ipv6_iface", OK: st.PrimaryIface != "", Detail: st.PrimaryIface})
 	pfx := ""
 	for _, it := range st.Interfaces {
-		if it.Name == iface && len(it.Prefixes) > 0 {
+		if it.Name == st.PrimaryIface && len(it.Prefixes) > 0 {
 			pfx = it.Prefixes[0]
 		}
 	}
 	c = append(c, proto.SystemCheck{ID: "ipv6_prefix", OK: pfx != "", Detail: pfx})
-	c = append(c, proto.SystemCheck{ID: "root", OK: os.Geteuid() == 0 || m.DryRun})
+	c = append(c, proto.SystemCheck{ID: "ipv6_route", OK: st.Gateway != "", Detail: st.Gateway})
+
+	// VPN situation
+	var up []string
+	for _, v := range st.VPNs {
+		if v.Up {
+			up = append(up, v.Kind+" ("+v.Iface+")")
+		}
+	}
+	captured := st.EgressIface != "" && st.PrimaryIface != "" && st.EgressIface != st.PrimaryIface && vpnKind(st.EgressIface) != ""
+	switch {
+	case len(up) == 0:
+		c = append(c, proto.SystemCheck{ID: "vpn_none", OK: true})
+	case captured && st.Bypass == "ok":
+		c = append(c, proto.SystemCheck{ID: "vpn_bypassed", OK: true, Warn: true, Detail: strings.Join(up, ", ")})
+	case captured && st.Bypass == "off":
+		c = append(c, proto.SystemCheck{ID: "vpn_captures", OK: false, Detail: strings.Join(up, ", ")})
+	case captured:
+		c = append(c, proto.SystemCheck{ID: "vpn_bypass_failed", OK: false, Detail: strings.Join(up, ", ") + ": " + st.BypassError})
+	default:
+		c = append(c, proto.SystemCheck{ID: "vpn_present", OK: true, Warn: true, Detail: strings.Join(up, ", ")})
+	}
 	c = append(c, proto.SystemCheck{ID: "kernel_tuning", OK: len(tuneFailed) == 0, Warn: true, Detail: strings.Join(tuneFailed, ", ")})
 	fw := proto.SystemCheck{ID: "firewall", OK: true, Warn: true, Detail: "inactive"}
 	if UFWActive() {

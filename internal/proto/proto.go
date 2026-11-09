@@ -3,7 +3,7 @@
 // works as long as it can reach the panel.
 package proto
 
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // SyncRequest is sent by an agent every few seconds.
 type SyncRequest struct {
@@ -16,7 +16,8 @@ type SyncRequest struct {
 	Results      []CommandResult      `json:"results"`
 	Errors       []string             `json:"errors"`
 	Checks       []SystemCheck        `json:"checks"` // preflight / health of the machine
-	Logs         []string             `json:"logs"`   // new log lines since the last successful sync
+	StartedAt    int64                `json:"started_at"`
+	Logs         []string             `json:"logs"` // new log lines since the last successful sync
 	Arch         string               `json:"arch"`
 }
 
@@ -30,10 +31,28 @@ type SystemCheck struct {
 
 type NetState struct {
 	Interfaces   []Interface `json:"interfaces"`
-	DefaultIface string      `json:"default_iface"` // iface of the IPv6 default route
+	DefaultIface string      `json:"default_iface"` // iface of the IPv6 default route (main table)
 	HasV6Route   bool        `json:"has_v6_route"`
-	PublicV4     string      `json:"public_v4,omitempty"`
-	LANv4        []string    `json:"lan_v4"`
+	// PrimaryIface is the physical interface whose /64 the proxies use: it
+	// has a global (non-ULA) prefix and is not a VPN tunnel.
+	PrimaryIface string `json:"primary_iface"`
+	// EgressIface is the interface the kernel picks for an Internet IPv6
+	// destination right now; a VPN that captures traffic shows up here.
+	EgressIface  string   `json:"egress_iface"`
+	Gateway      string   `json:"gateway,omitempty"` // IPv6 router of PrimaryIface
+	VPNs         []VPN    `json:"vpns"`
+	IPv6Disabled bool     `json:"ipv6_disabled"`
+	Bypass       string   `json:"bypass"` // off | ok | error: VPN bypass routing status
+	BypassError  string   `json:"bypass_error,omitempty"`
+	PublicV4     string   `json:"public_v4,omitempty"`
+	LANv4        []string `json:"lan_v4"`
+}
+
+// VPN is a tunnel interface detected on the node.
+type VPN struct {
+	Iface string `json:"iface"`
+	Kind  string `json:"kind"` // warp | tailscale | wireguard | nordvpn | protonvpn | openvpn | zerotier | ppp | other
+	Up    bool   `json:"up"`
 }
 
 type Interface struct {
@@ -53,6 +72,7 @@ type Applied struct {
 	IP    string `json:"ip"`
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	Code  string `json:"code,omitempty"` // machine-readable error code, translated by the UI
 }
 
 type CommandResult struct {
@@ -63,6 +83,7 @@ type CommandResult struct {
 	Latency int    `json:"latency,omitempty"` // ms
 	Country string `json:"country,omitempty"`
 	Org     string `json:"org,omitempty"`
+	Code    string `json:"code,omitempty"` // error code for failed tests
 }
 
 // SyncResponse carries the desired state for the node.
@@ -76,6 +97,8 @@ type SyncResponse struct {
 	Commands   []Command   `json:"commands"`
 	Interval   int         `json:"interval"` // seconds until next sync
 	Firewall   bool        `json:"firewall"` // manage ufw rules for proxy ports
+	Bypass     bool        `json:"bypass"`   // keep proxy traffic on the physical NIC when a VPN is active
+	DNS        []string    `json:"dns"`      // resolvers used by proxies; empty = system resolver
 }
 
 type PoolSpec struct {
@@ -94,6 +117,7 @@ type ProxySpec struct {
 	IP           string `json:"ip"`
 	PoolID       int64  `json:"pool_id"`
 	IPv4Fallback bool   `json:"ipv4_fallback"`
+	Scope        string `json:"scope"` // local | lan | any
 }
 
 type Command struct {

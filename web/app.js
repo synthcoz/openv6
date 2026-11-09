@@ -170,7 +170,9 @@ async function pageDashboard() {
     for (const n of nodes) {
       if (!n.online) warnings.push(`<div class="alert warn">${esc(t('warn_node_offline', { name: n.name }))}</div>`);
       for (const e of n.errors || []) warnings.push(`<div class="alert err"><b>${esc(n.name)}:</b> ${esc(e)}</div>`);
-      if (n.online && !n.net.has_v6_route) warnings.push(`<div class="alert err">${esc(t('warn_no_v6', { name: n.name }))}</div>`);
+      if (n.online) for (const c of (n.checks || []).filter((c) => !c.ok && !c.warn)) {
+        warnings.push(`<div class="alert err"><b>${esc(n.name)} — ${esc(t('chk_' + c.id))}:</b> ${esc(t('chkfix_' + c.id))} <a href="#nodes">${t('nav_nodes')} →</a></div>`);
+      }
     }
     if (u.newer) warnings.unshift(`<div class="alert info">${t('update_available', { v: esc(u.latest) })} <a href="#settings">${t('nav_settings')} →</a></div>`);
     const failing = d.failing || 0;
@@ -230,7 +232,7 @@ async function pageProxies() {
       <select id="bulkAction"><option value="">${t('bulk_actions')}</option>
         <option value="test">${t('act_test')}</option><option value="enable">${t('act_enable')}</option><option value="disable">${t('act_disable')}</option>
         <option value="regen_ip">${t('act_regen_ip')}</option><option value="regen_pass">${t('act_regen_pass')}</option><option value="remove_auth">${t('act_remove_auth')}</option>
-        <option value="set_tag">${t('act_set_tag')}</option><option value="set_protocol">${t('act_set_protocol')}</option>
+        <option value="set_tag">${t('act_set_tag')}</option><option value="set_protocol">${t('act_set_protocol')}</option><option value="set_scope">${t('act_set_scope')}</option>
         <option value="fallback_on">${t('act_fallback_on')}</option><option value="fallback_off">${t('act_fallback_off')}</option>
         <option value="reset_stats">${t('act_reset_stats')}</option><option value="delete">${t('act_delete')}</option></select>
       <button id="btnCheckAll" title="${t('check_all_hint')}">${t('check_all')}</button>
@@ -259,6 +261,27 @@ async function pageProxies() {
   every(5000, async () => { try { await loadProxies(); drawProxyRows(); } catch (e) { /* ignore */ } });
 }
 
+// errInfo explains an error code (from the agent) in the user's language,
+// with a concrete fix. Falls back to the raw message.
+function errInfo(code, raw) {
+  if (!code) return esc(raw || '');
+  const title = I18N[LANG]['err_' + code] || I18N.en['err_' + code];
+  if (!title) return esc(raw || code);
+  const fix = I18N[LANG]['errfix_' + code] || I18N.en['errfix_' + code] || '';
+  return `<b>${esc(title)}</b>${fix ? `<div>${esc(fix)}</div>` : ''}${raw ? `<details><summary>${t('details')}</summary><code>${esc(raw)}</code></details>` : ''}`;
+}
+
+const SCOPES = ['lan', 'local', 'any'];
+function scopeSelect(name, value) {
+  return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scope_' + v)}</option>`).join('')}</select>`;
+}
+
+function fmtDuration(sec) {
+  if (!sec) return '—';
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
 function shortOrg(o) { return String(o || '').replace(/^AS\d+\s+/, '').replace(/ (Company|Corporation|Joint Stock).*$/i, ''); }
 
 function checkCell(p) {
@@ -267,7 +290,7 @@ function checkCell(p) {
       <div class="muted">${esc(p.check_country || '')}${p.check_org ? ' · ' + esc(shortOrg(p.check_org)) : ''} · ${ago(p.check_at)}</div></span>`;
   }
   if (p.check_ok === 0) {
-    return `<span title="${esc(p.check_result)}"><span style="color:var(--err)">✗</span> ${esc(t('check_failed_n', { n: p.fail_streak }))}<div class="muted">${ago(p.check_at)}</div></span>`;
+    return `<span><span style="color:var(--err)">✗</span> ${esc(t('check_failed_n', { n: p.fail_streak }))} · ${ago(p.check_at)}<div class="small errbox">${errInfo(p.check_code, p.check_result.replace(/^FAIL /, ''))}</div></span>`;
   }
   return '<span class="muted">—</span>';
 }
@@ -298,7 +321,7 @@ function drawProxyRows() {
       <td class="mono small">${p.auth_user ? `${esc(p.auth_user)}<br><span class="muted">${esc(p.auth_pass)}</span>` : `<span class="muted">${t('no_auth')}</span>`}</td>
       <td class="mono small"><span class="copy" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}</span>${p.ipv4_fallback ? ` <span class="badge warn" title="${t('fallback_hint')}">v4</span>` : ''}</td>
       <td class="small">${p.protocol === 'both' ? 'HTTP+SOCKS5' : p.protocol.toUpperCase()}</td>
-      <td>${badge(p.status)}${p.error ? `<div class="small" style="color:var(--err);max-width:220px;white-space:normal">${esc(p.error)}</div>` : ''}</td>
+      <td>${badge(p.status)} <span class="badge offline" title="${esc(t('scope_' + p.scope + '_hint'))}">${esc(t('scope_short_' + p.scope))}</span>${p.error ? `<div class="small errbox">${errInfo(p.code, p.error)}</div>` : ''}</td>
       <td class="small">↑${fmtBytes(p.bytes_up)}<br>↓${fmtBytes(p.bytes_down)}</td>
       <td class="small">${p.active} / ${p.conns_total}</td>
       <td class="small wrap" style="max-width:200px">${p.tag ? `<span class="badge offline">${esc(p.tag)}</span> ` : ''}${esc(p.note)}${p.expires_at ? `<div class="muted">${t('expires')}: ${fmtTime(p.expires_at)}</div>` : ''}</td>
@@ -336,6 +359,18 @@ async function testProxies(ids, btn) {
   } catch (e) { toast(e.message, true); }
 }
 
+function chooseScope() {
+  return new Promise((resolve) => {
+    modal(`<h2>${t('act_set_scope')}</h2>
+      ${SCOPES.map((v) => `<label class="check" style="align-items:flex-start;margin-bottom:10px"><input type="radio" name="sc" value="${v}" ${v === 'lan' ? 'checked' : ''}>
+        <span><b>${t('scope_' + v)}</b><div class="hint">${t('scope_' + v + '_hint')}</div></span></label>`).join('')}
+      <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
+      $('#no', m).onclick = () => { closeModal(); resolve(''); };
+      $('#yes', m).onclick = () => { const v = $('input[name=sc]:checked', m).value; closeModal(); resolve(v); };
+    });
+  });
+}
+
 async function bulkAction(action) {
   const ids = [...state.selected];
   if (!ids.length) { toast(t('select_first'), true); return; }
@@ -343,6 +378,7 @@ async function bulkAction(action) {
   let value = '';
   if (action === 'set_tag') { value = prompt(t('act_set_tag')); if (value === null) return; }
   if (action === 'set_protocol') { value = prompt('both / http / socks5', 'both'); if (value === null) return; }
+  if (action === 'set_scope') { value = await chooseScope(); if (!value) return; }
   if (action === 'delete' && !(await confirmBox(t('confirm_delete', { n: ids.length })))) return;
   if (action === 'regen_ip' && !(await confirmBox(t('confirm_regen_ip', { n: ids.length })))) return;
   if (action === 'regen_pass' && !(await confirmBox(t('confirm_regen_pass', { n: ids.length })))) return;
@@ -373,6 +409,7 @@ function openCreate() {
       <label class="field">${t('auth')}<select name="auth"><option value="random">${t('auth_random')}</option><option value="none">${t('auth_none')}</option><option value="fixed">${t('auth_fixed')}</option></select></label>
       <label class="field fixed-auth" hidden>${t('username')}<input name="user"></label>
       <label class="field fixed-auth" hidden>${t('password')}<input name="pass"></label>
+      <label class="field">${t('scope')}${scopeSelect('scope', 'lan')}</label>
       <label class="field">${t('label_prefix')}<input name="label_prefix" placeholder="FB, TikTok…"></label>
       <label class="field">${t('tag')}<input name="tag" placeholder="facebook, tiktok…"></label>
       <label class="field">${t('note')}<input name="note"></label>
@@ -384,6 +421,7 @@ function openCreate() {
     <label class="check"><input type="checkbox" name="ipv4_fallback"> ${t('ipv4_fallback')}</label>
     <p class="hint">${t('fallback_hint')}</p>
     <p class="hint" id="authHint">${t('auth_none_hint')}</p>
+    <p class="hint" id="scopeHint"></p>
     <div id="cfErr"></div>
     <div class="actions"><button type="button" id="cancel">${t('cancel')}</button><button class="primary" type="submit">${t('create')}</button></div></form>`,
   (m) => {
@@ -404,9 +442,11 @@ function openCreate() {
     const onAuth = () => {
       for (const el of $$('.fixed-auth', m)) el.hidden = form.auth.value !== 'fixed';
       $('#authHint', m).style.display = form.auth.value === 'none' ? '' : 'none';
+      $('#scopeHint', m).innerHTML = esc(t('scope_' + form.scope.value + '_hint')) +
+        (form.scope.value === 'any' && form.auth.value === 'none' ? `<div style="color:var(--err)">${esc(t('scope_any_needs_auth'))}</div>` : '');
     };
     if (state.filter.node) form.node_id.value = state.filter.node;
-    form.node_id.onchange = fillPools; form.pool_id.onchange = onPool; form.auth.onchange = onAuth;
+    form.node_id.onchange = fillPools; form.pool_id.onchange = onPool; form.auth.onchange = onAuth; form.scope.onchange = onAuth;
     fillPools(); onAuth();
     $('#cancel', m).onclick = closeModal;
     form.onsubmit = async (e) => {
@@ -416,6 +456,7 @@ function openCreate() {
         start_port: Number(form.start_port.value), protocol: form.protocol.value, auth: form.auth.value,
         user: form.user.value, pass: form.pass.value, tag: form.tag.value, label_prefix: form.label_prefix.value, note: form.note.value,
         expires_days: Number(form.expires_days.value), spread: form.spread.checked, ipv4_fallback: form.ipv4_fallback.checked,
+        scope: form.scope.value,
       };
       try {
         const r = await api('POST', '/api/proxies/bulk', body);
@@ -435,6 +476,7 @@ function openEdit(p) {
       <label class="field">${t('protocol')}<select name="protocol"><option value="both">HTTP + SOCKS5</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
       <label class="field">${t('username')}<input name="auth_user" value="${esc(p.auth_user)}"></label>
       <label class="field">${t('password')}<input name="auth_pass" value="${esc(p.auth_pass)}"></label>
+      <label class="field">${t('scope')}${scopeSelect('scope', p.scope)}</label>
       <label class="field">${t('tag')}<input name="tag" value="${esc(p.tag)}"></label>
       <label class="field">${t('expires')}<input name="expires" type="date" value="${exp}"></label>
     </div>
@@ -454,7 +496,7 @@ function openEdit(p) {
     form.protocol.value = p.protocol;
     api('GET', `/api/proxies/${p.id}/checks`).then((h) => {
       $('#hist', m).innerHTML = h.length ? `<div class="table-wrap"><table><tbody>${h.slice(0, 10).map((c) => `<tr><td>${fmtTime(c.at)}</td>
-        <td>${c.ok ? '<span style="color:var(--ok)">✓</span> ' + c.latency + ' ms' : '<span style="color:var(--err)">✗</span> ' + esc(c.error)}</td></tr>`).join('')}</tbody></table></div>` : t('never');
+        <td class="wrap">${c.ok ? '<span style="color:var(--ok)">✓</span> ' + c.latency + ' ms' : '<span style="color:var(--err)">✗</span> ' + errInfo(c.code, c.error)}</td></tr>`).join('')}</tbody></table></div>` : t('never');
     }).catch(() => {});
     $('#cancel', m).onclick = closeModal;
     $('#del', m).onclick = async () => {
@@ -467,6 +509,7 @@ function openEdit(p) {
       const body = {
         label: form.label.value, port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
         tag: form.tag.value, note: form.note.value, enabled: form.enabled.checked, ipv4_fallback: form.ipv4_fallback.checked,
+        scope: form.scope.value,
         expires_at: form.expires.value ? Math.floor(new Date(form.expires.value + 'T23:59:59').getTime() / 1000) : 0,
       };
       if (form.ip.value.trim() && form.ip.value.trim() !== p.ip) body.ip = form.ip.value.trim();
@@ -559,6 +602,23 @@ async function pageNodes() {
   every(10000, () => { if (!document.activeElement || !document.activeElement.closest('.node-card')) draw().catch(() => {}); });
 }
 
+function dnsMode(v) { return !v || v === 'system' ? 'system' : (['cloudflare', 'google', 'quad9'].includes(v) ? v : 'custom'); }
+
+function vpnSummary(n) {
+  const v = (n.net.vpns || []).filter((x) => x.up);
+  if (!v.length) return `<span class="muted">${t('vpn_none')}</span>`;
+  const captured = n.net.egress_iface && n.net.primary_iface && n.net.egress_iface !== n.net.primary_iface;
+  const names = v.map((x) => `${t('vpnkind_' + x.kind)} (${esc(x.iface)})`).join(', ');
+  let state = '';
+  if (captured) {
+    state = n.net.bypass === 'ok' ? `<span class="badge ok">${t('vpn_bypass_ok')}</span>` :
+      n.net.bypass === 'error' ? `<span class="badge error">${t('vpn_bypass_err')}</span>` : `<span class="badge error">${t('vpn_bypass_off')}</span>`;
+  } else {
+    state = `<span class="badge offline">${t('vpn_not_capturing')}</span>`;
+  }
+  return `${names} ${state}`;
+}
+
 function nodeCard(n) {
   const ifaces = (n.net.interfaces || []);
   const pools = (n.pools || []).map((p) => `<tr data-pool="${p.id}"><td>${esc(p.name)}${p.auto ? ` <span class="badge offline">auto</span>` : ''}</td>
@@ -570,15 +630,19 @@ function nodeCard(n) {
       <div class="spacer"></div>
       <button class="small" data-a="test">${t('test_v6')}</button>
       <button class="small" data-a="logs">${t('logs')}</button>
+      <button class="small" data-a="reapply" title="${t('reapply_hint')}">${t('reapply')}</button>
+      <button class="small" data-a="restart">${t('restart')}</button>
       ${n.outdated ? `<button class="small primary" data-a="update">${t('update_node', { v: esc(n.agent_version) })}</button>` : ''}
       ${n.is_local ? '' : `<button class="small" data-a="install">${t('install_cmd')}</button><button class="small" data-a="rotate">${t('rotate_token')}</button><button class="small danger" data-a="delete">${t('act_delete')}</button>`}
     </div>
     ${(n.errors || []).map((e) => `<div class="alert err">${esc(e)}</div>`).join('')}
-    ${n.online && !n.net.has_v6_route ? `<div class="alert err">${esc(t('warn_no_v6', { name: n.name }))}</div>` : ''}
+
     <div class="kv">
       <div>${t('hostname')}</div><div>${esc(n.hostname || '—')} <span class="muted small">${esc(n.os || '')} ${n.agent_version ? 'v' + esc(n.agent_version) : ''}</span></div>
       <div>${t('last_seen')}</div><div>${ago(n.last_seen)}</div>
-      <div>${t('ipv6_iface')}</div><div>${esc(n.net.default_iface || '—')} ${ifaces.map((i) => `<div class="mono small">${esc(i.name)}: ${esc((i.prefixes || []).join(', ') || '—')}</div>`).join('')}</div>
+      <div>${t('service')}</div><div>${n.online ? t('running_for', { d: fmtDuration(n.uptime) }) : t('st_offline')}</div>
+      <div>${t('vpn')}</div><div>${vpnSummary(n)}</div>
+      <div>${t('ipv6_iface')}</div><div>${esc(n.net.primary_iface || '—')}${n.net.gateway ? ` <span class="muted small">${t('router')}: ${esc(n.net.gateway)}</span>` : ''} ${ifaces.map((i) => `<div class="mono small">${esc(i.name)}: ${esc((i.prefixes || []).join(', ') || '—')}</div>`).join('')}</div>
       <div>${t('ipv4')}</div><div class="mono small">LAN: ${esc((n.net.lan_v4 || []).join(', ') || '—')} · WAN: ${esc(n.net.public_v4 || '—')}</div>
       <div>${t('proxies')}</div><div>${n.proxies}</div>
       <div>${t('system_checks')}</div><div class="checks">${(n.checks || []).map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${c.ok ? '✓' : (c.warn ? '!' : '✗')} ${esc(t('chk_' + c.id))}</span>`).join(' ') || '—'}
@@ -588,8 +652,13 @@ function nodeCard(n) {
     <form class="form-grid" data-form="node">
       <label class="field">${t('name')}<input name="name" value="${esc(n.name)}"></label>
       <label class="field">${t('entry_host')}<input name="entry_host" value="${esc(n.entry_host)}" placeholder="${esc(n.entry)}"></label>
-      <label class="field">${t('iface')}<select name="iface"><option value="">${t('auto')} (${esc(n.net.default_iface || '?')})</option>
+      <label class="field">${t('iface')}<select name="iface"><option value="">${t('auto')} (${esc(n.net.primary_iface || '?')})</option>
         ${ifaces.map((i) => `<option ${i.name === n.iface ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+      <label class="field">${t('dns')}<select name="dns_mode">
+        ${['system', 'cloudflare', 'google', 'quad9', 'custom'].map((v) => `<option value="${v}" ${dnsMode(n.dns) === v ? 'selected' : ''}>${t('dns_' + v)}</option>`).join('')}</select></label>
+      <label class="field" data-dns-custom ${dnsMode(n.dns) === 'custom' ? '' : 'hidden'}>${t('dns_servers')}<input name="dns_custom" value="${dnsMode(n.dns) === 'custom' ? esc(n.dns) : ''}" placeholder="2606:4700:4700::1111, 1.1.1.1"></label>
+      <div style="grid-column:1/-1"><label class="check"><input type="checkbox" name="bypass" ${n.bypass ? 'checked' : ''}> ${t('bypass')}</label>
+        <div class="hint">${t('bypass_hint')}</div><div class="hint">${t('dns_hint')}</div></div>
       <label class="field" style="grid-column:1/-1">${t('allow_cidrs')}<textarea name="allow_cidrs" rows="3">${esc(n.allow_cidrs)}</textarea>
         <span class="hint">${t('allow_hint')}</span></label>
       <div><button class="primary" type="submit">${t('save')}</button></div>
@@ -615,6 +684,20 @@ function bindNodeCard(card, n) {
     e.target.disabled = false;
   };
   act('logs').onclick = () => openLogs(n);
+  act('reapply').onclick = async () => {
+    if (!(await confirmBox(t('confirm_reapply')))) return;
+    try { await api('POST', `/api/nodes/${n.id}/reapply`, {}); toast(t('reapply_sent')); } catch (err) { toast(err.message, true); }
+  };
+  act('restart').onclick = async () => {
+    if (!(await confirmBox(n.is_local ? t('confirm_restart_panel') : t('confirm_restart_node')))) return;
+    try {
+      const r = await api('POST', `/api/nodes/${n.id}/restart`, {});
+      toast(t('restart_sent'));
+      if (r.panel) setTimeout(() => location.reload(), 6000);
+    } catch (err) { toast(err.message, true); }
+  };
+  const fdns = $('[data-form=node]', card);
+  fdns.dns_mode.onchange = () => { $('[data-dns-custom]', card).hidden = fdns.dns_mode.value !== 'custom'; };
   if (act('update')) act('update').onclick = async (e) => {
     e.target.disabled = true;
     try { await api('POST', `/api/nodes/${n.id}/update`, {}); toast(t('update_sent')); } catch (err) { toast(err.message, true); }
@@ -627,7 +710,12 @@ function bindNodeCard(card, n) {
   };
   $('[data-form=node]', card).onsubmit = async (e) => {
     e.preventDefault(); const f = e.target;
-    try { await api('PUT', '/api/nodes/' + n.id, { name: f.name.value, entry_host: f.entry_host.value, iface: f.iface.value, allow_cidrs: f.allow_cidrs.value }); toast(t('saved')); renderPage(); }
+    const dns = f.dns_mode.value === 'custom' ? f.dns_custom.value : f.dns_mode.value;
+    try {
+      await api('PUT', '/api/nodes/' + n.id, { name: f.name.value, entry_host: f.entry_host.value, iface: f.iface.value, allow_cidrs: f.allow_cidrs.value,
+        bypass: f.bypass.checked, dns });
+      toast(t('saved')); renderPage();
+    }
     catch (err) { toast(err.message, true); }
   };
   $('[data-form=pool]', card).onsubmit = async (e) => {
