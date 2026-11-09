@@ -85,6 +85,12 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		logErr(w, err)
 		return
 	}
+	// only signed releases are installed (SHA256SUMS + ed25519 signature)
+	sums, err := rel.Checksums(ctx)
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
 	// other architectures first (best effort), then our own binary
 	binDir := filepath.Join(s.DataDir, "bin")
 	_ = os.MkdirAll(binDir, 0o755)
@@ -95,6 +101,10 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		if u := rel.Assets[update.AssetName(pl[0], pl[1])]; u != "" {
 			dst := filepath.Join(binDir, update.AssetName(pl[0], pl[1]))
 			if tmp, err := update.Download(ctx, u, dst, false); err == nil {
+				if update.VerifyFile(tmp, sums[update.AssetName(pl[0], pl[1])]) != nil {
+					_ = os.Remove(tmp)
+					continue
+				}
 				_ = os.Chmod(tmp, 0o755)
 				_ = os.Rename(tmp, dst)
 			}
@@ -110,6 +120,11 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, err.Error())
 		return
 	}
+	if err := update.VerifyFile(tmp, sums[update.AssetName(runtime.GOOS, runtime.GOARCH)]); err != nil {
+		_ = os.Remove(tmp)
+		fail(w, 502, err.Error())
+		return
+	}
 	if err := update.Install(tmp, self, rel.Tag); err != nil {
 		fail(w, 500, err.Error())
 		return
@@ -119,7 +134,9 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		if tu := rel.Assets[update.TrayAssetName(runtime.GOARCH)]; tu != "" {
 			trayPath := filepath.Join(filepath.Dir(self), "openv6-tray.exe")
 			if tt, err := update.Download(ctx, tu, trayPath, false); err == nil {
-				if err := update.Install(tt, trayPath, ""); err != nil {
+				if err := update.VerifyFile(tt, sums[update.TrayAssetName(runtime.GOARCH)]); err != nil {
+					_ = os.Remove(tt)
+				} else if err := update.Install(tt, trayPath, ""); err != nil {
 					log.Printf("tray update: %v", err)
 				}
 			}

@@ -123,10 +123,24 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      - name: Sign checksums
+        env:
+          OPENV6_SIGNING_KEY: ${{ secrets.OPENV6_SIGNING_KEY }}
+        run: |
+          (cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+          if [ -n "$OPENV6_SIGNING_KEY" ]; then
+            go run ./tools/sign out
+          else
+            echo "::warning::OPENV6_SIGNING_KEY is not set: this release is unsigned and in-app updates will refuse it"
+          fi
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
