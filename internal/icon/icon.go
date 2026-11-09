@@ -1,6 +1,6 @@
 // Package icon draws the openv6 app and tray icons at runtime (no image
-// assets to ship): a rounded square in the state colour with a white
-// "target" mark (ring + dot), anti-aliased by supersampling.
+// assets to ship): a rounded square in the state colour with the white
+// openv6 mark (hexagon ring + dot), anti-aliased by supersampling.
 package icon
 
 import (
@@ -27,7 +27,7 @@ var colors = map[State]color.RGBA{
 	StateWarn:   {217, 119, 6, 255},
 	StateError:  {220, 38, 38, 255},
 	StatePaused: {100, 116, 139, 255},
-	StateBrand:  {37, 99, 235, 255},
+	StateBrand:  {23, 23, 23, 255},
 }
 
 // PNG renders the icon at size×size pixels.
@@ -48,8 +48,11 @@ func PNG(s State, size int) []byte {
 					if !inRoundRect(px, py, fb, radius) {
 						continue
 					}
+					// openv6 mark: a hexagon ring (pointy top) around a dot
+					// hexagon ring drawn like an SVG stroke with round joins
+					sd := sdHexPointy(px-cx, py-cy, fb*0.27)
 					d := math.Hypot(px-cx, py-cy)
-					white := (d <= fb*0.33 && d >= fb*0.22) || d <= fb*0.10
+					white := math.Abs(sd) <= fb*0.036 || d <= fb*0.085
 					if white {
 						r, g, b = r+255, g+255, b+255
 					} else {
@@ -110,4 +113,25 @@ func ICO(s State, sizes ...int) []byte {
 		buf.Write(b)
 	}
 	return buf.Bytes()
+}
+
+// sdHexPointy is the signed distance to a pointy-top regular hexagon with
+// apothem a (negative inside).
+func sdHexPointy(x, y, a float64) float64 {
+	// rotate 90°: the classic formula is for a hexagon with flat top/bottom
+	px, py := math.Abs(y), math.Abs(x)
+	const kx, ky, kz = -0.866025404, 0.5, 0.577350269
+	dot := kx*px + ky*py
+	if dot < 0 {
+		px -= 2 * dot * kx
+		py -= 2 * dot * ky
+	}
+	cl := math.Max(-kz*a, math.Min(px, kz*a))
+	px -= cl
+	py -= a
+	l := math.Hypot(px, py)
+	if py < 0 {
+		return -l
+	}
+	return l
 }

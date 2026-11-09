@@ -181,7 +181,8 @@ function setHTML(el, html) {
   el._h = html; el.innerHTML = html; return true;
 }
 
-function brand() { return `<div class="brand"><span class="logo"><i></i></span>openv6</div>`; }
+const MARK = '<svg viewBox="0 0 64 64" width="16" height="16" aria-hidden="true"><path d="M32 8 52.78 20V44L32 56 11.22 44V20Z" fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/><circle cx="32" cy="32" r="8" fill="currentColor"/></svg>';
+function brand() { return `<div class="brand"><span class="logo">${MARK}</span>openv6</div>`; }
 
 function langSeg(id) {
   return `<div class="seg" id="${id}"><button data-lang="vi" class="${LANG === 'vi' ? 'on' : ''}">VI</button><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">EN</button></div>`;

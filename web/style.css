@@ -609,3 +609,5 @@ label.field > select, label.field > input { width: 100%; min-width: 0; }
 .pro-list .ic { color: var(--ok); }
 
 .nav a .count:empty { display: none; }
+
+.brand .logo svg { display: block; }
