@@ -12,6 +12,7 @@
 - **Giới hạn cho từng proxy:** số kết nối đồng thời và tốc độ tối đa (KB/s, mỗi chiều).
 - **API token:** tạo trong Cài đặt, gọi API bằng `Authorization: Bearer ov6_…` (xem `docs/API.md`). Chỉ lưu bản băm của token.
 - Bản sao lưu có thêm API token và các thiết lập mới.
+- **Giao diện tinh gọn hơn:** tông trung tính (đen/trắng/xám), nút chính màu đen, viền mảnh, nhãn màu nhạt. Chọn **màu nhấn** Trung tính / Tím / Xanh lá trong Cài đặt → Ngôn ngữ & giao diện. Tắt hiệu ứng khi hệ điều hành bật giảm chuyển động.
 
 ## v0.5.0 — giao diện mới
 

@@ -91,7 +91,10 @@ const statusDot = (st) => `<span class="status"><span class="dot ${DOT[st] || ''
 
 // theme: system | light | dark
 function themeMode() { return store('v6p_theme') || 'system'; }
+function accentMode() { return store('v6p_accent') || 'panel'; }
 function applyTheme() {
+  const ac = accentMode();
+  if (ac === 'panel') document.documentElement.removeAttribute('data-accent'); else document.documentElement.setAttribute('data-accent', ac);
   const th = themeMode();
   if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
   else document.documentElement.removeAttribute('data-theme');
@@ -1404,6 +1407,8 @@ async function pageSettings() {
       <div class="row"><button id="lvi" class="${LANG === 'vi' ? 'primary' : ''}">Tiếng Việt</button><button id="len" class="${LANG === 'en' ? 'primary' : ''}">English</button></div>
       <h3>${t('theme')}</h3>
       <div class="seg" id="setTheme">${['light', 'system', 'dark'].map((m) => `<button data-th2="${m}" class="${themeMode() === m ? 'on' : ''}">${icon({ light: 'sun', system: 'monitor', dark: 'moon' }[m], 'sm')} ${t('theme_' + m)}</button>`).join('')}</div>
+      <h3>${t('accent')}</h3>
+      <div class="seg" id="setAccent">${[['panel', '#171717'], ['moon', '#6366f1'], ['grass', '#10b981']].map(([m, c]) => `<button data-ac="${m}" class="${accentMode() === m ? 'on' : ''}"><span class="swatch" style="background:${c}"></span> ${t('accent_' + m)}</button>`).join('')}</div>
       <h3>${t('shortcuts')}</h3><p class="small muted">${t('shortcuts_text')}</p>
       <h3>${t('about')}</h3><p class="small muted">${t('about_text')}</p></div>
     </div>`;
@@ -1483,6 +1488,7 @@ async function pageSettings() {
     catch (err) { toast(err.message, true); }
   };
   const setLang = (l) => { LANG = l; store('v6p_lang', l); api('PUT', '/api/settings', { lang: l }).catch(() => {}); renderShell(); };
+  for (const b of $$('[data-ac]')) b.onclick = () => { store('v6p_accent', b.dataset.ac); applyTheme(); renderShell(); };
   for (const b of $$('[data-th2]')) b.onclick = () => { store('v6p_theme', b.dataset.th2); applyTheme(); renderShell(); };
   $('#lvi').onclick = () => setLang('vi');
   $('#len').onclick = () => setLang('en');
