@@ -390,3 +390,33 @@ func TestRelayLimitsAndAPIToken(t *testing.T) {
 		t.Fatalf("bad token: %d", res.StatusCode)
 	}
 }
+
+func TestStaticGzipETag(t *testing.T) {
+	big := strings.Repeat("openv6 dashboard ", 200)
+	h := &staticHandler{fsys: fstest.MapFS{"index.html": {Data: []byte(big)}, "app.js": {Data: []byte("x")}}}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip, br")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Header().Get("Content-Encoding") != "gzip" || rec.Body.Len() >= len(big) {
+		t.Fatalf("gzip: %d %q %d", rec.Code, rec.Header().Get("Content-Encoding"), rec.Body.Len())
+	}
+	etag := rec.Header().Get("ETag")
+	req = httptest.NewRequest("GET", "/index.html", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 304 {
+		t.Fatalf("etag: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/app.js", nil))
+	if !strings.Contains(rec.Header().Get("Content-Type"), "javascript") || rec.Body.String() != "x" {
+		t.Fatalf("app.js %q %q", rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/../secret", nil))
+	if rec.Code != 404 {
+		t.Fatalf("traversal %d", rec.Code)
+	}
+}

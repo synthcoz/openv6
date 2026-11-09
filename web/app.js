@@ -162,6 +162,11 @@ function confirmBox(msg, opt = {}) {
 }
 
 // ---------- login / setup ----------
+function setHTML(el, html) {
+  if (!el || el._h === html) return false;
+  el._h = html; el.innerHTML = html; return true;
+}
+
 function brand() { return `<div class="brand"><span class="logo"><i></i></span>openv6</div>`; }
 
 function langSeg(id) {
@@ -210,21 +215,28 @@ function renderShell() {
   $('#app').innerHTML = `<div class="layout">
     <aside class="sidebar">
       ${brand()}
-      <nav class="nav">${PAGES.map((p) => `<a href="#${p}" class="${p === state.page ? 'active' : ''}">${icon(PAGE_ICON[p])}<span>${t('nav_' + p)}</span>${p === 'proxies' || p === 'nodes' ? `<span class="count" data-count="${p}"></span>` : ''}</a>`).join('')}</nav>
-      <div class="foot hide-sm">${t('signed_in_as')} <b>${esc(state.user ? state.user.username : '')}</b><br><span id="verFoot"></span></div>
+      <nav class="nav">${PAGES.map((p) => `<a href="#${p}" data-nav="${p}" class="${p === state.page ? 'active' : ''}">${icon(PAGE_ICON[p])}<span class="lbl">${t('nav_' + p)}</span><span class="lbl-s">${t('navs_' + p)}</span>${p === 'proxies' || p === 'nodes' ? `<span class="count" data-count="${p}"></span>` : ''}</a>`).join('')}</nav>
     </aside>
     <div class="content">
       <header class="topbar">
-        <div class="title">${t('nav_' + state.page)}</div>
+        <div class="mbrand">${brand()}</div>
+        <div class="title" id="pageTitle">${t('nav_' + state.page)}</div>
         <div class="spacer"></div>
-        <button class="pill" id="statusPill" title="${t('nav_dashboard')}"><span class="dot pending"></span><span>…</span></button>
-        <span class="hide-sm">${langSeg('topLang')}</span>
-        <div class="seg hide-sm" id="themeSeg" title="${t('theme')}">
-          <button data-th="light" class="${th === 'light' ? 'on' : ''}" title="${t('theme_light')}">${icon('sun', 'sm')}</button>
-          <button data-th="system" class="${th === 'system' ? 'on' : ''}" title="${t('theme_system')}">${icon('monitor', 'sm')}</button>
-          <button data-th="dark" class="${th === 'dark' ? 'on' : ''}" title="${t('theme_dark')}">${icon('moon', 'sm')}</button>
+        <button class="pill" id="statusPill" title="${t('nav_dashboard')}"><span class="dot pending"></span><span class="pill-txt">…</span></button>
+        <div class="acct">
+          <button class="avatar" id="acctBtn" aria-haspopup="true" aria-expanded="false" title="${esc(state.user ? state.user.username : '')}">${esc((state.user ? state.user.username : '?').slice(0, 1).toUpperCase())}</button>
+          <div class="menu" id="acctMenu" hidden>
+            <div class="menu-head"><b>${esc(state.user ? state.user.username : '')}</b><span class="muted small" id="verFoot">openv6</span></div>
+            <div class="menu-row"><span>${t('language')}</span>${langSeg('topLang')}</div>
+            <div class="menu-row"><span>${t('appearance')}</span><div class="seg" id="themeSeg">
+              <button data-th="light" class="${th === 'light' ? 'on' : ''}" title="${t('theme_light')}">${icon('sun', 'sm')}</button>
+              <button data-th="system" class="${th === 'system' ? 'on' : ''}" title="${t('theme_system')}">${icon('monitor', 'sm')}</button>
+              <button data-th="dark" class="${th === 'dark' ? 'on' : ''}" title="${t('theme_dark')}">${icon('moon', 'sm')}</button></div></div>
+            <div class="menu-sep"></div>
+            <a class="menu-item" href="#settings">${icon('settings', 'sm')} ${t('nav_settings')}</a>
+            <button class="menu-item" id="logoutBtn">${icon('logout', 'sm')} ${t('logout')}</button>
+          </div>
         </div>
-        <button class="ghost icon-btn" id="logoutBtn" title="${t('logout')}">${icon('logout')}</button>
       </header>
       <main class="main" id="page"></main>
     </div>
@@ -235,6 +247,11 @@ function renderShell() {
     for (const x of $$('[data-th]')) x.classList.toggle('on', x === b);
   };
   $('#statusPill').onclick = () => { location.hash = 'dashboard'; };
+  const menu = $('#acctMenu'), ab = $('#acctBtn');
+  const setMenu = (open) => { menu.hidden = !open; ab.setAttribute('aria-expanded', String(open)); };
+  ab.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
+  menu.onclick = (e) => { e.stopPropagation(); if (e.target.closest('a.menu-item')) setMenu(false); };
+  document.onclick = () => setMenu(false);
   $('#logoutBtn').onclick = async () => { await api('POST', '/api/logout', {}).catch(() => {}); state.user = null; renderLogin(false); };
   refreshSummary();
   renderPage();
@@ -253,15 +270,28 @@ async function refreshSummary() {
     else if (d.failing || st.error) { cls = 'warn'; txt = t('pill_warn', { ok: st.ok || 0, total: d.proxies }); }
     else if (st.paused && st.paused === d.proxies) { cls = ''; txt = t('pill_paused'); }
     else if ((st.ok || 0) < d.proxies) { cls = 'pending'; txt = t('pill_applying', { ok: st.ok || 0, total: d.proxies }); }
-    pill.innerHTML = `<span class="dot ${cls}"></span><span>${esc(txt)}</span>`;
+    setHTML(pill, `<span class="dot ${cls}"></span><span class="pill-txt">${esc(txt)}</span>`);
     const c1 = $('[data-count=proxies]'); if (c1) c1.textContent = d.proxies || '';
     const c2 = $('[data-count=nodes]'); if (c2) c2.textContent = d.nodes || '';
-    const v = $('#verFoot'); if (v) v.textContent = 'v' + d.version;
+    const v = $('#verFoot'); if (v) v.textContent = 'openv6 v' + d.version;
   } catch (e) { /* ignore */ }
 }
 setInterval(() => { if (state.user && !document.hidden) refreshSummary(); }, 10000);
 
-window.addEventListener('hashchange', () => { if (state.user) { closeModal(); closeDrawer(true); renderShell(); } });
+window.addEventListener('hashchange', () => { if (state.user) { closeModal(); closeDrawer(true); navigate(); } });
+
+function navigate() {
+  if (!$('#page')) { renderShell(); return; }
+  const page = location.hash.slice(1) || 'dashboard';
+  state.page = PAGES.includes(page) ? page : 'dashboard';
+  for (const a of $$('[data-nav]')) a.classList.toggle('active', a.dataset.nav === state.page);
+  $('#pageTitle').textContent = t('nav_' + state.page);
+  const m = $('#acctMenu'); if (m) m.hidden = true;
+  const pg = $('#page');
+  pg.classList.remove('enter'); void pg.offsetWidth; pg.classList.add('enter');
+  window.scrollTo(0, 0);
+  renderPage();
+}
 
 function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
 function every(ms, fn) { stopTimer(); state.timer = setInterval(() => { if (!$('#modal') && !$('#drawer') && !document.hidden) fn(); }, ms); }
@@ -272,9 +302,15 @@ function skeleton(rows = 4) {
 
 function renderPage() {
   stopTimer();
+  $('#page')._h = null;
   $('#page').innerHTML = skeleton();
   const fn = { dashboard: pageDashboard, proxies: pageProxies, nodes: pageNodes, events: pageEvents, settings: pageSettings }[state.page];
   fn().catch((e) => { $('#page').innerHTML = `<div class="alert err">${icon('alert')}<div>${esc(e.message)}</div></div>`; });
+}
+
+// tipBox is an info hint the user can dismiss for good
+function tipBox(key, html) {
+  return `<div class="alert info" data-tip="${key}">${icon('info')}<div>${html}</div><button class="ghost icon-btn tip-x" title="${t('close')}">${icon('x', 'sm')}</button></div>`;
 }
 
 function alertBox(kind, html) {
@@ -298,7 +334,7 @@ async function pageDashboard() {
       }
     }
     if (d.failing) warnings.push(alertBox('err', `${t('warn_failing', { n: d.failing })} <a href="#proxies">${t('nav_proxies')} →</a>`));
-    if (d.proxies > 1 && d.subnets === 1) warnings.push(alertBox('info', t('warn_same_64')));
+    if (d.proxies > 1 && d.subnets === 1 && !store('v6p_tip_same64')) warnings.push(tipBox('v6p_tip_same64', t('warn_same_64')));
 
     // hero: one sentence about the whole system
     let hero = { cls: 'ok', ic: 'check', title: t('hero_ok_title', { n: st.ok || 0 }), sub: t('hero_ok_sub') };
@@ -309,7 +345,7 @@ async function pageDashboard() {
     else if ((st.ok || 0) < d.proxies) hero = { cls: 'warn', ic: 'pulse', title: t('hero_partial_title', { ok: st.ok || 0, total: d.proxies }), sub: t('hero_partial_sub') };
 
     const prefixes = nodes.flatMap((n) => (n.pools || []).filter((p) => p.cidr).map((p) => ({ n, p })));
-    $('#page').innerHTML = `
+    if (!setHTML($('#page'), `
       <div class="hero ${hero.cls}"><div class="big">${icon(hero.ic)}</div>
         <div style="flex:1"><h2>${esc(hero.title)}</h2><p>${esc(hero.sub)}</p></div>
         ${d.proxies === 0 ? `<button class="primary" id="startWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button>` :
@@ -331,7 +367,8 @@ async function pageDashboard() {
         </div>
         <div class="card"><div class="card-head">${icon('events')}<h2>${t('recent_events')}</h2><div class="spacer"></div><a href="#events" class="small">${t('view_all')} →</a></div>
           ${eventsList(d.events.slice(0, 6), nodes)}</div>
-      </div>`;
+      </div>`)) return;
+    for (const x of $$('[data-tip] .tip-x')) x.onclick = () => { const a = x.closest('[data-tip]'); store(a.dataset.tip, '1'); a.hidden = true; };
     const w = $('#startWizard'); if (w) w.onclick = () => openWizard();
     const dc = $('#dashCheck'); if (dc) dc.onclick = async () => { const r = await api('POST', '/api/checks/run', {}); toast(t('check_queued', { n: r.queued })); };
     if (d.proxies === 0 && !store('v6p_wizard_seen') && !$('#modal')) { store('v6p_wizard_seen', '1'); openWizard(); }
@@ -560,35 +597,35 @@ function proxyLine(p, presetKey) {
 function drawProxyRows() {
   const f = state.filter;
   const nodeSel = $('#fNode'); if (!nodeSel) return;
-  nodeSel.innerHTML = `<option value="">${t('all_nodes')}</option>` + state.nodes.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join('');
+  setHTML(nodeSel, `<option value="">${t('all_nodes')}</option>` + state.nodes.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join(''));
   nodeSel.value = f.node;
   nodeSel.hidden = state.nodes.length < 2;
   const tags = [...new Set(state.proxies.map((p) => p.tag).filter(Boolean))].sort();
-  $('#fTag').innerHTML = `<option value="">${t('all_tags')}</option>` + tags.map((x) => `<option>${esc(x)}</option>`).join('');
+  setHTML($('#fTag'), `<option value="">${t('all_tags')}</option>` + tags.map((x) => `<option>${esc(x)}</option>`).join(''));
   $('#fTag').value = f.tag;
   $('#fTag').hidden = !tags.length;
 
   const visible = state.proxies.filter((p) => !state.hidden.has(p.id));
   const counts = {};
   for (const p of visible) counts[p.status] = (counts[p.status] || 0) + 1;
-  $('#chips').innerHTML = STATUS_FILTERS.filter((s) => !s || counts[s]).map((s) => `<button class="chip ${f.status === s ? 'on' : ''}" data-st="${s}">
-    ${s ? `<span class="dot ${DOT[s] || ''}"></span>${t('st_' + s)}` : t('all_status')} <span class="n">${s ? counts[s] : visible.length}</span></button>`).join('');
+  setHTML($('#chips'), STATUS_FILTERS.filter((s) => !s || counts[s]).map((s) => `<button class="chip ${f.status === s ? 'on' : ''}" data-st="${s}">
+    ${s ? `<span class="dot ${DOT[s] || ''}"></span>${t('st_' + s)}` : t('all_status')} <span class="n">${s ? counts[s] : visible.length}</span></button>`).join(''));
   for (const c of $$('[data-st]')) c.onclick = () => { f.status = c.dataset.st; drawProxyRows(); };
 
   const list = filteredProxies().filter((p) => !state.hidden.has(p.id));
-  $('#pCount').textContent = t('proxy_count', { n: visible.length });
+  const pc = t('proxy_count', { n: visible.length }); if ($('#pCount').textContent !== pc) $('#pCount').textContent = pc;
   drawBulkBar();
   if (!state.proxies.length) {
-    $('#ptable').innerHTML = `<div class="card empty"><div class="art">${icon('proxies')}</div><h2>${t('empty_proxies_title')}</h2>
+    $('#ptable')._h = null; $('#ptable').innerHTML = `<div class="card empty"><div class="art">${icon('proxies')}</div><h2>${t('empty_proxies_title')}</h2>
       <p>${t('empty_proxies_sub')}</p><div class="row" style="justify-content:center;margin-top:14px">
       <button class="primary" id="emptyWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button><button id="emptyCreate">${icon('plus', 'sm')} ${t('create_proxies')}</button></div></div>`;
     $('#emptyWizard').onclick = () => openWizard();
     $('#emptyCreate').onclick = () => openCreate();
     return;
   }
-  if (!list.length) { $('#ptable').innerHTML = `<div class="card empty"><div class="art">${icon('filter')}</div><h2>${t('no_match')}</h2></div>`; return; }
+  if (!list.length) { $('#ptable')._h = null; $('#ptable').innerHTML = `<div class="card empty"><div class="art">${icon('filter')}</div><h2>${t('no_match')}</h2></div>`; return; }
   const allSel = list.every((p) => state.selected.has(p.id));
-  $('#ptable').innerHTML = `<div class="table-wrap"><table><thead><tr>
+  if (!setHTML($('#ptable'), `<div class="table-wrap"><table><thead><tr>
       <th style="width:36px"><input type="checkbox" id="selAll" ${allSel ? 'checked' : ''} aria-label="${t('select_all')}"></th>
       <th>${t('name_port')}</th><th>${t('connect_to')}</th><th class="hide-sm hide-lg">${t('ipv6_out')}</th><th>${t('status')}</th>
       <th class="hide-sm">${t('health')}</th><th class="hide-sm hide-md">${t('traffic')}</th><th></th></tr></thead>
@@ -602,7 +639,7 @@ function drawProxyRows() {
       <td class="hide-sm">${checkCell(p)}</td>
       <td class="hide-sm hide-md small"><div>↑ ${fmtBytes(p.bytes_up)}</div><div class="muted">↓ ${fmtBytes(p.bytes_down)} · ${p.active}/${p.conns_total}</div></td>
       <td class="ac"><button class="ghost icon-btn" data-act="test" title="${t('test')}">${icon('pulse', 'sm')}</button></td>
-    </tr>`).join('')}</tbody></table></div>`;
+    </tr>`).join('')}</tbody></table></div>`)) return;
   $('#selAll').onchange = (e) => { for (const p of list) e.target.checked ? state.selected.add(p.id) : state.selected.delete(p.id); drawProxyRows(); };
   for (const tr of $$('#ptable tr[data-id]')) {
     const id = Number(tr.dataset.id);
@@ -1061,9 +1098,9 @@ async function pageNodes() {
     const nodes = await api('GET', '/api/nodes');
     state.nodes = nodes;
     const open = new Set($$('details[open][data-keep]').map((d) => d.dataset.keep));
-    $('#page').innerHTML = `<div class="page-head"><div><h1>${t('nav_nodes')}</h1><p>${t('nodes_hint')}</p></div><div class="spacer"></div>
+    if (!setHTML($('#page'), `<div class="page-head"><div><h1>${t('nav_nodes')}</h1><p>${t('nodes_hint')}</p></div><div class="spacer"></div>
       <button class="primary" id="btnAddNode">${icon('plus', 'sm')} ${t('add_node')}</button></div>
-      ${nodes.map(nodeCard).join('')}`;
+      ${nodes.map(nodeCard).join('')}`)) return;
     for (const d of $$('details[data-keep]')) if (open.has(d.dataset.keep)) d.open = true;
     $('#btnAddNode').onclick = openAddNode;
     for (const card of $$('.node-card')) bindNodeCard(card, nodes.find((n) => n.id === Number(card.dataset.id)));

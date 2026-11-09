@@ -13,6 +13,18 @@
 - **API token:** tạo trong Cài đặt, gọi API bằng `Authorization: Bearer ov6_…` (xem `docs/API.md`). Chỉ lưu bản băm của token.
 - Bản sao lưu có thêm API token và các thiết lập mới.
 - **Giao diện tinh gọn hơn:** tông trung tính (đen/trắng/xám), nút chính màu đen, viền mảnh, nhãn màu nhạt. Chọn **màu nhấn** Trung tính / Tím / Xanh lá trong Cài đặt → Ngôn ngữ & giao diện. Tắt hiệu ứng khi hệ điều hành bật giảm chuyển động.
+- **Gọn hơn:** bỏ khung "Đăng nhập / phiên bản" ở thanh bên. Ngôn ngữ, sáng/tối, cài đặt và đăng xuất gom vào nút tài khoản ở góc phải.
+- **Mượt hơn:**
+  - chuyển trang không dựng lại toàn bộ khung;
+  - dữ liệu tự làm mới chỉ cập nhật khi thật sự có thay đổi, nên không còn nháy và không mất vị trí cuộn;
+  - giao diện web được nén gzip (app.js từ 99 KB còn 26 KB) và lưu cache, mở lại gần như tức thì.
+- **Điện thoại:**
+  - thanh điều hướng dưới có nhãn ngắn;
+  - hộp thoại trượt lên từ cạnh dưới, nút bấm to;
+  - bảng chi tiết proxy vừa màn hình;
+  - ô nhập không làm iPhone tự phóng to;
+  - chừa chỗ cho tai thỏ và thanh home.
+- Các mẹo trên trang Tổng quan có nút **×** để ẩn hẳn.
 
 ## v0.5.0 — giao diện mới
 

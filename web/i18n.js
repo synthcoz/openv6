@@ -2,6 +2,8 @@
 /* Translations. Add a language by adding a new top-level key with the same entries. */
 const I18N = {
   vi: {
+    navs_dashboard: 'Tổng quan', navs_proxies: 'Proxy', navs_nodes: 'Máy chủ', navs_events: 'Nhật ký', navs_settings: 'Cài đặt',
+    appearance: 'Giao diện',
     accent: 'Màu nhấn', accent_panel: 'Trung tính', accent_moon: 'Tím', accent_grass: 'Xanh lá',
     relay_off: 'Không dùng relay', relay_off_hint: 'Chỉ dùng trong mạng LAN / trực tiếp.', relay: 'Chia sẻ qua relay (VPS)', relay_via: 'Ra Internet qua {n}',
     relay_public_port: 'Cổng trên relay (0 = tự chọn)', relay_edit_hint: 'Relay: proxy được mở trên VPS để dùng từ bất kỳ đâu; cần user/mật khẩu.',
@@ -177,6 +179,8 @@ const I18N = {
     language: 'Ngôn ngữ', about: 'Giới thiệu', about_text: 'openv6 tạo proxy IPv6 tĩnh (HTTP + SOCKS5) từ dải IPv6 của mạng nhà, VPS hoặc homelab. Mỗi proxy có port, tài khoản và IPv6 riêng, cố định cho tới khi bạn đổi.',
   },
   en: {
+    navs_dashboard: 'Home', navs_proxies: 'Proxies', navs_nodes: 'Nodes', navs_events: 'Events', navs_settings: 'Settings',
+    appearance: 'Appearance',
     accent: 'Accent', accent_panel: 'Neutral', accent_moon: 'Moon', accent_grass: 'Grass',
     relay_off: 'No relay', relay_off_hint: 'LAN / direct only.', relay: 'Share through relay (VPS)', relay_via: 'Internet via {n}',
     relay_public_port: 'Port on relay (0 = auto)', relay_edit_hint: 'Relay: the proxy is opened on the VPS so it works from anywhere; needs user/password.',

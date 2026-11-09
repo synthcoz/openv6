@@ -108,7 +108,7 @@ func (s *Server) Handler() http.Handler {
 	a("DELETE /api/tokens/{id}", s.handleDeleteToken)
 
 	// static UI
-	mux.Handle("GET /", http.FileServerFS(s.WebFS))
+	mux.Handle("GET /", &staticHandler{fsys: s.WebFS})
 	return securityHeaders(mux)
 }
 
