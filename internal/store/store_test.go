@@ -76,3 +76,54 @@ func TestMissingVersionKeepsScope(t *testing.T) {
 		t.Fatalf("scope changed: %+v", ps[0].Scope)
 	}
 }
+
+func TestSecretsEncryptedAtRest(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(dir, "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, _ := st.CreateNode("n", "", true)
+	_ = st.CreatePool(&Pool{NodeID: n.ID, Name: "a", CIDR: "2001:db8::/64", Mode: "addr"})
+	pools, _ := st.ListPools(n.ID)
+	_ = st.CreateProxies([]*Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", AuthUser: "u", AuthPass: "s3cret-pass", Suffix: "::1", Enabled: true}})
+	_ = st.SetSetting("telegram_token", "123:abc")
+	_ = st.SetSetting("license", `{"key":"OV6"}`)
+	var raw, rawTok string
+	_ = st.DB.QueryRow(`SELECT auth_pass FROM proxies`).Scan(&raw)
+	_ = st.DB.QueryRow(`SELECT value FROM settings WHERE key='telegram_token'`).Scan(&rawTok)
+	if raw == "s3cret-pass" || rawTok == "123:abc" {
+		t.Fatal("secrets stored in plaintext")
+	}
+	ps, _ := st.ListProxies(ProxyFilter{})
+	if ps[0].AuthPass != "s3cret-pass" || st.GetSetting("telegram_token", "") != "123:abc" {
+		t.Fatal("decryption failed")
+	}
+	b, err := st.Dump("t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Tables["proxies"][0]["auth_pass"] != "s3cret-pass" {
+		t.Fatalf("backup not plaintext: %v", b.Tables["proxies"][0]["auth_pass"])
+	}
+	for _, r := range b.Tables["settings"] {
+		if r["key"] == "license" {
+			t.Fatal("license exported in backup")
+		}
+	}
+	// restore into another installation (different master.key)
+	st2, err := Open(filepath.Join(t.TempDir(), "y.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st2.CreateUser("admin", "password123", "admin")
+	b.Tables["users"] = []map[string]any{{"id": float64(1), "username": "admin", "pass_hash": "x", "role": "admin", "created_at": float64(1)}}
+	if err := st2.Restore(b); err != nil {
+		t.Fatal(err)
+	}
+	ps2, _ := st2.ListProxies(ProxyFilter{})
+	_ = st2.DB.QueryRow(`SELECT auth_pass FROM proxies`).Scan(&raw)
+	if ps2[0].AuthPass != "s3cret-pass" || raw == "s3cret-pass" {
+		t.Fatalf("restore: %q raw %q", ps2[0].AuthPass, raw)
+	}
+}

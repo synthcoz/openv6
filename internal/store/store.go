@@ -2,6 +2,7 @@
 package store
 
 import (
+	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -14,7 +15,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ DB *sql.DB }
+type Store struct {
+	DB   *sql.DB
+	aead cipher.AEAD
+}
 
 var ErrNotFound = errors.New("not found")
 
@@ -65,6 +69,12 @@ func Open(path string) (*Store, error) {
 	st := &Store{DB: db}
 	if err := st.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if st.aead, err = loadKey(path); err != nil {
+		return nil, fmt.Errorf("encryption key: %w", err)
+	}
+	if err := st.EncryptExisting(); err != nil {
+		return nil, fmt.Errorf("encrypt secrets: %w", err)
 	}
 	return st, nil
 }
@@ -239,10 +249,13 @@ func (s *Store) GetSetting(k, def string) string {
 	if err := s.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, k).Scan(&v); err != nil {
 		return def
 	}
-	return v
+	return s.dec(v)
 }
 
 func (s *Store) SetSetting(k, v string) error {
+	if sensitiveSettings[k] {
+		v = s.enc(v)
+	}
 	_, err := s.DB.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, v)
 	return err
 }
