@@ -110,6 +110,15 @@ func (s *Server) handleTrayAction(w http.ResponseWriter, r *http.Request) {
 		s.queueChecks(store.ProxyFilter{NodeID: n.ID})
 	case "reapply":
 		s.queueCommand(n.ID, proto.Command{Type: "reapply"})
+	case "shutdown": // tray "Quit": stop proxies and the service until next start
+		if s.OnShutdown == nil {
+			fail(w, 400, "shutdown not available")
+			return
+		}
+		s.Store.AddEvent(n.ID, "info", "openv6 stopped from the tray icon")
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		go func() { time.Sleep(300 * time.Millisecond); s.OnShutdown() }()
+		return
 	case "lang-vi", "lang-en":
 		_ = s.Store.SetSetting("lang", r.PathValue("action")[5:])
 	default:

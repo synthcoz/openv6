@@ -87,6 +87,12 @@ func Install(args []string) error {
 		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 10 * time.Second},
 	}, 3600)
+	// let signed-in users start/stop the service (tray "Quit" and reopening
+	// openv6 then need no UAC prompt); admins and SYSTEM keep full control
+	sd := exec.Command("sc.exe", "sdset", svcName,
+		"D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWRPWPLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)")
+	sd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	_ = sd.Run()
 	if err := s.Start(); err != nil {
 		return err
 	}
@@ -249,3 +255,35 @@ func shareTrayDir(dir string) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	_ = cmd.Run()
 }
+
+// StartService starts the service as the current user (allowed since v0.6),
+// falling back to a UAC prompt for services installed by older versions.
+func StartService() error {
+	if startDirect() == nil {
+		return nil
+	}
+	return StartServiceElevated()
+}
+
+func startDirect() error {
+	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseServiceHandle(h)
+	name, _ := windows.UTF16PtrFromString(svcName)
+	s, err := windows.OpenService(h, name, windows.SERVICE_START|windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseServiceHandle(s)
+	err = windows.StartService(s, 0, nil)
+	if err == windows.ERROR_SERVICE_ALREADY_RUNNING {
+		return nil
+	}
+	return err
+}
+
+// StopSelf is called by the running server before it exits on purpose: on
+// Windows a clean return already marks the service stopped (no restart).
+func StopSelf() {}

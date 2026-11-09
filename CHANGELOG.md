@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.1
+
+- **Thoát từ icon khay giờ tắt hẳn openv6:** chuột phải icon → **Thoát openv6** sẽ dừng toàn bộ proxy, dịch vụ nền và icon. Trước đây chỉ đóng icon, còn proxy vẫn chạy.
+- **Mở lại:** bấm biểu tượng openv6 (Desktop hoặc menu Start) là openv6 tự chạy lại và mở dashboard, không hiện hộp hỏi quyền Administrator. Khởi động lại máy cũng tự chạy như bình thường.
+- Trên Linux và macOS, dịch vụ cũng không tự bật lại sau khi thoát từ icon khay.
+
 ## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
 
 - **Relay qua VPS:** máy ở nhà (kể cả sau CGNAT của FPT) tự kết nối ra một VPS; proxy được dùng qua `IP-VPS:port` từ bất kỳ đâu, IP đi ra vẫn là IPv6 nhà. Kết nối mã hoá TLS và kiểm tra vân tay chứng chỉ; tự kết nối lại khi rớt mạng.

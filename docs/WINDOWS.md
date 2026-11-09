@@ -40,7 +40,7 @@ Bấm vào icon để mở menu:
 - **Tự chạy khi đăng nhập**.
 - **Ngôn ngữ**.
 - **Cập nhật** (chỉ hiện khi có bản mới).
-- **Thoát biểu tượng**: proxy vẫn chạy nền.
+- **Thoát openv6**: tắt hẳn proxy, dịch vụ và biểu tượng. Mở lại openv6 (biểu tượng trên Desktop hoặc menu Start) là chạy lại, không cần quyền Administrator. Khởi động lại máy cũng tự chạy lại.
 
 ## 4. Máy dùng cả dây LAN và Wi-Fi
 

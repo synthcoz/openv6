@@ -163,7 +163,7 @@ func SetTrayAutostart(on bool) error {
 
 func StartServiceElevated() error {
 	return exec.Command("osascript", "-e",
-		`do shell script "launchctl kickstart -k system/com.openv6.server" with administrator privileges`).Run()
+		`do shell script "launchctl bootstrap system /Library/LaunchDaemons/com.openv6.server.plist; launchctl kickstart -k system/com.openv6.server" with administrator privileges`).Run()
 }
 
 func Status() string {
@@ -183,3 +183,15 @@ func Status() string {
 func LogPath() string { return "/Library/Logs/openv6.log" }
 
 func shareTrayDir(dir string) {}
+
+// StartService starts the service, asking for admin rights.
+func StartService() error { return StartServiceElevated() }
+
+// StopSelf unloads the launchd job so KeepAlive does not restart it; it is
+// loaded again at the next boot (RunAtLoad) or by StartService.
+func StopSelf() {
+	if os.Getenv("XPC_SERVICE_NAME") != "com.openv6.server" {
+		return
+	}
+	_ = exec.Command("launchctl", "bootout", "system/com.openv6.server").Start()
+}

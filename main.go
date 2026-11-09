@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -99,7 +100,7 @@ func main() {
 	case "tray":
 		err = tray.Run()
 	case "open": // open the dashboard, signed in (used by shortcuts)
-		err = tray.OpenDashboard("")
+		err = openApp()
 	case "reset-password":
 		err = runResetPassword(os.Args[2:])
 	case "selftest":
@@ -167,6 +168,13 @@ func runServer(ctx context.Context, args []string) error {
 	srv := panel.New(st, web, *data, port, exe)
 	srv.PanelLogs = logs
 	srv.TrayToken = store.RandomToken(24)
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	srv.OnShutdown = func() {
+		log.Printf("stopping: requested from the tray icon")
+		service.StopSelf()
+		stop()
+	}
 	go srv.RunBackground(ctx)
 
 	scheme := "http"
@@ -354,4 +362,21 @@ func loopbackReachesUs(ln net.Listener, port int) bool {
 			return true
 		}
 	}
+}
+
+// openApp is what the desktop/start-menu shortcut does: start openv6 again if
+// it was quit from the tray, make sure the tray icon runs, open the dashboard.
+func openApp() error {
+	if service.Status() == "stopped" {
+		if err := service.StartService(); err == nil {
+			for i := 0; i < 40 && service.Status() != "running"; i++ {
+				time.Sleep(500 * time.Millisecond)
+			}
+			time.Sleep(1500 * time.Millisecond) // dashboard listening, tray info written
+		}
+		if !tray.Running() {
+			_ = exec.Command(service.BinPath(), "tray").Start()
+		}
+	}
+	return tray.OpenDashboard("")
 }

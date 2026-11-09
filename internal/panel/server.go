@@ -35,6 +35,8 @@ type Server struct {
 
 	// PanelLogs holds this process's own log output (panel + local agent).
 	PanelLogs *logbuf.Buffer
+	// OnShutdown stops the whole server (tray "Quit").
+	OnShutdown func()
 	// TrayToken authorizes the local tray app (see tray.go).
 	TrayToken string
 	magic     map[string]time.Time // one-time login links from the tray

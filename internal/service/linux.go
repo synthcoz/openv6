@@ -241,3 +241,15 @@ func Status() string {
 func LogPath() string { return "" }
 
 func shareTrayDir(dir string) {}
+
+// StartService starts the service, asking for admin rights.
+func StartService() error { return StartServiceElevated() }
+
+// StopSelf tells systemd the stop is intended, so Restart=always does not
+// bring the service back until the next boot or start.
+func StopSelf() {
+	if os.Getenv("INVOCATION_ID") == "" { // not started by systemd
+		return
+	}
+	_ = exec.Command("systemctl", "stop", "--no-block", "openv6-server").Run()
+}

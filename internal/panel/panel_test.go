@@ -420,3 +420,26 @@ func TestStaticGzipETag(t *testing.T) {
 		t.Fatalf("traversal %d", rec.Code)
 	}
 }
+
+func TestTrayShutdown(t *testing.T) {
+	e := newEnv(t)
+	e.srv.TrayToken = "tt"
+	called := make(chan bool, 1)
+	e.srv.OnShutdown = func() { called <- true }
+	if _, err := e.srv.Store.CreateNode("local", "", true); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest("POST", e.ts.URL+"/api/tray/shutdown", nil)
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 403 {
+		t.Fatalf("without token: %d", res.StatusCode)
+	}
+	req.Header.Set("X-Tray-Token", "tt")
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 200 {
+		t.Fatalf("with token: %d", res.StatusCode)
+	}
+	select {
+	case <-called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("OnShutdown not called")
+	}
+}
