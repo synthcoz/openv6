@@ -325,9 +325,10 @@ type Proxy struct {
 	RateKBps     int    `json:"rate_kbps"`     // per direction, 0 = unlimited
 	RelayNodeID  int64  `json:"relay_node_id"` // publish through this public node (0 = off)
 	RelayPort    int    `json:"relay_port"`    // port opened on the relay node
+	OwnerID      int64  `json:"owner_id"`      // customer account (reseller mode), 0 = none
 }
 
-const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port`
+const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port,owner_id`
 
 func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var p Proxy
@@ -335,7 +336,7 @@ func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var subnet int64
 	if err := r.Scan(&p.ID, &p.NodeID, &p.PoolID, &p.Port, &p.Protocol, &p.AuthUser, &p.AuthPass, &subnet, &p.Suffix, &fb, &en,
 		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult,
-		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort); err != nil {
+		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort, &p.OwnerID); err != nil {
 		return nil, err
 	}
 	p.Subnet = uint64(subnet)
@@ -354,6 +355,7 @@ type ProxyFilter struct {
 	NodeID      int64
 	IDs         []int64
 	RelayNodeID int64
+	OwnerID     int64
 }
 
 func (s *Store) ListProxies(f ProxyFilter) ([]*Proxy, error) {
@@ -367,6 +369,10 @@ func (s *Store) ListProxies(f ProxyFilter) ([]*Proxy, error) {
 	if f.RelayNodeID > 0 {
 		where = append(where, "relay_node_id=?")
 		args = append(args, f.RelayNodeID)
+	}
+	if f.OwnerID > 0 {
+		where = append(where, "owner_id=?")
+		args = append(args, f.OwnerID)
 	}
 	if len(f.IDs) > 0 {
 		ph := strings.TrimSuffix(strings.Repeat("?,", len(f.IDs)), ",")
@@ -428,9 +434,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 		if p.Scope == "" {
 			p.Scope = "lan"
 		}
-		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope,max_conns,rate_kbps,relay_node_id,relay_port)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
-			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope, p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort)
+		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope,max_conns,rate_kbps,relay_node_id,relay_port,owner_id)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
+			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope, p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID)
 		if err != nil {
 			return err
 		}
@@ -440,9 +446,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 }
 
 func (s *Store) UpdateProxy(p *Proxy) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=? WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=?,owner_id=? WHERE id=?`,
 		p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.Scope,
-		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.ID)
+		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.ID)
 	return err
 }
 
@@ -610,4 +616,54 @@ func (s *Store) CheckAPIToken(tok string) bool {
 		_, _ = s.DB.Exec(`UPDATE api_tokens SET last_used=? WHERE id=?`, Now(), id)
 	}
 	return true
+}
+
+// ---- accounts (admin / customer) ----
+
+type UserInfo struct {
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
+	CreatedAt int64  `json:"created_at"`
+	Proxies   int    `json:"proxies"`
+}
+
+func (s *Store) ListUsers() ([]UserInfo, error) {
+	rows, err := s.DB.Query(`SELECT u.id,u.username,u.role,u.created_at,(SELECT COUNT(*) FROM proxies p WHERE p.owner_id=u.id) FROM users u ORDER BY u.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []UserInfo{}
+	for rows.Next() {
+		var u UserInfo
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.Proxies); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetUser(id int64) (*User, error) {
+	var u User
+	if err := s.DB.QueryRow(`SELECT id,username,role FROM users WHERE id=?`, id).Scan(&u.ID, &u.Username, &u.Role); err != nil {
+		return nil, ErrNotFound
+	}
+	return &u, nil
+}
+
+// DeleteUser removes an account, its sessions and its proxy assignments.
+func (s *Store) DeleteUser(id int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{`UPDATE proxies SET owner_id=0 WHERE owner_id=?`, `DELETE FROM sessions WHERE user_id=?`, `DELETE FROM users WHERE id=?`} {
+		if _, err := tx.Exec(q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

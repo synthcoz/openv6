@@ -607,3 +607,5 @@ label.field > select, label.field > input { width: 100%; min-width: 0; }
 .pro-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .pro-list li { display: flex; gap: 8px; align-items: center; color: var(--text-2); }
 .pro-list .ic { color: var(--ok); }
+
+.nav a .count:empty { display: none; }

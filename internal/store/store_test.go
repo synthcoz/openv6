@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -36,7 +37,7 @@ func TestMigrateRepairs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.DB.Close()
-	if st.GetSetting("lang", "") != "en" || st.GetSetting("schema_version", "") != "5" {
+	if st.GetSetting("lang", "") != "en" || st.GetSetting("schema_version", "") != strconv.Itoa(len(migrations)) {
 		t.Fatalf("settings lang=%q version=%q", st.GetSetting("lang", ""), st.GetSetting("schema_version", ""))
 	}
 	if _, _, err := st.CreateAPIToken("t"); err != nil {

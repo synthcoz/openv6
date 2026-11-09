@@ -293,6 +293,12 @@ func (s *Server) handleNodeLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProxyChecks(w http.ResponseWriter, r *http.Request) {
+	if isCustomer(r) {
+		if p, err := s.Store.GetProxy(pathID(r)); err != nil || p.OwnerID != currentUser(r).ID {
+			fail(w, 404, "proxy not found")
+			return
+		}
+	}
 	cs, err := s.Store.ListChecks(pathID(r), 50)
 	if err != nil {
 		logErr(w, err)

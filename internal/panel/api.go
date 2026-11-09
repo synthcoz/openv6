@@ -521,7 +521,11 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 
 func (s *Server) handleListProxies(w http.ResponseWriter, r *http.Request) {
 	nid, _ := strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
-	vs, err := s.proxyViews(store.ProxyFilter{NodeID: nid})
+	f := store.ProxyFilter{NodeID: nid}
+	if isCustomer(r) {
+		f = store.ProxyFilter{OwnerID: currentUser(r).ID}
+	}
+	vs, err := s.proxyViews(f)
 	if err != nil {
 		logErr(w, err)
 		return
@@ -886,6 +890,40 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 		logErr(w, err)
 		return
 	}
+	if isCustomer(r) {
+		me := currentUser(r).ID
+		for _, p := range ps {
+			if p.OwnerID != me {
+				fail(w, 403, "not your proxy")
+				return
+			}
+		}
+		if b.Action != "test" && b.Action != "regen_pass" && b.Action != "regen_ip" {
+			fail(w, 403, "not available for customer accounts")
+			return
+		}
+	}
+	if b.Action == "set_owner" {
+		oid, _ := strconv.ParseInt(b.Value, 10, 64)
+		if oid != 0 {
+			if s.needPro(w, "Customer accounts") {
+				return
+			}
+			if u, err := s.Store.GetUser(oid); err != nil || u.Role != "customer" {
+				fail(w, 400, "customer account not found")
+				return
+			}
+		}
+		for _, p := range ps {
+			p.OwnerID = oid
+			if err := s.Store.UpdateProxy(p); err != nil {
+				logErr(w, err)
+				return
+			}
+		}
+		writeJSON(w, 200, map[string]int{"affected": len(ps)})
+		return
+	}
 	switch b.Action {
 	case "delete":
 		if err := s.Store.DeleteProxies(b.IDs); err != nil {
@@ -1054,7 +1092,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
-	vs, err := s.proxyViews(store.ProxyFilter{IDs: b.IDs})
+	pf := store.ProxyFilter{IDs: b.IDs}
+	if isCustomer(r) {
+		pf.OwnerID = currentUser(r).ID
+	}
+	vs, err := s.proxyViews(pf)
 	if err != nil {
 		logErr(w, err)
 		return

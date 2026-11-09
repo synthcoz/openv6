@@ -103,6 +103,8 @@ var migrations = []string{
 	 CREATE TABLE IF NOT EXISTS api_tokens (
 	   id INTEGER PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL,
 	   created_at INTEGER NOT NULL, last_used INTEGER NOT NULL DEFAULT 0);`,
+	// 6: reseller mode: proxies assigned to customer accounts
+	`ALTER TABLE proxies ADD COLUMN owner_id INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // migrate brings the schema up to date. Each statement runs on its own and
@@ -146,6 +148,8 @@ func (s *Store) inferVersion() int {
 		return false
 	}
 	switch {
+	case has("proxies", "owner_id"):
+		return 6
 	case has("proxies", "max_conns"):
 		return 5
 	case has("nodes", "paused"):

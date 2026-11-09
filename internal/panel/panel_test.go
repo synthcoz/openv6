@@ -566,3 +566,48 @@ func TestLicenseFreeTierAndActivation(t *testing.T) {
 	}
 	e.call("DELETE", "/api/license", nil, &lv, 200)
 }
+
+func TestCustomerAccounts(t *testing.T) {
+	e := newEnv(t)
+	local, _ := e.srv.Store.CreateNode("local", "", true)
+	e.sync(local.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", local.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 3, "auth": "random"}, nil, 200)
+	e.call("POST", "/api/users", map[string]string{"username": "khach1", "password": "password123", "role": "customer"}, nil, 200)
+	var users []store.UserInfo
+	e.call("GET", "/api/users", nil, &users, 200)
+	var cid int64
+	for _, u := range users {
+		if u.Username == "khach1" {
+			cid = u.ID
+		}
+	}
+	var list []struct{ ID int64 }
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID, list[1].ID}, "action": "set_owner", "value": fmt.Sprint(cid)}, nil, 200)
+
+	jar, _ := cookiejar.New(nil)
+	c := &env{t: t, srv: e.srv, ts: e.ts, cl: &http.Client{Jar: jar}}
+	c.call("POST", "/api/login", map[string]string{"username": "khach1", "password": "password123"}, nil, 200)
+	var mine []struct{ ID int64 }
+	c.call("GET", "/api/proxies", nil, &mine, 200)
+	if len(mine) != 2 {
+		t.Fatalf("customer sees %d proxies", len(mine))
+	}
+	c.call("GET", "/api/nodes", nil, nil, 403)
+	c.call("GET", "/api/dashboard", nil, nil, 403)
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[2].ID}, "action": "regen_pass"}, nil, 403) // not theirs
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{mine[0].ID}, "action": "delete"}, nil, 403)
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{mine[0].ID}, "action": "regen_pass"}, nil, 200)
+	var x struct{ Text string }
+	c.call("POST", "/api/proxies/export", map[string]any{"ids": []int64{list[0].ID, list[1].ID, list[2].ID}}, &x, 200)
+	if strings.Count(x.Text, "\n") != 2 {
+		t.Fatalf("customer export: %q", x.Text)
+	}
+	e.call("DELETE", fmt.Sprintf("/api/users/%d", cid), nil, nil, 200)
+	p, _ := e.srv.Store.GetProxy(list[0].ID)
+	if p.OwnerID != 0 {
+		t.Fatal("owner kept after account deletion")
+	}
+}

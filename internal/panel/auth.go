@@ -67,8 +67,24 @@ func (s *Server) auth(h http.HandlerFunc) http.Handler {
 				return
 			}
 		}
+		if u.Role == "customer" && !customerRoutes[r.Pattern] {
+			fail(w, http.StatusForbidden, "not available for customer accounts")
+			return
+		}
 		h(w, r.WithContext(context.WithValue(r.Context(), userKey, u)))
 	})
+}
+
+// customerRoutes are the only endpoints customer accounts (reseller mode)
+// may use; handlers further limit them to their own proxies.
+var customerRoutes = map[string]bool{
+	"GET /api/proxies": true, "POST /api/proxies/export": true, "POST /api/proxies/action": true,
+	"GET /api/commands/{id}": true, "POST /api/account/password": true, "GET /api/proxies/{id}/checks": true,
+}
+
+func isCustomer(r *http.Request) bool {
+	u := currentUser(r)
+	return u != nil && u.Role == "customer"
 }
 
 func currentUser(r *http.Request) *store.User {

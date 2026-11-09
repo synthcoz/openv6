@@ -2,6 +2,11 @@
 /* Translations. Add a language by adding a new top-level key with the same entries. */
 const I18N = {
   vi: {
+    customer_account: 'Tài khoản khách hàng', act_set_owner: 'Giao cho khách hàng', no_customers: 'Chưa có tài khoản khách. Tạo trong Cài đặt → Tài khoản.',
+    owner_none: 'Không giao cho ai', owner_none_hint: 'Chỉ admin thấy proxy này.', owner_count: '{n} proxy',
+    accounts: 'Tài khoản', accounts_hint: 'Admin quản lý mọi thứ. Tài khoản khách hàng chỉ thấy proxy được giao, chỉ được sao chép, xuất, kiểm tra, đổi IPv6 và đổi mật khẩu proxy (chế độ bán lại).',
+    role_admin: 'Admin', role_customer: 'Khách hàng', add_account: 'Thêm', reset_password: 'Đặt lại mật khẩu',
+    confirm_delete_account: 'Xoá tài khoản này? Proxy đã giao sẽ quay về admin.',
     pro_needed_detail: 'Bản Free giới hạn 3 proxy trên 1 máy và chỉ có tính năng cơ bản. Kích hoạt openv6 Pro trong Cài đặt → Bản quyền để dùng tiếp.',
     license: 'Bản quyền', upgrade: 'Nâng cấp', pro_needed: 'Tính năng này cần openv6 Pro.', plan_free_upgrade: 'Free · Nâng cấp Pro',
     lic_active: 'openv6 Pro đã kích hoạt (key dùng cho {n} máy)', lic_key: 'License key', lic_machine: 'Máy này', lic_checked: 'Kiểm tra lần cuối',
@@ -210,6 +215,11 @@ const I18N = {
     language: 'Ngôn ngữ', about: 'Giới thiệu', about_text: 'openv6 tạo proxy IPv6 tĩnh (HTTP + SOCKS5) từ dải IPv6 của mạng nhà, VPS hoặc homelab. Mỗi proxy có port, tài khoản và IPv6 riêng, cố định cho tới khi bạn đổi.',
   },
   en: {
+    customer_account: 'Customer account', act_set_owner: 'Assign to a customer', no_customers: 'No customer accounts yet. Create one in Settings → Accounts.',
+    owner_none: 'Nobody', owner_none_hint: 'Only admins see this proxy.', owner_count: '{n} proxies',
+    accounts: 'Accounts', accounts_hint: 'Admins manage everything. Customer accounts only see proxies assigned to them and can copy, export, test, change IPv6 and reset the proxy password (reseller mode).',
+    role_admin: 'Admin', role_customer: 'Customer', add_account: 'Add', reset_password: 'Reset password',
+    confirm_delete_account: 'Delete this account? Its proxies return to the admins.',
     pro_needed_detail: 'Free is limited to 3 proxies on 1 machine with basic features. Activate openv6 Pro in Settings → License to continue.',
     license: 'License', upgrade: 'Upgrade', pro_needed: 'This feature needs openv6 Pro.', plan_free_upgrade: 'Free · Upgrade to Pro',
     lic_active: 'openv6 Pro is active (key for {n} machines)', lic_key: 'License key', lic_machine: 'This machine', lic_checked: 'Last checked',
