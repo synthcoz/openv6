@@ -233,6 +233,7 @@ function renderShell() {
               <button data-th="system" class="${th === 'system' ? 'on' : ''}" title="${t('theme_system')}">${icon('monitor', 'sm')}</button>
               <button data-th="dark" class="${th === 'dark' ? 'on' : ''}" title="${t('theme_dark')}">${icon('moon', 'sm')}</button></div></div>
             <div class="menu-sep"></div>
+            <button class="menu-item" id="menuDoctor">${icon('wrench', 'sm')} ${t('doctor_open')}</button>
             <a class="menu-item" href="#settings">${icon('settings', 'sm')} ${t('nav_settings')}</a>
             <button class="menu-item" id="logoutBtn">${icon('logout', 'sm')} ${t('logout')}</button>
           </div>
@@ -252,6 +253,7 @@ function renderShell() {
   ab.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
   menu.onclick = (e) => { e.stopPropagation(); if (e.target.closest('a.menu-item')) setMenu(false); };
   document.onclick = () => setMenu(false);
+  $('#menuDoctor').onclick = () => { setMenu(false); openDoctor(); };
   $('#logoutBtn').onclick = async () => { await api('POST', '/api/logout', {}).catch(() => {}); state.user = null; renderLogin(false); };
   refreshSummary();
   renderPage();
@@ -348,7 +350,7 @@ async function pageDashboard() {
     if (!setHTML($('#page'), `
       <div class="hero ${hero.cls}"><div class="big">${icon(hero.ic)}</div>
         <div style="flex:1"><h2>${esc(hero.title)}</h2><p>${esc(hero.sub)}</p></div>
-        ${d.proxies === 0 ? `<button class="primary" id="startWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button>` :
+        ${hero.cls === 'error' || hero.cls === 'warn' ? `<div class="row"><button class="primary" id="dashFix">${icon('wrench', 'sm')} ${t('doctor_open')}</button></div>` : d.proxies === 0 ? `<button class="primary" id="startWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button>` :
           `<div class="row hide-sm"><button id="dashCheck">${icon('pulse', 'sm')} ${t('check_all')}</button><a class="btn primary" href="#proxies">${icon('proxies', 'sm')} ${t('nav_proxies')}</a></div>`}
       </div>
       ${warnings.join('')}
@@ -370,6 +372,7 @@ async function pageDashboard() {
       </div>`)) return;
     for (const x of $$('[data-tip] .tip-x')) x.onclick = () => { const a = x.closest('[data-tip]'); store(a.dataset.tip, '1'); a.hidden = true; };
     const w = $('#startWizard'); if (w) w.onclick = () => openWizard();
+    const df = $('#dashFix'); if (df) df.onclick = () => openDoctor();
     const dc = $('#dashCheck'); if (dc) dc.onclick = async () => { const r = await api('POST', '/api/checks/run', {}); toast(t('check_queued', { n: r.queued })); };
     if (d.proxies === 0 && !store('v6p_wizard_seen') && !$('#modal')) { store('v6p_wizard_seen', '1'); openWizard(); }
   };
@@ -410,6 +413,7 @@ async function openWizard() {
         <div class="big-check"><div class="stat"><div class="ico ${p && p.cidr ? 'ok' : 'warn'}">${icon(p && p.cidr ? 'check' : 'alert')}</div></div>
           <div><b>${p && p.cidr ? esc(p.cidr) : t('pool_waiting')}</b><div class="small muted">${esc(n.net.primary_iface || '')} ${n.net.gateway ? '· router ' + esc(n.net.gateway) : ''}</div></div></div>
         ${bad.map((c) => alertBox('err', `<b>${esc(t('chk_' + c.id))}:</b> ${esc(t('chkfix_' + c.id))}`)).join('')}
+        <div class="field" style="margin:10px 0 12px">${t('net_source')}<div data-srcbox>${sourcePicker(n, true)}</div></div>
         <button class="small" id="wizTest">${icon('pulse', 'sm')} ${t('test_v6')}</button> <span id="wizTestOut" class="small muted"></span>`;
     } else if (w.step === 2) {
       body = `<h2>${t('wiz2_title')}</h2><p class="muted">${t('wiz2_sub')}</p>
@@ -441,6 +445,10 @@ async function openWizard() {
       ${w.step === 4 ? `<button id="wCopy">${icon('copy', 'sm')} ${t('copy')}</button><a class="btn primary" href="#proxies" id="wDone">${t('wiz_done')}</a>` : ''}
     </div>`;
     const go = (s) => { w.step = s; render(m); };
+    if (w.step === 1 && $('[data-srcbox]', m)) {
+      const n1 = state.nodes.find((x) => x.id === local.id) || local;
+      bindSourcePicker($('[data-srcbox]', m), n1, async () => { state.nodes = await api('GET', '/api/nodes'); render(m); });
+    }
     if ($('#wSkip', m)) $('#wSkip', m).onclick = closeModal;
     if ($('#wBack', m)) $('#wBack', m).onclick = () => go(w.step - 1);
     if ($('#wNext', m)) $('#wNext', m).onclick = () => {
@@ -556,7 +564,7 @@ function limitsText(p) {
   return a.join(' · ');
 }
 function scopeSelect(name, value) {
-  return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scope_' + v)}</option>`).join('')}</select>`;
+  return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scopeopt_' + v)}</option>`).join('')}</select>`;
 }
 
 function fmtDuration(sec) {
@@ -951,11 +959,13 @@ function openCreate() {
   modal(`<h2>${t('create_proxies')}</h2>
     <form id="cf"><div class="form-grid">
       <label class="field">${t('node')}<select name="node_id">${state.nodes.map((n) => `<option value="${n.id}">${esc(n.name)}${n.online ? '' : ' (' + t('st_offline') + ')'}</option>`).join('')}</select></label>
+
       <label class="field">${t('pool')}<select name="pool_id"></select></label>
+      <div class="field" style="grid-column:1/-1">${t('net_source')}<div data-srcbox></div></div>
       <label class="field">${t('count')}<input name="count" type="number" min="1" max="5000" value="10" required></label>
       <label class="field">${t('start_port')}<input name="start_port" type="number" min="1024" max="65535" value="10001"></label>
       <label class="field">${t('protocol')}<select name="protocol"><option value="both">HTTP + SOCKS5</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
-      <label class="field">${t('auth')}<select name="auth"><option value="random">${t('auth_random')}</option><option value="none">${t('auth_none')}</option><option value="fixed">${t('auth_fixed')}</option></select></label>
+      <label class="field">${t('auth')}<select name="auth"><option value="random">${t('authopt_random')}</option><option value="none">${t('authopt_none')}</option><option value="fixed">${t('authopt_fixed')}</option></select></label>
       <label class="field fixed-auth" hidden>${t('username')}<input name="user"></label>
       <label class="field fixed-auth" hidden>${t('password')}<input name="pass"></label>
       <label class="field">${t('scope')}${scopeSelect('scope', 'lan')}</label>
@@ -981,6 +991,9 @@ function openCreate() {
     const form = $('#cf', m);
     const fillPools = () => {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
+      const box = $('[data-srcbox]', m);
+      box.innerHTML = sourcePicker(node, true);
+      bindSourcePicker(box, node, async () => { state.nodes = await api('GET', '/api/nodes'); fillPools(); });
       form.pool_id.innerHTML = (node.pools || []).map((p) => `<option value="${p.id}">${esc(p.name)} — ${esc(p.cidr || t('pool_waiting'))}</option>`).join('');
       onPool();
     };
@@ -1175,7 +1188,8 @@ function nodeCard(n) {
         <button class="small ghost icon-btn" data-a="more" title="${t('more')}">${icon('more', 'sm')}</button>
       </div>
     </div>
-    ${(n.errors || []).map((e) => alertBox('err', esc(e))).join('')}
+    ${bad.length || (n.errors || []).length || !n.online ? `<div class="alert ${bad.some((c) => !c.warn) || (n.errors || []).length || !n.online ? 'err' : 'warn'} fixbar">${icon('alert')}<div>${t('node_issues', { n: bad.length + (n.errors || []).length + (n.online ? 0 : 1) })}</div><button class="small" data-a="doctor">${icon('wrench', 'sm')} ${t('doctor_open')}</button></div>` : ''}
+    <div class="srcrow"><div class="small muted" style="font-weight:550;margin-bottom:6px">${t('net_source')}</div>${sourcePicker(n)}</div>
     <div class="grid cols-2" style="gap:18px">
       <div class="kv">
         <div>${t('service')}</div><div>${n.online ? t('running_for', { d: fmtDuration(n.uptime) }) : t('st_offline') + ' · ' + ago(n.last_seen)}</div>
@@ -1188,8 +1202,8 @@ function nodeCard(n) {
       </div>
       <div>
         <div class="small muted" style="margin-bottom:8px;font-weight:550">${t('system_checks')}</div>
-        <div class="checks">${checks.map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${icon(c.ok ? 'check' : 'alert', 'sm')} ${esc(t('chk_' + c.id))}</span>`).join('') || '—'}</div>
-        ${bad.map((c) => alertBox(c.warn ? 'warn' : 'err', `<b>${esc(t('chk_' + c.id))}:</b> ${esc(t('chkfix_' + c.id))}${c.detail ? ` <span class="muted">(${esc(c.detail)})</span>` : ''}`)).join('').replace(/alert /g, 'alert small ')}
+        <div class="checks">${checks.map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${icon(c.ok ? 'check' : 'alert', 'sm')} ${esc(c.ok ? t('chk_' + c.id) : chkText(c, n, 'title'))}</span>`).join('') || '—'}</div>
+
       </div>
     </div>
     <details class="section" data-keep="set-${n.id}"><summary><b>${icon('settings', 'sm')} ${t('settings')}</b> <span class="muted small">— ${t('node_settings_sub')}</span></summary>
@@ -1236,6 +1250,8 @@ function nodeCard(n) {
 
 function bindNodeCard(card, n) {
   const act = (a) => $(`[data-a=${a}]`, card);
+  if (act('doctor')) act('doctor').onclick = () => openDoctor(n.id);
+  bindSourcePicker($('.srcrow', card), n, () => renderPage());
   act('test').onclick = async (e) => {
     e.target.disabled = true;
     try { const c = await api('POST', `/api/nodes/${n.id}/test`, {}); const r = await pollCommand(c.id); toast(r.ok ? t('v6_ok', { ip: r.output }) : t('test_fail', { err: r.output }), !r.ok); }
@@ -1543,3 +1559,191 @@ async function pageSettings() {
     $('#app').innerHTML = `<div class="center"><div class="alert err">${esc(e.message)}</div></div>`;
   }
 })();
+
+// ---------- network source (LAN / Wi-Fi) ----------
+function ifaceKind(name) {
+  const n = String(name || '').toLowerCase();
+  if (/^(wl|wlan|wifi|wi-fi|wireless)/.test(n) || n.includes('wi-fi') || n.includes('wireless') || n.includes('wlan')) return 'wifi';
+  if (/^(en|eth|lan)/.test(n) || n.includes('ethernet')) return 'lan';
+  return 'other';
+}
+function ifaceLabel(name) {
+  const k = ifaceKind(name);
+  return k === 'wifi' ? 'Wi-Fi' : k === 'lan' ? t('src_lan') : name;
+}
+function sourcePicker(n, compact) {
+  const list = (n.net.interfaces || []).filter((i) => (i.prefixes || []).length);
+  const cur = n.iface || n.net.primary_iface || '';
+  if (!list.length) return `<div class="small muted">${t('src_none')}</div>`;
+  return `<div class="source ${compact ? 'compact' : ''}">${list.map((i) => {
+    const on = i.name === cur;
+    const k = ifaceKind(i.name);
+    return `<button type="button" class="src ${on ? 'on' : ''}" data-src="${esc(i.name)}" aria-pressed="${on}">
+      <span class="src-ico">${icon(k === 'wifi' ? 'wifi' : k === 'lan' ? 'ethernet' : 'globe', 'sm')}</span>
+      <span class="src-txt"><b>${esc(ifaceLabel(i.name))}</b>${ifaceLabel(i.name) !== i.name ? ` <span class="muted small">${esc(i.name)}</span>` : ''}
+      <span class="mono small muted">${esc(i.prefixes[0])}</span></span>
+      ${on ? `<span class="src-on">${icon('check', 'sm')}</span>` : ''}</button>`;
+  }).join('')}</div>${n.iface ? '' : `<div class="hint">${t('src_auto_hint')}</div>`}`;
+}
+function bindSourcePicker(root, n, after) {
+  if (!root) return;
+  for (const b of $$('[data-src]', root)) b.onclick = async (e) => {
+    e.preventDefault();
+    const name = b.dataset.src;
+    if (name === (n.iface || n.net.primary_iface)) return;
+    if (n.proxies && !(await confirmBox(t('src_confirm', { name: ifaceLabel(name), n: n.proxies }), { ok: t('src_switch') }))) return;
+    b.disabled = true;
+    try {
+      await api('PUT', '/api/nodes/' + n.id, { iface: name });
+      await api('POST', `/api/nodes/${n.id}/reapply`, {});
+      toast(t('src_switched', { name: ifaceLabel(name) }));
+      if (after) await after();
+    } catch (err) { toast(err.message, true); b.disabled = false; }
+  };
+}
+
+// ---------- check & fix ----------
+// chkText picks the platform-specific explanation when one exists (Windows
+// firewall is not ufw) and the "problem" wording for a failed check.
+function chkText(c, n, kind) {
+  const os = String((n && n.os) || '').split('/')[0];
+  const suffix = os === 'windows' ? '_win' : os === 'darwin' ? '_mac' : '';
+  const d = I18N[LANG];
+  if (kind === 'title') return d['chkbad_' + c.id] || t('chk_' + c.id);
+  return (suffix && d['chkfix_' + c.id + suffix]) || t('chkfix_' + c.id);
+}
+
+// Each issue says what is wrong, why, and offers buttons that fix it; "auto"
+// fixes are safe to run unattended ("Fix all"), the others need a decision.
+const CHECK_FIX = { firewall: 'firewall', network_private: 'network_private', vpn_captures: 'bypass_on', vpn_bypass_failed: 'reapply',
+  ipv6_route: 'reapply', ipv6_prefix: 'reapply', kernel_tuning: 'kernel_tuning' };
+
+async function nodeFix(n, fix) {
+  const r = await api('POST', `/api/nodes/${n.id}/fix`, { fix });
+  if (r && r.id && !r.done) {
+    const c = await pollCommand(r.id);
+    if (!c.ok) throw new Error(c.output || t('fix_failed'));
+    return c.output;
+  }
+  return '';
+}
+
+function collectIssues(nodes, proxies) {
+  const out = [];
+  for (const n of nodes) {
+    if (!n.online) {
+      out.push({ sev: 'err', title: t('dr_offline', { name: n.name }), cause: n.is_local ? t('dr_offline_local') : t('dr_offline_remote'),
+        fixes: n.is_local ? [{ label: t('restart'), auto: false, run: () => api('POST', `/api/nodes/${n.id}/restart`, {}) }]
+          : [{ label: t('install_cmd'), auto: false, run: async () => showInstall(await api('GET', `/api/nodes/${n.id}/install`), n.name), keep: true }] });
+      continue;
+    }
+    for (const c of (n.checks || []).filter((x) => !x.ok)) {
+      const fixes = [];
+      const f = CHECK_FIX[c.id];
+      if (f) fixes.push({ label: t('fix'), auto: true, run: () => nodeFix(n, f) });
+      if (c.id === 'ipv6_iface' || c.id === 'ipv6_prefix') {
+        if (n.iface) fixes.unshift({ label: t('src_auto'), auto: true, run: () => nodeFix(n, 'iface_auto') });
+        fixes.push({ label: t('src_choose'), auto: false, keep: true, run: () => openSourceModal(n) });
+      }
+      if (c.id === 'root') fixes.push({ label: t('restart'), auto: false, run: () => api('POST', `/api/nodes/${n.id}/restart`, {}) });
+      out.push({ sev: c.warn ? 'warn' : 'err', node: n.name, title: chkText(c, n, 'title'), cause: chkText(c, n) + (c.detail ? ` (${c.detail})` : ''), fixes });
+    }
+    for (const e of n.errors || []) {
+      out.push({ sev: 'err', node: n.name, title: t('dr_node_error'), cause: e, fixes: [{ label: t('reapply'), auto: true, run: () => nodeFix(n, 'reapply') }] });
+    }
+  }
+  const byCode = {};
+  for (const p of proxies) {
+    if (p.status === 'error') (byCode[p.code || 'other'] = byCode[p.code || 'other'] || []).push(p);
+  }
+  for (const [code, list] of Object.entries(byCode)) {
+    const ids = list.map((p) => p.id);
+    const names = list.slice(0, 4).map((p) => p.label || ':' + p.port).join(', ') + (list.length > 4 ? '…' : '');
+    const fixes = [];
+    if (code === 'port_in_use') fixes.push({ label: t('fix_port'), auto: true, run: () => api('POST', '/api/proxies/action', { ids, action: 'fix_port' }) });
+    else if (['addr_add_failed', 'addr_not_available', 'no_prefix', 'permission'].includes(code)) {
+      for (const nid of [...new Set(list.map((p) => p.node_id))]) {
+        const n = nodes.find((x) => x.id === nid);
+        if (n) fixes.push({ label: t('reapply'), auto: true, run: () => nodeFix(n, 'reapply') });
+      }
+    }
+    fixes.push({ label: t('act_test'), auto: false, run: () => api('POST', '/api/proxies/action', { ids, action: 'test' }) });
+    out.push({ sev: 'err', title: t('dr_proxy_error', { n: list.length }) + ' · ' + names, cause: I18N[LANG]['err_' + code] || list[0].error || code, fixes });
+  }
+  const failing = proxies.filter((p) => p.enabled && p.check_ok === 0 && p.fail_streak >= 2 && p.status !== 'error');
+  if (failing.length) {
+    const ids = failing.map((p) => p.id);
+    out.push({ sev: 'warn', title: t('dr_failing', { n: failing.length }), cause: (I18N[LANG]['err_' + failing[0].check_code] || failing[0].check_result || ''),
+      fixes: [{ label: t('act_test'), auto: true, run: () => api('POST', '/api/proxies/action', { ids, action: 'test' }) },
+        { label: t('act_regen_ip'), auto: false, run: () => api('POST', '/api/proxies/action', { ids, action: 'regen_ip' }) }] });
+  }
+  return out.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === 'err' ? -1 : 1));
+}
+
+async function openDoctor(nodeId) {
+  modal(`<div id="dr"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%;margin-top:12px"></div></div>`, async (m) => {
+    const box = $('#dr', m);
+    const load = async (note) => {
+      const [nodes, proxies] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies')]);
+      state.nodes = nodes;
+      const scoped = nodeId ? nodes.filter((n) => n.id === nodeId) : nodes;
+      const issues = collectIssues(scoped, nodeId ? proxies.filter((p) => p.node_id === nodeId) : proxies);
+      const autoN = issues.filter((i) => i.fixes.some((f) => f.auto)).length;
+      box.innerHTML = `<div class="row" style="align-items:flex-start"><div style="flex:1"><h2 style="margin-bottom:4px">${t('doctor_title')}</h2>
+          <p class="muted small" style="margin:0">${issues.length ? t('doctor_found', { n: issues.length }) : t('doctor_ok_sub')}</p></div>
+          <button class="ghost icon-btn" id="drClose">${icon('x')}</button></div>
+        ${note ? `<div class="alert info small" style="margin-top:12px">${icon('info')}<div>${esc(note)}</div></div>` : ''}
+        ${issues.length ? `<div class="doctor">${issues.map((it, i) => `<div class="dr-item ${it.sev}" data-i="${i}">
+            <span class="dr-ico">${icon(it.sev === 'err' ? 'alert' : 'info', 'sm')}</span>
+            <div class="dr-body"><b>${esc(it.title)}</b>${it.node && nodes.length > 1 ? ` <span class="badge neutral">${esc(it.node)}</span>` : ''}
+              <div class="small muted">${esc(it.cause)}</div><div class="dr-out small"></div></div>
+            <div class="dr-act">${it.fixes.map((f, j) => `<button class="small ${j === 0 && f.auto ? 'primary' : ''}" data-f="${j}">${esc(f.label)}</button>`).join('')}</div>
+          </div>`).join('')}</div>`
+          : `<div class="empty" style="padding:28px 10px"><div class="art" style="background:var(--ok-soft);color:var(--ok)">${icon('check')}</div><h2>${t('doctor_ok')}</h2></div>`}
+        <div class="actions"><button id="drRecheck">${icon('refresh', 'sm')} ${t('doctor_recheck')}</button>
+          ${autoN ? `<button class="primary" id="drAll">${icon('wrench', 'sm')} ${t('doctor_fix_all', { n: autoN })}</button>` : ''}</div>`;
+      $('#drClose', m).onclick = closeModal;
+      $('#drRecheck', m).onclick = () => load();
+      const runFix = async (it, f, el) => {
+        const out = $('.dr-out', el);
+        out.className = 'dr-out small'; out.textContent = t('fixing');
+        for (const b of $$('button', el)) b.disabled = true;
+        try {
+          const r = await f.run();
+          if (f.keep) { out.textContent = ''; for (const b of $$('button', el)) b.disabled = false; return true; }
+          out.classList.add('ok'); out.textContent = '✓ ' + (typeof r === 'string' && r ? r : t('fix_done'));
+          return true;
+        } catch (err) {
+          out.classList.add('bad'); out.textContent = '✗ ' + err.message;
+          for (const b of $$('button', el)) b.disabled = false;
+          return false;
+        }
+      };
+      for (const el of $$('.dr-item', m)) {
+        const it = issues[Number(el.dataset.i)];
+        for (const b of $$('[data-f]', el)) b.onclick = () => runFix(it, it.fixes[Number(b.dataset.f)], el);
+      }
+      const all = $('#drAll', m);
+      if (all) all.onclick = async () => {
+        all.disabled = true; all.innerHTML = `<span class="dot pending"></span> ${t('fixing')}`;
+        for (const el of $$('.dr-item', m)) {
+          const it = issues[Number(el.dataset.i)];
+          const f = it.fixes.find((x) => x.auto);
+          if (f) await runFix(it, f, el);
+        }
+        await new Promise((r) => setTimeout(r, 6000)); // let the node apply and report back
+        await load(t('doctor_after'));
+        refreshSummary();
+      };
+    };
+    load().catch((e) => { box.innerHTML = alertBox('err', esc(e.message)); });
+  }, true);
+}
+
+function openSourceModal(n) {
+  modal(`<h2>${t('net_source')} · ${esc(n.name)}</h2><p class="muted small">${t('src_modal_sub')}</p><div data-srcbox>${sourcePicker(n)}</div>
+    <div class="actions"><button id="cl">${t('close')}</button></div>`, (m) => {
+    bindSourcePicker($('[data-srcbox]', m), n, () => { closeModal(); renderPage(); });
+    $('#cl', m).onclick = closeModal;
+  });
+}

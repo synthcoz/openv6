@@ -222,3 +222,8 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 	}
 	return []proto.SystemCheck{fw}
 }
+
+// Fix repairs a failing system check (id as in SystemChecks).
+func (m *Manager) Fix(id string) (string, error) {
+	return "", fmt.Errorf("no automatic fix for %q", id)
+}

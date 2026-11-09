@@ -176,4 +176,5 @@ type Command struct {
 	ProxyID int64  `json:"proxy_id,omitempty"`
 	Version string `json:"version,omitempty"` // update: expected version
 	URL     string `json:"url,omitempty"`     // update: binary download URL
+	Fix     string `json:"fix,omitempty"`     // fix: id of the system check to repair
 }

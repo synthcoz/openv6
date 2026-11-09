@@ -9,6 +9,20 @@
   - Bước nâng cấp dữ liệu giờ chạy từng lệnh một và bỏ qua phần đã làm rồi.
   - Nếu bảng cài đặt bị hỏng, openv6 tự dựng lại và giữ nguyên proxy, node và các thiết lập khác.
 - Khi dịch vụ không khởi động được hoặc bị crash, lý do được ghi vào `openv6.log` / `openv6-crash.log` trong thư mục dữ liệu.
+- **Ổn định hơn, hết báo "Mất kết nối node" chập chờn:**
+  - mỗi 5 giây máy chạy proxy chỉ gửi tín hiệu "còn sống"; cấu hình mạng (gán IPv6, mở cổng) chỉ áp dụng lại khi có thay đổi, cộng thêm một lần mỗi phút để tự sửa;
+  - trước đây Windows chạy lại netsh/PowerShell và chờ 1,2 giây ở mỗi vòng, nên máy chậm hoặc có nhiều proxy có thể trễ quá ngưỡng;
+  - kiểm tra loại mạng trên Windows chạy nền; ngưỡng báo mất kết nối tăng lên 45 giây.
+- **Chọn nguồn mạng (Mạng dây LAN / Wi-Fi):**
+  - hiện ngay trên thẻ máy chủ, trong hộp Tạo proxy và trong trình hướng dẫn;
+  - đổi nguồn mạng thì proxy tự chuyển sang IPv6 của card mạng đó.
+- **Kiểm tra & sửa lỗi:** liệt kê từng vấn đề kèm nguyên nhân và nút **Sửa**, hoặc **Tự sửa tất cả**. Các lỗi tự sửa được:
+  - tường lửa Windows chặn proxy, mạng đang ở chế độ Public;
+  - VPN chiếm đường đi của proxy, card mạng không còn;
+  - port bị chương trình khác chiếm: tự chuyển sang port trống;
+  - lỗi gán IPv6: tự áp dụng lại cấu hình mạng.
+  Việc ảnh hưởng tài khoản như đổi IPv6 vẫn để bạn tự bấm. Mở từ trang Tổng quan, thẻ máy chủ hoặc menu tài khoản.
+- Dropdown không còn bị cắt chữ: nhãn ngắn gọn, mũi tên thống nhất. Bỏ hiệu ứng làm mờ nền để giao diện mượt hơn khi điều khiển từ xa (Parsec, RDP).
 
 ## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
 

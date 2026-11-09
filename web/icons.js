@@ -37,6 +37,8 @@ const ICONS = {
   filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5z"/>',
   tag: '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/>',
   sparkle: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+  ethernet: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 18v-3M12 18v-3M16 18v-3M9 6V3h6v3"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
 };
 

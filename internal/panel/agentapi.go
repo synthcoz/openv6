@@ -14,7 +14,7 @@ import (
 	"openv6/internal/v6"
 )
 
-const onlineWindow = 30 // seconds without sync before a node is "offline"
+const onlineWindow = 45 // seconds without sync before a node is "offline"
 
 type liveState struct {
 	At      time.Time

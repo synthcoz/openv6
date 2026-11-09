@@ -5,7 +5,9 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -76,7 +78,19 @@ type Agent struct {
 	startedAt      time.Time
 	bindIf         int
 	testSem        chan struct{}
+
+	// apply only when the desired state changes (plus a periodic self-heal),
+	// so the 5 s heartbeat stays cheap and never stalls
+	lastHash  string
+	lastApply time.Time
+	netCache  proto.NetState
+	netAt     time.Time
+	netIface  string
 }
+
+// resyncEvery re-applies the configuration even when nothing changed, to
+// repair addresses or listeners the OS dropped (network change, sleep).
+const resyncEvery = 60 * time.Second
 
 func New(cfg Config) *Agent {
 	_ = os.MkdirAll(cfg.DataDir, 0o700)
@@ -126,7 +140,7 @@ func (a *Agent) Run(ctx context.Context) {
 				log.Printf("agent: panel reachable again")
 			}
 			failures = 0
-			a.apply(resp)
+			a.maybeApply(resp)
 			a.mu.Lock()
 			restart := a.restartPending && len(a.results) == 0
 			a.mu.Unlock()
@@ -155,7 +169,7 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	a.mu.Lock()
 	cfgIface := a.iface
 	a.mu.Unlock()
-	st := a.net.Detect(cfgIface)
+	st := a.detectCached(cfgIface)
 	st.LANv4 = lanIPv4()
 	st.PublicV4 = a.publicV4()
 	st.TailscaleIP = tailscaleIP()
@@ -201,7 +215,9 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	}
 	var out proto.SyncResponse
 	if a.cfg.Direct != nil {
-		resp, err := a.cfg.Direct(ctx, &req)
+		dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		resp, err := a.cfg.Direct(dctx, &req)
 		if err != nil {
 			return nil, err
 		}
@@ -386,14 +402,63 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	a.errors = errStrs
 	a.specs = specs
 	a.bindIf = bindIf
-	for _, c := range r.Commands {
+	a.netCache, a.netAt, a.netIface = st, time.Now(), r.Iface
+	a.mu.Unlock()
+	a.runCommands(r.Commands)
+}
+
+// maybeApply applies the desired state when it changed, when a re-apply was
+// requested, or every resyncEvery; otherwise it only starts new commands.
+func (a *Agent) maybeApply(r *proto.SyncResponse) {
+	cp := *r
+	cp.Commands, cp.Interval = nil, 0
+	b, _ := json.Marshal(cp)
+	sum := sha256.Sum256(b)
+	h := hex.EncodeToString(sum[:])
+	a.mu.Lock()
+	force := a.reapply
+	a.mu.Unlock()
+	if !force && h == a.lastHash && time.Since(a.lastApply) < resyncEvery {
+		a.mu.Lock()
+		a.iface = r.Iface
+		a.mu.Unlock()
+		a.runCommands(r.Commands)
+		return
+	}
+	start := time.Now()
+	a.apply(r)
+	a.lastHash, a.lastApply = h, time.Now()
+	if d := time.Since(start); d > 10*time.Second {
+		log.Printf("agent: applying the configuration took %s", d.Round(time.Second))
+	}
+}
+
+func (a *Agent) runCommands(cmds []proto.Command) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, c := range cmds {
 		if a.running[c.ID] {
 			continue
 		}
 		a.running[c.ID] = true
 		go a.runCommand(c)
 	}
+}
+
+// detectCached returns the network state, re-detecting at most every 15 s
+// (detection runs system tools on Windows and macOS).
+func (a *Agent) detectCached(iface string) proto.NetState {
+	a.mu.Lock()
+	st, at, same := a.netCache, a.netAt, a.netIface == iface
 	a.mu.Unlock()
+	if same && !at.IsZero() && time.Since(at) < 15*time.Second {
+		return st
+	}
+	st = a.net.Detect(iface)
+	a.mu.Lock()
+	a.netCache, a.netAt, a.netIface = st, time.Now(), iface
+	a.mu.Unlock()
+	return st
 }
 
 func (a *Agent) runCommand(c proto.Command) {
@@ -443,6 +508,23 @@ func (a *Agent) runCommand(c proto.Command) {
 		a.mu.Lock()
 		a.restartPending = true
 		a.mu.Unlock()
+	case "fix":
+		out, err := a.net.Fix(c.Fix)
+		if err != nil {
+			res.Output = err.Error()
+		} else {
+			res.OK, res.Output = true, out
+			if c.Fix == "kernel_tuning" {
+				a.mu.Lock()
+				a.tuneFailed = nil
+				a.mu.Unlock()
+			}
+			a.mu.Lock()
+			a.reapply = true
+			a.netAt = time.Time{}
+			a.mu.Unlock()
+		}
+		log.Printf("agent: fix %s: ok=%v %s", c.Fix, res.OK, res.Output)
 	case "reapply":
 		res.OK, res.Output = true, "network configuration will be re-applied"
 		a.mu.Lock()

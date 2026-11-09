@@ -447,3 +447,15 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 // SocketBypass reports whether proxies must bind sockets to the physical
 // interface themselves (false on Linux: policy routing does it).
 const SocketBypass = false
+
+// Fix repairs a failing system check (id as in SystemChecks).
+func (m *Manager) Fix(id string) (string, error) {
+	switch id {
+	case "kernel_tuning":
+		if failed := TuneKernel(); len(failed) > 0 {
+			return "", fmt.Errorf("could not set %s", strings.Join(failed, ", "))
+		}
+		return "kernel limits raised", nil
+	}
+	return "", fmt.Errorf("no automatic fix for %q", id)
+}

@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	a("POST /api/nodes/{id}/update", s.handleUpdateNodes)
 	a("POST /api/nodes/{id}/restart", s.handleNodeRestart)
 	a("POST /api/nodes/{id}/reapply", s.handleNodeReapply)
+	a("POST /api/nodes/{id}/fix", s.handleNodeFix)
 	a("POST /api/nodes/{id}/pause", s.handleNodePause)
 	a("GET /api/backup", s.handleBackup)
 	a("POST /api/restore", s.handleRestore)

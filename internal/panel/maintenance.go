@@ -324,3 +324,45 @@ func (s *Server) handleNodeReapply(w http.ResponseWriter, r *http.Request) {
 	s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: network configuration re-applied", n.Name))
 	writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
 }
+
+// handleNodeFix runs one repair for a node: panel-side settings or a fix
+// command executed by the node's agent.
+func (s *Server) handleNodeFix(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	var b struct {
+		Fix string `json:"fix"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	switch b.Fix {
+	case "bypass_on": // VPN captures proxy traffic: route it around the VPN
+		n.Bypass = true
+		if err := s.Store.UpdateNode(n); err != nil {
+			logErr(w, err)
+			return
+		}
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: VPN bypass turned on (fix)", n.Name))
+		writeJSON(w, 200, map[string]any{"ok": true})
+	case "iface_auto": // configured interface vanished: follow the default one
+		n.Iface = ""
+		if err := s.Store.UpdateNode(n); err != nil {
+			logErr(w, err)
+			return
+		}
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+	case "reapply":
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: network configuration re-applied (fix)", n.Name))
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+	case "firewall", "network_private", "kernel_tuning":
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: automatic fix %s", n.Name, b.Fix))
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "fix", Fix: b.Fix}))
+	default:
+		fail(w, 400, "unknown fix")
+	}
+}

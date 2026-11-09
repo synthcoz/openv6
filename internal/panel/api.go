@@ -885,8 +885,29 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 		pm[p.ID] = p
 	}
 	var relayUsed map[int]bool
+	usedBy := map[int64]map[int]bool{}
 	for _, p := range ps {
 		switch b.Action {
+		case "fix_port": // the port is taken by another program: move to a free one
+			used := usedBy[p.NodeID]
+			if used == nil {
+				var err error
+				if used, err = s.usedPorts(p.NodeID, 0); err != nil {
+					logErr(w, err)
+					return
+				}
+				usedBy[p.NodeID] = used
+			}
+			np := p.Port + 1
+			for used[np] || s.reservedPort(np) {
+				np++
+				if np > 65535 {
+					fail(w, 400, "no free ports left")
+					return
+				}
+			}
+			used[np] = true
+			p.Port = np
 		case "enable":
 			p.Enabled = true
 		case "disable":

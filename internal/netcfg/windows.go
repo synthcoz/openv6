@@ -140,6 +140,7 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 			}
 		}
 		idx := idxOf(d.Iface)
+		added := 0
 		for ip := range d.Addrs {
 			s := ip.String()
 			if _, ok := m.st.Addrs[s]; ok && (present[ip] || m.DryRun) {
@@ -154,9 +155,10 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 				continue
 			}
 			m.st.Addrs[s] = d.Iface
+			added++
 		}
 		// new addresses run duplicate address detection (~1s) before use
-		if len(addrErrs) < len(d.Addrs) {
+		if added > 0 {
 			time.Sleep(1200 * time.Millisecond)
 		}
 	}
@@ -211,19 +213,24 @@ var (
 
 // networkCategories returns the categories of connected networks
 // (Public/Private/DomainAuthenticated), cached for a minute.
+// PowerShell takes seconds to start, so it is refreshed in the background
+// and callers never wait for it.
 func networkCategories() []string {
 	profMu.Lock()
 	defer profMu.Unlock()
-	if time.Since(profAt) < time.Minute {
-		return profCache
+	if time.Since(profAt) >= time.Minute {
+		profAt = time.Now()
+		go func() {
+			out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+				"(Get-NetConnectionProfile | Where-Object { $_.IPv6Connectivity -ne 'Disconnected' -or $_.IPv4Connectivity -ne 'Disconnected' }).NetworkCategory")).Output()
+			if err != nil {
+				return
+			}
+			profMu.Lock()
+			profCache = strings.Fields(string(out))
+			profMu.Unlock()
+		}()
 	}
-	profAt = time.Now()
-	out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		"(Get-NetConnectionProfile | Where-Object { $_.IPv6Connectivity -ne 'Disconnected' -or $_.IPv4Connectivity -ne 'Disconnected' }).NetworkCategory")).Output()
-	if err != nil {
-		return profCache
-	}
-	profCache = strings.Fields(string(out))
 	return profCache
 }
 
@@ -243,4 +250,34 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 	}
 	c = append(c, fw)
 	return c
+}
+
+// Fix repairs a failing system check (id as in SystemChecks).
+func (m *Manager) Fix(id string) (string, error) {
+	switch id {
+	case "firewall":
+		exe, err := os.Executable()
+		if err != nil {
+			return "", err
+		}
+		_ = runNetsh("advfirewall", "firewall", "delete", "rule", "name=openv6")
+		err = runNetsh("advfirewall", "firewall", "add", "rule", "name=openv6", "dir=in", "action=allow",
+			"program="+exe, "enable=yes", "profile=private,domain")
+		fwErr = err
+		if err != nil {
+			return "", err
+		}
+		return "firewall rule re-created", nil
+	case "network_private":
+		out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+			"Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' } | Set-NetConnectionProfile -NetworkCategory Private")).CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+		}
+		profMu.Lock()
+		profAt = time.Time{}
+		profMu.Unlock()
+		return "network set to Private", nil
+	}
+	return "", fmt.Errorf("no automatic fix for %q", id)
 }
