@@ -308,7 +308,11 @@ func listenWithFallback(addr string, explicit bool) (net.Listener, int, error) {
 	for attempt := 0; attempt < 30; attempt++ {
 		ln, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 		if err == nil {
-			return ln, port, nil
+			if loopbackReachesUs(ln, port) {
+				return ln, port, nil
+			}
+			ln.Close()
+			err = fmt.Errorf("127.0.0.1:%d is answered by another program", port)
 		}
 		lastErr = err
 		if explicit || attempt >= 19 {
@@ -320,4 +324,34 @@ func listenWithFallback(addr string, explicit bool) (net.Listener, int, error) {
 		port++
 	}
 	return nil, 0, fmt.Errorf("cannot open the dashboard port: %w", lastErr)
+}
+
+// loopbackReachesUs checks that 127.0.0.1:port really arrives at our
+// listener. On Windows another program bound to 127.0.0.1:port takes those
+// connections even though our wildcard bind succeeded, and the tray (which
+// uses 127.0.0.1) would talk to the wrong program.
+func loopbackReachesUs(ln net.Listener, port int) bool {
+	tl, ok := ln.(*net.TCPListener)
+	if !ok {
+		return true
+	}
+	c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+	if err != nil {
+		return false
+	}
+	defer c.Close()
+	local := c.LocalAddr().String()
+	_ = tl.SetDeadline(time.Now().Add(time.Second))
+	defer tl.SetDeadline(time.Time{})
+	for {
+		in, err := tl.Accept()
+		if err != nil {
+			return false
+		}
+		from := in.RemoteAddr().String()
+		in.Close()
+		if from == local {
+			return true
+		}
+	}
 }
