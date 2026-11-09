@@ -30,6 +30,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { st.DB.Close() }) // Windows cannot delete an open file
 	srv := New(st, fstest.MapFS{"index.html": {Data: []byte("ok")}}, dir, 8080, "")
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -293,6 +294,7 @@ func TestScopeBypassDNS(t *testing.T) {
 func TestMigrationScopeForExistingProxies(t *testing.T) {
 	dir := t.TempDir()
 	st, _ := store.Open(filepath.Join(dir, "m.db"))
+	t.Cleanup(func() { st.DB.Close() })
 	n, _ := st.CreateNode("n", "", false)
 	pools, _ := st.ListPools(n.ID)
 	_ = st.CreateProxies([]*store.Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", Suffix: "0000000000abcdef", AuthUser: "u", AuthPass: "p", Enabled: true}})

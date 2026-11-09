@@ -9,19 +9,20 @@ import (
 
 // The interface-binding socket option must be accepted by the OS.
 func TestBindToInterfaceOption(t *testing.T) {
-	ifs, _ := net.Interfaces()
-	idx := 0
-	for _, it := range ifs {
-		if it.Flags&net.FlagUp != 0 && it.Flags&net.FlagLoopback == 0 {
-			idx = it.Index
-			break
-		}
-	}
+	// use the interface the OS routes Internet traffic through
+	idx := egressIndex("udp4", "8.8.8.8:53")
 	if idx == 0 {
-		t.Skip("no interface")
+		t.Skip("no IPv4 route")
 	}
 	for _, nw := range []string{"udp4", "udp6"} {
-		d := BindDialer(nil, idx)
+		i := idx
+		if nw == "udp6" {
+			if i = egressIndex("udp6", "[2001:4860:4860::8888]:53"); i == 0 {
+				t.Log("no IPv6 route on this machine, skipping udp6")
+				continue
+			}
+		}
+		d := BindDialer(nil, i)
 		addr := "8.8.8.8:53"
 		if nw == "udp6" {
 			addr = "[2001:4860:4860::8888]:53"
@@ -36,4 +37,23 @@ func TestBindToInterfaceOption(t *testing.T) {
 		}
 		c.Close()
 	}
+}
+
+func egressIndex(nw, addr string) int {
+	c, err := net.Dial(nw, addr)
+	if err != nil {
+		return 0
+	}
+	defer c.Close()
+	src := c.LocalAddr().(*net.UDPAddr).IP
+	ifs, _ := net.Interfaces()
+	for _, it := range ifs {
+		addrs, _ := it.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.Equal(src) {
+				return it.Index
+			}
+		}
+	}
+	return 0
 }
