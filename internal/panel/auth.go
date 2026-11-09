@@ -67,6 +67,10 @@ func (s *Server) auth(h http.HandlerFunc) http.Handler {
 				return
 			}
 		}
+		if u.Role == "customer" && !s.pro() {
+			fail(w, http.StatusPaymentRequired, "customer accounts need openv6 Pro; ask the administrator")
+			return
+		}
 		if u.Role == "customer" && !customerRoutes[r.Pattern] {
 			fail(w, http.StatusForbidden, "not available for customer accounts")
 			return
@@ -283,7 +287,6 @@ func (s *Server) tooManyFailures(ip string) bool {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
 	cut := time.Now().Add(-5 * time.Minute)
-	total := 0
 	for k, ts := range s.failures { // prune: the map never grows without bound
 		var keep []time.Time
 		for _, t := range ts {
@@ -296,9 +299,8 @@ func (s *Server) tooManyFailures(ip string) bool {
 			continue
 		}
 		s.failures[k] = keep
-		total += len(keep)
 	}
-	return len(s.failures[failKey(ip)]) >= 10 || total >= 200
+	return len(s.failures[failKey(ip)]) >= 10
 }
 
 func (s *Server) recordFailure(ip string) {

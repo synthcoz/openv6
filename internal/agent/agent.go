@@ -458,6 +458,13 @@ func (a *Agent) maybeApply(r *proto.SyncResponse) {
 	// index (changes when an adapter resets), the router, vanished addresses
 	st := a.detectCached(r.Iface)
 	local := fmt.Sprintf("%s|%d|%s|%d", st.PrimaryIface, netcfg.IfIndex(st.PrimaryIface), st.Gateway, a.net.MissingManaged())
+	seen := map[string]bool{}
+	for _, p := range r.Proxies { // cards used by single proxies (Wi-Fi re-plugged = new index)
+		if p.Iface != "" && !seen[p.Iface] {
+			seen[p.Iface] = true
+			local += fmt.Sprintf("|%s:%d", p.Iface, netcfg.IfIndex(p.Iface))
+		}
+	}
 	sum2 := sha256.Sum256([]byte(h + local))
 	h = hex.EncodeToString(sum2[:])
 	a.mu.Lock()
@@ -746,6 +753,34 @@ func selfUpdate(url, version string, insecure bool) error {
 	defer cancel()
 	tmp, err := update.Download(ctx, url, dst, insecure)
 	if err != nil {
+		return err
+	}
+	// the panel (or anyone on the path to it) must not be able to push an
+	// arbitrary binary: check it against the release's signed checksums
+	base := url
+	if i := strings.Index(base, "/download/"); i >= 0 {
+		base = base[:i]
+	}
+	read := func(name string) ([]byte, error) {
+		p, err := update.Download(ctx, base+"/download/"+name, dst, insecure)
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(p)
+		return os.ReadFile(p)
+	}
+	sums, err1 := read("SHA256SUMS")
+	sig, err2 := read("SHA256SUMS.sig")
+	if err1 != nil || err2 != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("panel has no signed checksums: update refused")
+	}
+	m, err := update.VerifySums(sums, sig, version)
+	if err == nil {
+		err = update.VerifyFile(tmp, m[update.AssetName(runtime.GOOS, runtime.GOARCH)])
+	}
+	if err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return update.Install(tmp, dst, version)

@@ -41,6 +41,7 @@ func (s *Server) RunBackground(ctx context.Context) {
 		}
 		s.watchNodes()
 		go s.checkLicense(ctx)
+		s.noticeFreeLimit()
 		s.scheduleHealthChecks()
 		s.autoBackup()
 		s.mon.mu.Lock()

@@ -26,19 +26,23 @@ var sensitiveSettings = map[string]bool{"telegram_token": true, "license": true}
 func loadKey(dbPath string) (cipher.AEAD, error) {
 	p := filepath.Join(filepath.Dir(dbPath), "master.key")
 	key, err := os.ReadFile(p)
+	if err == nil && len(key) != 32 {
+		// damaged (e.g. power cut while writing): keep it aside and start a new
+		// key; secrets it protected stay locked (fail closed) until reset
+		log.Printf("store: master.key is damaged; moved to master.key.bad, stored proxy passwords must be reset")
+		_ = os.Rename(p, p+".bad")
+		err = os.ErrNotExist
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		key = make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(p, key, 0o600); err != nil {
+		if err := writeFileSync(p, key); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, err
-	}
-	if len(key) != 32 {
-		return nil, errors.New("master.key is damaged (expected 32 bytes)")
 	}
 	blk, err := aes.NewCipher(key)
 	if err != nil {
@@ -48,7 +52,7 @@ func loadKey(dbPath string) (cipher.AEAD, error) {
 }
 
 func (s *Store) enc(v string) string {
-	if v == "" || s.aead == nil || strings.HasPrefix(v, encPrefix) {
+	if v == "" || s.aead == nil {
 		return v
 	}
 	nonce := make([]byte, s.aead.NonceSize())
@@ -63,16 +67,15 @@ func (s *Store) dec(v string) string {
 	}
 	raw, err := base64.StdEncoding.DecodeString(v[len(encPrefix):])
 	n := s.aead.NonceSize()
-	if err != nil || len(raw) < n {
-		log.Printf("store: cannot decode an encrypted value")
-		return ""
+	if err == nil && len(raw) >= n {
+		if out, err := s.aead.Open(nil, raw[:n], raw[n:], nil); err == nil {
+			return string(out)
+		}
 	}
-	out, err := s.aead.Open(nil, raw[:n], raw[n:], nil)
-	if err != nil {
-		log.Printf("store: cannot decrypt a value (master.key replaced?)")
-		return ""
-	}
-	return string(out)
+	// fail closed: never turn an unreadable password into "no password";
+	// a random one nobody knows keeps the proxy locked until it is reset
+	log.Printf("store: cannot decrypt a stored secret (master.key replaced or missing?); reset the proxy password")
+	return "locked-" + RandomToken(16)
 }
 
 // EncryptExisting encrypts plaintext secrets (older versions, restores).
@@ -96,8 +99,18 @@ func (s *Store) EncryptExisting() error {
 		}
 	}
 	rows.Close()
-	for _, r := range todo {
-		if _, err := s.DB.Exec(`UPDATE proxies SET auth_pass=? WHERE id=?`, s.enc(r.v), r.id); err != nil {
+	if len(todo) > 0 {
+		tx, err := s.DB.Begin()
+		if err != nil {
+			return err
+		}
+		for _, r := range todo {
+			if _, err := tx.Exec(`UPDATE proxies SET auth_pass=? WHERE id=?`, s.enc(r.v), r.id); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
 			return err
 		}
 	}
@@ -110,4 +123,25 @@ func (s *Store) EncryptExisting() error {
 		}
 	}
 	return nil
+}
+
+// writeFileSync writes atomically: temp file, fsync, rename.
+func writeFileSync(p string, b []byte) error {
+	tmp := p + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
 }

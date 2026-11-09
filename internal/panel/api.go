@@ -584,8 +584,12 @@ func (s *Server) checkIface(nodeID int64, poolID int64, iface string) error {
 		if pool == nil || pool.CIDR == "" {
 			return nil
 		}
+		pp, perr := netip.ParsePrefix(pool.CIDR)
 		for _, p := range it.Prefixes {
 			if p == pool.CIDR {
+				return nil
+			}
+			if cp, err := netip.ParsePrefix(p); err == nil && perr == nil && pp.Bits() <= cp.Bits() && pp.Contains(cp.Addr()) {
 				return nil
 			}
 		}

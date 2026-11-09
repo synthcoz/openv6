@@ -86,7 +86,7 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// only signed releases are installed (SHA256SUMS + ed25519 signature)
-	sums, err := rel.Checksums(ctx)
+	sums, rawSums, rawSig, err := rel.SignedSums(ctx)
 	if err != nil {
 		fail(w, 502, err.Error())
 		return
@@ -94,6 +94,8 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	// other architectures first (best effort), then our own binary
 	binDir := filepath.Join(s.DataDir, "bin")
 	_ = os.MkdirAll(binDir, 0o755)
+	_ = os.WriteFile(filepath.Join(binDir, "SHA256SUMS"), rawSums, 0o644)
+	_ = os.WriteFile(filepath.Join(binDir, "SHA256SUMS.sig"), rawSig, 0o644)
 	for _, pl := range update.Platforms {
 		if pl[0] == runtime.GOOS && pl[1] == runtime.GOARCH {
 			continue
@@ -161,6 +163,10 @@ func (s *Server) handleUpdateNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	only := pathID(r)
 	pu := s.panelURL(r)
+	if err := s.ensureSums(r.Context()); err != nil {
+		fail(w, 502, "cannot get the signed checksums of v"+proto.Version+" (needed by nodes to verify the update): "+err.Error())
+		return
+	}
 	var cmds []*commandState
 	for _, n := range nodes {
 		if n.IsLocal || (only > 0 && n.ID != only) {
@@ -388,4 +394,47 @@ func (s *Server) handleNodeFix(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail(w, 400, "unknown fix")
 	}
+}
+
+// ensureSums makes sure bin/SHA256SUMS(.sig) are the signed checksums of
+// this panel's own version, fetching them from the release when needed.
+func (s *Server) ensureSums(ctx context.Context) error {
+	binDir := filepath.Join(s.DataDir, "bin")
+	sums, err1 := os.ReadFile(filepath.Join(binDir, "SHA256SUMS"))
+	sig, err2 := os.ReadFile(filepath.Join(binDir, "SHA256SUMS.sig"))
+	if err1 == nil && err2 == nil {
+		if _, err := update.VerifySums(sums, sig, proto.Version); err == nil {
+			return nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	rel, err := update.ByTag(ctx, s.updateRepo(), "v"+proto.Version)
+	if err != nil {
+		return err
+	}
+	_, rawSums, rawSig, err := rel.SignedSums(ctx)
+	if err != nil {
+		return err
+	}
+	_ = os.MkdirAll(binDir, 0o755)
+	if err := os.WriteFile(filepath.Join(binDir, "SHA256SUMS"), rawSums, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(binDir, "SHA256SUMS.sig"), rawSig, 0o644)
+}
+
+// handleSums serves the signed checksums to nodes (public, like /download).
+func (s *Server) handleSums(w http.ResponseWriter, r *http.Request) {
+	name := "SHA256SUMS"
+	if strings.HasSuffix(r.URL.Path, ".sig") {
+		name = "SHA256SUMS.sig"
+	}
+	p := filepath.Join(s.DataDir, "bin", name)
+	if _, err := os.Stat(p); err != nil {
+		http.Error(w, "no signed checksums on this panel", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	http.ServeFile(w, r, p)
 }

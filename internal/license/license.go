@@ -55,14 +55,19 @@ type State struct {
 	Error        string `json:"error,omitempty"`
 }
 
-// Pro reports whether Pro features are unlocked right now.
+// Pro reports whether Pro features are unlocked right now. A last check in
+// the future (clock moved back) does not extend the grace period.
 func (s State) Pro(now time.Time) bool {
-	return s.Status == "active" && s.Key != "" && now.Sub(time.Unix(s.ValidatedAt, 0)) < Grace
+	age := now.Sub(time.Unix(s.ValidatedAt, 0))
+	return s.Status == "active" && s.Key != "" && age < Grace && age > -24*time.Hour
 }
 
 // ErrRejected means Polar answered and the key is not usable (wrong key,
 // revoked, activation limit reached, another product's key).
-type ErrRejected struct{ Msg string }
+type ErrRejected struct {
+	Msg    string
+	Status int
+}
 
 func (e ErrRejected) Error() string { return e.Msg }
 
@@ -74,6 +79,9 @@ type activationResp struct {
 }
 
 type keyPayload struct {
+	Activation *struct {
+		Meta map[string]any `json:"meta"`
+	} `json:"activation"`
 	BenefitID  string `json:"benefit_id"`
 	DisplayKey string `json:"display_key"`
 	Status     string `json:"status"`
@@ -104,9 +112,13 @@ func post(ctx context.Context, path string, body any, out any) error {
 		return nil
 	case res.StatusCode == 403 || res.StatusCode == 404 || res.StatusCode == 422 || res.StatusCode == 400:
 		var e struct {
-			Detail any `json:"detail"`
+			Detail any    `json:"detail"`
+			Error  string `json:"error"`
 		}
-		_ = json.Unmarshal(data, &e)
+		if json.Unmarshal(data, &e) != nil || (e.Detail == nil && e.Error == "") {
+			// not Polar (captive portal, proxy, firewall): not a verdict on the key
+			return fmt.Errorf("license server unreachable (HTTP %d from something in between)", res.StatusCode)
+		}
 		msg := fmt.Sprint(e.Detail)
 		switch res.StatusCode {
 		case 404:
@@ -114,7 +126,7 @@ func post(ctx context.Context, path string, body any, out any) error {
 		case 403:
 			msg = "license key cannot be activated: " + msg + " (activation limit reached? deactivate it on another machine first)"
 		}
-		return ErrRejected{Msg: msg}
+		return ErrRejected{Msg: msg, Status: res.StatusCode}
 	default:
 		return fmt.Errorf("license server: HTTP %d", res.StatusCode)
 	}
@@ -156,8 +168,10 @@ func Activate(ctx context.Context, key, label, machineID string) (State, error) 
 }
 
 // Validate re-checks an activated key online and returns the new state.
-// A network error keeps the previous result (grace period).
-func Validate(ctx context.Context, st State) State {
+// A network error keeps the previous result (grace period); only a
+// definite "not found / not allowed" from Polar revokes it. machine must
+// match the machine the key was activated on.
+func Validate(ctx context.Context, st State, machine string) State {
 	if st.Key == "" {
 		return State{Status: "free"}
 	}
@@ -168,8 +182,11 @@ func Validate(ctx context.Context, st State) State {
 	}, &k)
 	var rej ErrRejected
 	switch {
-	case errors.As(err, &rej):
+	case errors.As(err, &rej) && (rej.Status == 403 || rej.Status == 404):
 		st.Status, st.Error = "invalid", rej.Msg
+		return st
+	case errors.As(err, &rej):
+		st.Error = "license server answered unexpectedly: " + rej.Msg
 		return st
 	case err != nil:
 		st.Error = "could not reach the license server: " + err.Error()
@@ -179,6 +196,12 @@ func Validate(ctx context.Context, st State) State {
 	if err != nil {
 		st.Status, st.Error = "invalid", err.Error()
 		return st
+	}
+	if k.Activation != nil && machine != "" {
+		if m, _ := k.Activation.Meta["machine"].(string); m != "" && m != machine {
+			st.Status, st.Error = "invalid", "this license was activated on another machine; activate it again here"
+			return st
+		}
 	}
 	st.Status, st.Machines, st.ValidatedAt, st.Error = "active", n, time.Now().Unix(), ""
 	if k.DisplayKey != "" {

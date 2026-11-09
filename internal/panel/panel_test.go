@@ -502,6 +502,10 @@ func TestLicenseFreeTierAndActivation(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "act-1", "license_key": lk})
 		case "/v1/customer-portal/license-keys/validate":
 			w.WriteHeader(validateStatus)
+			if validateStatus != 200 {
+				fmt.Fprint(w, `{"error":"ResourceNotFound","detail":"License key not found"}`)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(lk)
 		case "/v1/customer-portal/license-keys/deactivate":
 			w.WriteHeader(204)

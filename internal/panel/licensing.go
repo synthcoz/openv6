@@ -2,11 +2,15 @@ package panel
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,7 +41,14 @@ func (s *Server) pro() bool {
 	return s.licState().Pro(time.Now())
 }
 
+// machineID identifies this computer for license activations. It comes
+// from the operating system (so copying the data folder to another machine
+// does not copy the activation), hashed so the raw id never leaves.
 func (s *Server) machineID() string {
+	if raw := license.OSMachineID(); raw != "" {
+		h := sha256.Sum256([]byte("openv6|" + raw))
+		return hex.EncodeToString(h[:12])
+	}
 	id := s.Store.GetSetting("machine_id", "")
 	if id == "" {
 		id = store.RandomToken(12)
@@ -71,9 +82,14 @@ func (s *Server) freeAllowed() (nodeID int64, ids map[int64]bool) {
 		nodeID = nodes[0].ID
 	}
 	ps, _ := s.Store.ListProxies(store.ProxyFilter{NodeID: nodeID})
+	sort.Slice(ps, func(i, j int) bool { return ps[i].ID < ps[j].ID }) // oldest first, stable across edits
+	now := time.Now().Unix()
 	for _, p := range ps {
 		if len(ids) >= license.FreeProxies {
 			break
+		}
+		if !p.Enabled || (p.ExpiresAt > 0 && p.ExpiresAt < now) {
+			continue // a disabled proxy does not use a free slot
 		}
 		ids[p.ID] = true
 	}
@@ -108,6 +124,8 @@ func (s *Server) handleActivateLicense(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	s.licMu.Lock()
+	defer s.licMu.Unlock()
 	old := s.licState()
 	host, _ := os.Hostname()
 	label := strings.TrimSpace(host + " (" + runtime.GOOS + ")")
@@ -136,6 +154,8 @@ func (s *Server) handleDeactivateLicense(w http.ResponseWriter, r *http.Request)
 		fail(w, 403, "deactivate the license from the dashboard")
 		return
 	}
+	s.licMu.Lock()
+	defer s.licMu.Unlock()
 	st := s.licState()
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
@@ -154,23 +174,47 @@ func (s *Server) handleDeactivateLicense(w http.ResponseWriter, r *http.Request)
 // checkLicense re-validates the key once a day (hourly while Polar cannot be
 // reached); called from the background loop.
 func (s *Server) checkLicense(ctx context.Context) {
+	if !s.licMu.TryLock() { // a check is already running
+		return
+	}
+	defer s.licMu.Unlock()
 	st := s.licState()
 	if st.Key == "" {
 		return
 	}
 	every := license.Recheck
-	if st.Error != "" && st.Status == "active" {
+	if st.Error != "" { // unclear answer or no network: retry hourly
 		every = time.Hour
 	}
-	if time.Since(time.Unix(st.CheckedAt, 0)) < every {
+	since := time.Since(time.Unix(st.CheckedAt, 0))
+	if since >= 0 && since < every { // a check "in the future" (clock moved back) re-checks now
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	was := st.Pro(time.Now())
-	st = license.Validate(ctx, st)
+	key, act := st.Key, st.ActivationID
+	st = license.Validate(ctx, st, s.machineID())
+	if cur := s.licState(); cur.Key != key || cur.ActivationID != act {
+		return // activated or deactivated meanwhile: keep the newer state
+	}
 	s.saveLic(st)
 	if was && !st.Pro(time.Now()) {
 		s.Store.AddEvent(0, "warn", "openv6 Pro license is no longer valid: "+st.Error)
 	}
+}
+
+// noticeFreeLimit records once that proxies beyond the Free limit are
+// paused (e.g. after upgrading an install that has more than 3 proxies).
+func (s *Server) noticeFreeLimit() {
+	if s.pro() {
+		_ = s.Store.SetSetting("free_limit_noticed", "")
+		return
+	}
+	all, _ := s.Store.ListProxies(store.ProxyFilter{})
+	if len(all) <= license.FreeProxies || s.Store.GetSetting("free_limit_noticed", "") == "1" {
+		return
+	}
+	_ = s.Store.SetSetting("free_limit_noticed", "1")
+	s.Store.AddEvent(0, "warn", fmt.Sprintf("Free plan: only %d of %d proxies are running. Activate openv6 Pro in Settings → License to run all of them.", license.FreeProxies, len(all)))
 }

@@ -12,6 +12,18 @@
 - **Mã hoá dữ liệu nhạy cảm:** mật khẩu proxy, token Telegram và license được mã hoá trong file dữ liệu. File sao lưu vẫn khôi phục được trên máy khác.
 - **Bản cập nhật có chữ ký số:** openv6 chỉ tự cập nhật lên bản có chữ ký hợp lệ.
 - **Chuẩn bị ký số bộ cài Windows:** khi có chứng chỉ, bộ cài hết cảnh báo "Unknown publisher" (xem docs/RELEASE.md).
+- **Rà soát cuối (bảo mật và ổn định):**
+  - Bản cập nhật cho node cũng phải khớp chữ ký số. Chữ ký gắn với đúng phiên bản, nên không thể dùng chữ ký của bản cũ để hạ cấp.
+  - License gắn với máy (mã máy lấy từ hệ điều hành): chép thư mục dữ liệu sang máy khác không mang theo Pro.
+  - Chỉnh lùi đồng hồ không kéo dài được 30 ngày ân hạn.
+  - Mạng chặn (captive portal, tường lửa) trả lỗi 403 không làm mất Pro.
+  - Mất hoặc hỏng `master.key`: dịch vụ vẫn chạy, mật khẩu proxy bị khoá (phải đặt lại) chứ không thành "không mật khẩu".
+  - Tài khoản khách cần bản Pro, và chỉ xem được kết quả kiểm tra của proxy được giao.
+  - Bỏ giới hạn đăng nhập sai chung cho mọi người, vì kẻ xấu có thể dùng nó khoá cả admin.
+  - Bản Free chạy 3 proxy cũ nhất đang bật, cố định khi đổi port. Khi vượt giới hạn có ghi một sự kiện báo rõ.
+  - Proxy chọn card riêng không bị đẩy sang card khác khi license hết hạn.
+  - Cắm lại Wi-Fi/USB làm card nhận số hiệu mới: openv6 tự áp dụng lại ngay.
+  - Mã hoá dữ liệu cũ trong một lần ghi, nên lần khởi động đầu sau khi nâng cấp không bị chậm.
 
 ## v0.6.1
 

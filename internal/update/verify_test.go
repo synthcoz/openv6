@@ -18,11 +18,14 @@ func TestVerifySums(t *testing.T) {
 	defer func() { PublicKey = old }()
 	bin := []byte("openv6 binary")
 	h := sha256.Sum256(bin)
-	sums := []byte(hex.EncodeToString(h[:]) + "  openv6-linux-amd64\n")
+	sums := []byte("# openv6 v1.2.3\n" + hex.EncodeToString(h[:]) + "  openv6-linux-amd64\n")
 	sig := []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, sums)))
-	m, err := VerifySums(sums, sig)
+	m, err := VerifySums(sums, sig, "v1.2.3")
 	if err != nil || m["openv6-linux-amd64"] == "" {
 		t.Fatalf("valid signature rejected: %v", err)
+	}
+	if _, err := VerifySums(sums, sig, "v1.3.0"); err == nil {
+		t.Fatal("old signed release accepted as another version (rollback)")
 	}
 	p := filepath.Join(t.TempDir(), "b")
 	_ = os.WriteFile(p, bin, 0o644)
@@ -35,7 +38,7 @@ func TestVerifySums(t *testing.T) {
 	}
 	tampered := append([]byte{}, sums...)
 	tampered[0] ^= 1
-	if _, err := VerifySums(tampered, sig); err == nil {
+	if _, err := VerifySums(tampered, sig, "v1.2.3"); err == nil {
 		t.Fatal("tampered sums accepted")
 	}
 }

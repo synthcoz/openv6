@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -125,5 +126,28 @@ func TestSecretsEncryptedAtRest(t *testing.T) {
 	_ = st2.DB.QueryRow(`SELECT auth_pass FROM proxies`).Scan(&raw)
 	if ps2[0].AuthPass != "s3cret-pass" || raw == "s3cret-pass" {
 		t.Fatalf("restore: %q raw %q", ps2[0].AuthPass, raw)
+	}
+}
+
+// Losing master.key must lock passwords, never turn them into "no password".
+func TestLostKeyFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	st, _ := Open(filepath.Join(dir, "x.db"))
+	n, _ := st.CreateNode("n", "", true)
+	_ = st.CreatePool(&Pool{NodeID: n.ID, Name: "a", CIDR: "2001:db8::/64", Mode: "addr"})
+	pools, _ := st.ListPools(n.ID)
+	_ = st.CreateProxies([]*Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", AuthUser: "u", AuthPass: "pw", Suffix: "::1", Enabled: true}})
+	st.DB.Close()
+	if err := os.WriteFile(filepath.Join(dir, "master.key"), []byte("short"), 0o600); err != nil { // damaged key
+		t.Fatal(err)
+	}
+	st, err := Open(filepath.Join(dir, "x.db"))
+	if err != nil {
+		t.Fatalf("service must still start: %v", err)
+	}
+	defer st.DB.Close()
+	ps, _ := st.ListProxies(ProxyFilter{})
+	if ps[0].AuthPass == "" || ps[0].AuthPass == "pw" {
+		t.Fatalf("password not locked: %q", ps[0].AuthPass)
 	}
 }

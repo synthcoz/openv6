@@ -28,7 +28,11 @@ type Release struct {
 
 // Latest returns the newest release of repo ("owner/name").
 func Latest(ctx context.Context, repo string) (*Release, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/"+repo+"/releases/latest", nil)
+	return fetchRelease(ctx, "https://api.github.com/repos/"+repo+"/releases/latest")
+}
+
+func fetchRelease(ctx context.Context, url string) (*Release, error) {
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	res, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {

@@ -24,6 +24,7 @@ type Server struct {
 	SelfExe    string // path of the running binary, served to agents for install
 
 	cmdMu    sync.Mutex
+	licMu    sync.Mutex
 	pending  map[int64][]pendingCmd   // node id -> queued commands
 	results  map[string]*commandState // command id -> state
 	loginMu  sync.Mutex
@@ -62,6 +63,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("POST /api/agent/sync", s.handleAgentSync)
 	mux.HandleFunc("GET /install.sh", s.handleInstallScript)
+	mux.HandleFunc("GET /download/SHA256SUMS", s.handleSums)
+	mux.HandleFunc("GET /download/SHA256SUMS.sig", s.handleSums)
 	mux.HandleFunc("GET /download/{arch}", s.handleDownload)
 	mux.HandleFunc("GET /download/{os}/{arch}", s.handleDownload)
 	mux.HandleFunc("GET /install.ps1", s.handleInstallPS1)

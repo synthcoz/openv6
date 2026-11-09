@@ -27,13 +27,20 @@ var ErrUnsigned = errors.New("release is not signed by openv6; update refused (d
 // Checksums downloads and verifies SHA256SUMS(.sig) of a release and
 // returns asset name -> sha256 hex.
 func (r *Release) Checksums(ctx context.Context) (map[string]string, error) {
+	m, _, _, err := r.SignedSums(ctx)
+	return m, err
+}
+
+// SignedSums is Checksums plus the raw signed files (kept by the panel so
+// nodes can verify the binaries it hands out).
+func (r *Release) SignedSums(ctx context.Context) (map[string]string, []byte, []byte, error) {
 	su, sigu := r.Assets["SHA256SUMS"], r.Assets["SHA256SUMS.sig"]
 	if su == "" || sigu == "" {
-		return nil, ErrUnsigned
+		return nil, nil, nil, ErrUnsigned
 	}
 	dir, err := os.MkdirTemp("", "openv6-sums-*")
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer os.RemoveAll(dir)
 	read := func(u string) ([]byte, error) {
@@ -45,17 +52,20 @@ func (r *Release) Checksums(ctx context.Context) (map[string]string, error) {
 	}
 	sums, err := read(su)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	sig, err := read(sigu)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return VerifySums(sums, sig)
+	m, err := VerifySums(sums, sig, r.Tag)
+	return m, sums, sig, err
 }
 
-// VerifySums checks the signature and parses "hex  name" lines.
-func VerifySums(sums, sig []byte) (map[string]string, error) {
+// VerifySums checks the signature and parses "hex  name" lines. The signed
+// text starts with "# openv6 <tag>": it must name the expected release, so
+// an older signed release cannot be passed off as a newer one.
+func VerifySums(sums, sig []byte, tag string) (map[string]string, error) {
 	pub, err := base64.StdEncoding.DecodeString(PublicKey)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return nil, ErrUnsigned
@@ -66,14 +76,24 @@ func VerifySums(sums, sig []byte) (map[string]string, error) {
 	}
 	out := map[string]string{}
 	sc := bufio.NewScanner(bytes.NewReader(sums))
+	signedTag := ""
 	for sc.Scan() {
+		if t, ok := strings.CutPrefix(sc.Text(), "# openv6 "); ok {
+			signedTag = strings.TrimSpace(t)
+			continue
+		}
 		f := strings.Fields(sc.Text())
 		if len(f) == 2 && len(f[0]) == 64 {
 			out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
 		}
 	}
+	if norm(signedTag) == "" || norm(signedTag) != norm(tag) {
+		return nil, fmt.Errorf("signed checksums are for %q, not %q; update refused", signedTag, tag)
+	}
 	return out, nil
 }
+
+func norm(t string) string { return strings.TrimPrefix(strings.TrimSpace(t), "v") }
 
 // VerifyFile compares a downloaded file with its signed checksum.
 func VerifyFile(path, want string) error {
@@ -93,4 +113,9 @@ func VerifyFile(path, want string) error {
 		return fmt.Errorf("checksum mismatch for %s: the download was altered or corrupted", filepath.Base(path))
 	}
 	return nil
+}
+
+// ByTag fetches a specific release (the panel's own version).
+func ByTag(ctx context.Context, repo, tag string) (*Release, error) {
+	return fetchRelease(ctx, "https://api.github.com/repos/"+repo+"/releases/tags/"+tag)
 }

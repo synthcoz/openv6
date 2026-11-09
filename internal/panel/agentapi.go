@@ -73,6 +73,12 @@ func (s *Server) handleGetCommand(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "unknown command")
 		return
 	}
+	if isCustomer(r) {
+		if p, err := s.Store.GetProxy(cp.ProxyID); cp.ProxyID == 0 || err != nil || p.OwnerID != currentUser(r).ID {
+			fail(w, 404, "unknown command")
+			return
+		}
+	}
 	if !cp.Done && time.Since(cp.Created) > 60*time.Second {
 		cp.Done, cp.Output = true, "timeout: node did not answer"
 	}
@@ -300,9 +306,7 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
 			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope, MaxConns: p.MaxConns, RateKBps: p.RateKBps}
-		if pro {
-			spec.Iface = p.Iface
-		}
+		spec.Iface = p.Iface
 		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
 			spec.IP = ip.String()
 		}
