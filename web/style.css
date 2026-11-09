@@ -65,7 +65,8 @@ h3 { font-size: 14px; margin: 16px 0 8px; }
 button, .btn { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text);
   padding: 7px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 button:hover { border-color: var(--muted); }
-button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.primary, .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn { display: inline-flex; align-items: center; }
 button.danger { color: var(--err); }
 button.small, .btn.small { padding: 3px 8px; font-size: 12px; }
 button:disabled { opacity: .5; cursor: default; }

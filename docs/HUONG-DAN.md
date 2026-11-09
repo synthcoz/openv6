@@ -153,7 +153,20 @@ Mở port trên tường lửa của VPS (cả tường lửa trên trang quản
 
 ---
 
-## 5. Câu hỏi thường gặp và xử lý lỗi
+## 5. Cảnh báo Telegram và tự kiểm tra
+
+1. Trên Telegram, nhắn cho **@BotFather** lệnh `/newbot`, đặt tên rồi nhận **bot token**.
+2. Nhắn cho bot vừa tạo một tin bất kỳ. Sau đó nhắn **@userinfobot** để lấy **Chat ID** của bạn. Muốn nhận cảnh báo trong nhóm thì thêm bot vào nhóm và dùng ID của nhóm (bắt đầu bằng `-`).
+3. Trong panel, vào **Cài đặt → Cảnh báo Telegram**, dán token và Chat ID, bấm **Lưu**, rồi bấm **Gửi tin thử**.
+4. Mục **Vận hành → Tự kiểm tra proxy** đặt chu kỳ kiểm tra (mặc định 10 phút). Proxy lỗi 2 lần liên tiếp sẽ được báo, và báo lại khi nó hoạt động trở lại.
+
+## 6. Cập nhật, sao lưu, xem log
+
+- **Cập nhật:** vào **Cài đặt → Cập nhật**. Khi có bản mới, bấm **Cập nhật lên vX**: panel tự tải bản mới, khởi động lại (proxy trên máy đó ngắt vài giây), sau đó bấm **Cập nhật các node** để nâng cấp các máy khác.
+- **Sao lưu:** vào **Cài đặt → Sao lưu & khôi phục → Tải file sao lưu**. Panel còn tự sao lưu mỗi ngày vào `/var/lib/openv6/backups`. Chuyển sang máy mới: cài openv6 trên máy mới, rồi **Khôi phục từ file**.
+- **Log:** vào **Máy chủ (node) → Log** để xem nhật ký của panel hoặc của từng node, không cần gõ lệnh.
+
+## 7. Câu hỏi thường gặp và xử lý lỗi
 
 | Hiện tượng | Nguyên nhân và cách xử lý |
 |---|---|
@@ -168,7 +181,7 @@ Mở port trên tường lửa của VPS (cả tường lửa trên trang quản
 
 ---
 
-## 6. Lưu ý khi nuôi nhiều tài khoản
+## 8. Lưu ý khi nuôi nhiều tài khoản
 
 1. **Cùng /64 = dễ bị coi là một người.** Mạng nhà FPT thường chỉ cho một /64 trên LAN, nên mọi proxy chung một /64. Facebook, Google… có thể liên kết các tài khoản với nhau. Dashboard sẽ cảnh báo khi điều này xảy ra. Cách khắc phục là dùng VPS có /48 hoặc /56, hoặc router cấp prefix riêng (xem `docs/ROADMAP.md`, mục DHCPv6-PD).
 2. **Dự phòng IPv4 = mọi tài khoản chung một IPv4.** Chỉ bật cho proxy dùng việc khác, không bật cho proxy nuôi tài khoản.

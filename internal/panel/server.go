@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"openv6/internal/logbuf"
 	"openv6/internal/store"
 )
 
@@ -28,14 +29,20 @@ type Server struct {
 	loginMu  sync.Mutex
 	failures map[string][]time.Time // ip -> recent failed logins
 	stateMu  sync.RWMutex
-	live     map[int64]*liveState // node id -> last reported live data
+	live     map[int64]*liveState     // node id -> last reported live data
+	logs     map[int64]*logbuf.Buffer // node id -> recent agent log lines
+	mon      monitor
+
+	// PanelLogs holds this process's own log output (panel + local agent).
+	PanelLogs *logbuf.Buffer
 }
 
 func New(st *store.Store, web fs.FS, dataDir string, port int, exe string) *Server {
 	return &Server{
 		Store: st, WebFS: web, DataDir: dataDir, ListenPort: port, SelfExe: exe,
 		pending: map[int64][]pendingCmd{}, results: map[string]*commandState{},
-		failures: map[string][]time.Time{}, live: map[int64]*liveState{},
+		failures: map[string][]time.Time{}, live: map[int64]*liveState{}, logs: map[int64]*logbuf.Buffer{},
+		mon: monitor{nodeOnline: map[int64]bool{}},
 	}
 }
 
@@ -74,6 +81,16 @@ func (s *Server) Handler() http.Handler {
 	a("GET /api/settings", s.handleGetSettings)
 	a("PUT /api/settings", s.handlePutSettings)
 	a("POST /api/account/password", s.handleChangePassword)
+	a("POST /api/settings/telegram-test", s.handleTelegramTest)
+	a("GET /api/update", s.handleUpdateInfo)
+	a("POST /api/update/panel", s.handleUpdatePanel)
+	a("POST /api/update/nodes", s.handleUpdateNodes)
+	a("POST /api/nodes/{id}/update", s.handleUpdateNodes)
+	a("GET /api/backup", s.handleBackup)
+	a("POST /api/restore", s.handleRestore)
+	a("GET /api/nodes/{id}/logs", s.handleNodeLogs)
+	a("GET /api/proxies/{id}/checks", s.handleProxyChecks)
+	a("POST /api/checks/run", s.handleCheckNow)
 
 	// static UI
 	mux.Handle("GET /", http.FileServerFS(s.WebFS))

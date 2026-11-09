@@ -27,16 +27,18 @@ func pathID(r *http.Request) int64 {
 
 type nodeView struct {
 	*store.Node
-	Online   bool              `json:"online"`
-	Hostname string            `json:"hostname"`
-	OS       string            `json:"os"`
-	Version  string            `json:"agent_version"`
-	Net      proto.NetState    `json:"net"`
-	Errors   []string          `json:"errors"`
-	Proxies  int               `json:"proxies"`
-	Pools    []*store.Pool     `json:"pools"`
-	Entry    string            `json:"entry"` // effective entry host
-	Extra    map[string]string `json:"extra,omitempty"`
+	Online   bool                `json:"online"`
+	Hostname string              `json:"hostname"`
+	OS       string              `json:"os"`
+	Version  string              `json:"agent_version"`
+	Net      proto.NetState      `json:"net"`
+	Errors   []string            `json:"errors"`
+	Proxies  int                 `json:"proxies"`
+	Pools    []*store.Pool       `json:"pools"`
+	Entry    string              `json:"entry"` // effective entry host
+	Checks   []proto.SystemCheck `json:"checks"`
+	Outdated bool                `json:"outdated"`
+	Extra    map[string]string   `json:"extra,omitempty"`
 }
 
 func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
@@ -44,6 +46,11 @@ func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
 	var req proto.SyncRequest
 	_ = json.Unmarshal([]byte(n.StateJSON), &req)
 	v.Hostname, v.OS, v.Version, v.Net = req.Hostname, req.OS, req.AgentVersion, req.Net
+	v.Checks = req.Checks
+	if v.Checks == nil {
+		v.Checks = []proto.SystemCheck{}
+	}
+	v.Outdated = !n.IsLocal && req.AgentVersion != "" && req.AgentVersion != proto.Version
 	if req.Errors != nil {
 		v.Errors = req.Errors
 	}
@@ -213,7 +220,7 @@ func (s *Server) handleTestNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "node not found")
 		return
 	}
-	writeJSON(w, 200, s.queueCommand(n.ID, "test_v6", 0))
+	writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "test_v6"}))
 }
 
 func (s *Server) panelURL(r *http.Request) string {
@@ -459,6 +466,7 @@ type bulkReq struct {
 	Tag          string `json:"tag"`
 	Note         string `json:"note"`
 	ExpiresDays  int    `json:"expires_days"`
+	LabelPrefix  string `json:"label_prefix"` // "FB" -> "FB 01", "FB 02"…
 }
 
 func (s *Server) reservedPort(p int) bool {
@@ -547,6 +555,9 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if lp := strings.TrimSpace(b.LabelPrefix); lp != "" {
+			p.Label = fmt.Sprintf("%s %0*d", lp, len(strconv.Itoa(b.Count)), i+1)
+		}
 		switch b.Auth {
 		case "random":
 			p.AuthUser, p.AuthPass = "u"+randString(7), randString(12)
@@ -577,6 +588,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		IPv4Fallback *bool   `json:"ipv4_fallback"`
 		Enabled      *bool   `json:"enabled"`
 		Note         *string `json:"note"`
+		Label        *string `json:"label"`
 		Tag          *string `json:"tag"`
 		ExpiresAt    *int64  `json:"expires_at"`
 		IP           *string `json:"ip"` // set a specific address inside the pool
@@ -626,6 +638,9 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Note != nil {
 		p.Note = *b.Note
+	}
+	if b.Label != nil {
+		p.Label = strings.TrimSpace(*b.Label)
 	}
 	if b.Tag != nil {
 		p.Tag = strings.TrimSpace(*b.Tag)
@@ -698,7 +713,7 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 	case "test":
 		var cmds []*commandState
 		for _, p := range ps {
-			cmds = append(cmds, s.queueCommand(p.NodeID, "test_proxy", p.ID))
+			cmds = append(cmds, s.queueCommand(p.NodeID, proto.Command{Type: "test_proxy", ProxyID: p.ID}))
 		}
 		writeJSON(w, 200, map[string]any{"commands": cmds})
 		return
@@ -796,14 +811,15 @@ func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string,
 	switch format {
 	case "csv":
 		cw := csv.NewWriter(&sb)
-		_ = cw.Write([]string{"host", "port", "user", "pass", "protocol", "ipv6", "tag", "note"})
+		_ = cw.Write([]string{"name", "host", "port", "user", "pass", "protocol", "ipv6", "tag", "note"})
 		for _, v := range vs {
-			_ = cw.Write([]string{hostFor(v, hostOverride), strconv.Itoa(v.Port), v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+			_ = cw.Write([]string{v.Label, hostFor(v, hostOverride), strconv.Itoa(v.Port), v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
 		}
 		cw.Flush()
 		return sb.String(), nil
 	case "json":
 		type item struct {
+			Name     string `json:"name,omitempty"`
 			Host     string `json:"host"`
 			Port     int    `json:"port"`
 			User     string `json:"user,omitempty"`
@@ -815,7 +831,7 @@ func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string,
 		}
 		items := []item{}
 		for _, v := range vs {
-			items = append(items, item{hostFor(v, hostOverride), v.Port, v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+			items = append(items, item{v.Label, hostFor(v, hostOverride), v.Port, v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
 		}
 		bs, _ := json.MarshalIndent(items, "", "  ")
 		return string(bs), nil
@@ -845,6 +861,16 @@ func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string,
 				line += v.AuthUser + ":" + v.AuthPass + "@"
 			}
 			line += hp
+		case "scheme://host:port:user:pass":
+			line = scheme + "://" + hp
+			if auth {
+				line += ":" + v.AuthUser + ":" + v.AuthPass
+			}
+		case "host:port@user:pass":
+			line = hp
+			if auth {
+				line += "@" + v.AuthUser + ":" + v.AuthPass
+			}
 		default:
 			return "", errors.New("unknown format")
 		}
@@ -878,8 +904,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	status := map[string]int{}
 	var up, down, active int64
 	subnets := map[string]bool{}
+	failing := 0
 	for _, v := range vs {
 		status[v.Status]++
+		if v.Enabled && v.CheckOK == 0 && v.FailStreak >= 2 {
+			failing++
+		}
 		up += v.BytesUp
 		down += v.BytesDown
 		active += v.Active
@@ -891,7 +921,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"nodes": len(nodes), "nodes_online": online, "proxies": len(vs), "status": status,
 		"bytes_up": up, "bytes_down": down, "active": active, "subnets": len(subnets), "events": events,
-		"version": proto.Version,
+		"version": proto.Version, "failing": failing,
 	})
 }
 
@@ -904,12 +934,21 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, ev)
 }
 
+var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
+	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name", "update_repo"}
+
+var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
+	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
+	"lang": "vi", "update_repo": "synthcoz/openv6"}
+
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]string{
-		"panel_url":      s.Store.GetSetting("panel_url", ""),
-		"detected_url":   s.panelURL(r),
-		"default_scheme": s.Store.GetSetting("default_scheme", "http"),
-	})
+	out := map[string]any{"detected_url": s.panelURL(r)}
+	for _, k := range settingKeys {
+		out[k] = s.Store.GetSetting(k, settingDefaults[k])
+	}
+	// never send the bot token back to the browser
+	out["telegram_token_set"] = s.Store.GetSetting("telegram_token", "") != ""
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -918,10 +957,19 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
-	for _, k := range []string{"panel_url", "default_scheme"} {
+	if v, ok := b["check_interval_min"]; ok {
+		if n, err := strconv.Atoi(v); err != nil || n < 0 || n > 1440 {
+			fail(w, 400, "check interval must be 0..1440 minutes")
+			return
+		}
+	}
+	for _, k := range settingKeys {
 		if v, ok := b[k]; ok {
 			_ = s.Store.SetSetting(k, strings.TrimSpace(v))
 		}
+	}
+	if v, ok := b["telegram_token"]; ok && (strings.TrimSpace(v) != "" || b["telegram_token_clear"] == "1") {
+		_ = s.Store.SetSetting("telegram_token", strings.TrimSpace(v))
 	}
 	s.handleGetSettings(w, r)
 }

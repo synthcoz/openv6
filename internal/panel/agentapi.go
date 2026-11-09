@@ -35,16 +35,20 @@ type commandState struct {
 	Done    bool      `json:"done"`
 	OK      bool      `json:"ok"`
 	Output  string    `json:"output"`
+	IP      string    `json:"ip,omitempty"`
+	Latency int       `json:"latency,omitempty"`
+	Country string    `json:"country,omitempty"`
+	Org     string    `json:"org,omitempty"`
 	Created time.Time `json:"created"`
 }
 
-func (s *Server) queueCommand(nodeID int64, typ string, proxyID int64) *commandState {
+func (s *Server) queueCommand(nodeID int64, c proto.Command) *commandState {
 	s.cmdMu.Lock()
 	defer s.cmdMu.Unlock()
 	id := store.RandomToken(8)
-	c := proto.Command{ID: id, Type: typ, ProxyID: proxyID}
+	c.ID = id
 	s.pending[nodeID] = append(s.pending[nodeID], pendingCmd{Command: c, At: time.Now()})
-	st := &commandState{ID: id, NodeID: nodeID, Type: typ, ProxyID: proxyID, Created: time.Now()}
+	st := &commandState{ID: id, NodeID: nodeID, Type: c.Type, ProxyID: c.ProxyID, Created: time.Now()}
 	s.results[id] = st
 	// garbage-collect old results
 	for k, v := range s.results {
@@ -101,16 +105,25 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// command results
+	type checkDone struct {
+		proxyID int64
+		res     proto.CommandResult
+	}
+	var checks []checkDone
 	s.cmdMu.Lock()
 	for _, res := range req.Results {
 		if st, ok := s.results[res.ID]; ok && st.NodeID == node.ID {
 			st.Done, st.OK, st.Output = true, res.OK, res.Output
+			st.IP, st.Latency, st.Country, st.Org = res.IP, res.Latency, res.Country, res.Org
 			if st.Type == "test_proxy" && st.ProxyID > 0 {
-				prefix := "FAIL "
-				if res.OK {
-					prefix = "OK "
+				checks = append(checks, checkDone{st.ProxyID, res})
+			}
+			if st.Type == "update" {
+				lvl := "info"
+				if !res.OK {
+					lvl = "warn"
 				}
-				_ = s.Store.SetCheck(st.ProxyID, prefix+res.Output)
+				s.Store.AddEvent(node.ID, lvl, fmt.Sprintf("node %q update: %s", node.Name, res.Output))
 			}
 		}
 	}
@@ -123,9 +136,15 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.pending[node.ID] = keep
 	s.cmdMu.Unlock()
+	for _, c := range checks {
+		s.onCheckResult(node.ID, c.proxyID, c.res)
+	}
+	if len(req.Logs) > 0 {
+		s.nodeLog(node.ID).Append(req.Logs)
+	}
 
 	// persist node state (without stats)
-	req.Stats, req.Results = nil, nil
+	req.Stats, req.Results, req.Logs = nil, nil, nil
 	b, _ := json.Marshal(req)
 	_ = s.Store.TouchNode(node.ID, string(b))
 	s.stateMu.Lock()
@@ -146,6 +165,7 @@ func (s *Server) handleAgentSync(w http.ResponseWriter, r *http.Request) {
 			if p.Auto && p.CIDR != pfx {
 				if p.CIDR != "" {
 					s.Store.AddEvent(node.ID, "warn", fmt.Sprintf("node %q: IPv6 prefix changed %s -> %s, proxies re-addressed", node.Name, p.CIDR, pfx))
+					s.alert(AlertPrefix, s.msg("prefix_change", node.Name, p.CIDR, pfx))
 				}
 				_ = s.Store.SetPoolCIDR(p.ID, pfx)
 			}
@@ -193,7 +213,8 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 	}
 	pm := map[int64]*store.Pool{}
 	resp := &proto.SyncResponse{NodeID: node.ID, NodeName: node.Name, Iface: node.Iface, Interval: 5,
-		Pools: []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
+		Firewall: s.Store.GetSetting("auto_firewall", "1") == "1",
+		Pools:    []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
 	for _, p := range pools {
 		pm[p.ID] = p
 		resp.Pools = append(resp.Pools, proto.PoolSpec{ID: p.ID, CIDR: p.CIDR, Mode: p.Mode, Auto: p.Auto})

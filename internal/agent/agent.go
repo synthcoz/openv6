@@ -19,9 +19,11 @@ import (
 	"sync"
 	"time"
 
+	"openv6/internal/logbuf"
 	"openv6/internal/netcfg"
 	"openv6/internal/proto"
 	"openv6/internal/proxy"
+	"openv6/internal/update"
 )
 
 type Config struct {
@@ -31,6 +33,11 @@ type Config struct {
 	DryRun   bool // don't touch kernel networking (development on non-Linux)
 	// InsecureTLS skips certificate checks (self-signed panel certificate).
 	InsecureTLS bool
+	// Logs, when set, is shipped to the panel (remote agents) so it can be
+	// viewed in the web UI. The local agent shares the panel's buffer instead.
+	Logs *logbuf.Buffer
+	// AllowUpdate lets the panel replace this binary (remote agents only).
+	AllowUpdate bool
 }
 
 type Agent struct {
@@ -49,6 +56,13 @@ type Agent struct {
 
 	pubV4   string
 	pubV4At time.Time
+
+	logSeq         uint64
+	tuneFailed     []string
+	fwManaged      bool
+	iface          string
+	restartPending bool
+	testSem        chan struct{}
 }
 
 func New(cfg Config) *Agent {
@@ -67,12 +81,19 @@ func New(cfg Config) *Agent {
 		applied:  map[int64]proto.Applied{},
 		running:  map[string]bool{},
 		specs:    map[int64]proto.ProxySpec{},
+		testSem:  make(chan struct{}, 8),
 	}
 }
 
 // Run polls the panel until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) {
-	log.Printf("agent: panel %s", a.cfg.PanelURL)
+	log.Printf("agent %s: panel %s", proto.Version, a.cfg.PanelURL)
+	if !a.cfg.DryRun {
+		a.tuneFailed = netcfg.TuneKernel()
+		if len(a.tuneFailed) > 0 {
+			log.Printf("agent: could not raise kernel limits: %s", strings.Join(a.tuneFailed, ", "))
+		}
+	}
 	interval := 5 * time.Second
 	failures := 0
 	for {
@@ -89,6 +110,14 @@ func (a *Agent) Run(ctx context.Context) {
 			}
 			failures = 0
 			a.apply(resp)
+			a.mu.Lock()
+			restart := a.restartPending && len(a.results) == 0
+			a.mu.Unlock()
+			if restart {
+				log.Printf("agent: restarting into the updated binary")
+				a.proxies.Close()
+				os.Exit(0) // systemd (Restart=always) starts the new binary
+			}
 			if resp.Interval > 0 {
 				interval = time.Duration(resp.Interval) * time.Second
 			}
@@ -127,11 +156,17 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	}
 	results := a.results
 	errs := a.errors
+	checks := a.net.SystemChecks(st, a.ifaceFor(st), a.tuneFailed, a.fwManaged)
+	var logs []string
+	nextSeq := a.logSeq
+	if a.cfg.Logs != nil {
+		logs, nextSeq = a.cfg.Logs.Since(a.logSeq, 300)
+	}
 	a.mu.Unlock()
 
 	req := proto.SyncRequest{
-		AgentVersion: proto.Version, Hostname: host, OS: runtime.GOOS + "/" + runtime.GOARCH,
-		Net: st, Stats: stats, Applied: applied, Results: results, Errors: errs,
+		AgentVersion: proto.Version, Hostname: host, OS: runtime.GOOS + "/" + runtime.GOARCH, Arch: runtime.GOARCH,
+		Net: st, Stats: stats, Applied: applied, Results: results, Errors: errs, Checks: checks, Logs: logs,
 	}
 	body, _ := json.Marshal(req)
 	hr, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.cfg.PanelURL, "/")+"/api/agent/sync", bytes.NewReader(body))
@@ -157,16 +192,17 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	a.mu.Lock()
 	a.lastSent = current
 	a.results = a.results[len(results):]
+	a.logSeq = nextSeq
 	a.mu.Unlock()
 	return &out, nil
 }
 
 func (a *Agent) apply(r *proto.SyncResponse) {
 	st := a.net.Detect()
-	iface := r.Iface
-	if iface == "" {
-		iface = st.DefaultIface
-	}
+	a.mu.Lock()
+	a.iface = r.Iface
+	a.mu.Unlock()
+	iface := a.ifaceFor(st)
 	pools := map[int64]proto.PoolSpec{}
 	for _, p := range r.Pools {
 		pools[p.ID] = p
@@ -211,6 +247,16 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	}
 	a.proxies.SetAllow(allow)
 	listenErrs := a.proxies.Apply(ok)
+	if r.Firewall {
+		var ports []int
+		for _, c := range ok {
+			ports = append(ports, c.Port)
+		}
+		if err := a.net.SyncFirewall(ports); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	a.fwManaged = r.Firewall
 	for _, c := range ok {
 		if err := listenErrs[c.ID]; err != nil {
 			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), Error: "listen: " + err.Error()}
@@ -236,39 +282,60 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	a.mu.Unlock()
 }
 
+func (a *Agent) ifaceFor(st proto.NetState) string {
+	if a.iface != "" {
+		return a.iface
+	}
+	return st.DefaultIface
+}
+
 func (a *Agent) runCommand(c proto.Command) {
-	var res proto.CommandResult
-	res.ID = c.ID
+	res := proto.CommandResult{ID: c.ID}
 	switch c.Type {
 	case "test_proxy":
+		a.testSem <- struct{}{}
 		a.mu.Lock()
 		spec, ok := a.specs[c.ProxyID]
 		a.mu.Unlock()
 		if !ok {
 			res.Output = "proxy not running on this node"
-			break
-		}
-		ip, err := netip.ParseAddr(spec.IP)
-		if err != nil {
+		} else if ip, err := netip.ParseAddr(spec.IP); err != nil {
 			res.Output = "proxy has no IPv6 address yet"
-			break
-		}
-		seen, err := CheckIP(ip, 10*time.Second)
-		if err != nil {
-			res.Output = err.Error()
 		} else {
-			res.OK = seen == ip.String()
-			res.Output = seen
-			if !res.OK {
-				res.Output = fmt.Sprintf("expected %s but target saw %s", ip, seen)
+			info, err := CheckIP(ip, 12*time.Second)
+			if err != nil {
+				res.Output = err.Error()
+			} else {
+				res.IP, res.Latency, res.Country, res.Org = info.IP, info.Latency, info.Country, info.Org
+				res.OK = info.IP == ip.String()
+				res.Output = info.IP
+				if !res.OK {
+					res.Output = fmt.Sprintf("expected %s but target saw %s", ip, info.IP)
+				}
 			}
 		}
+		<-a.testSem
 	case "test_v6":
-		seen, err := CheckIP(netip.Addr{}, 10*time.Second)
+		info, err := CheckIP(netip.Addr{}, 10*time.Second)
 		if err != nil {
 			res.Output = err.Error()
 		} else {
-			res.OK, res.Output = true, seen
+			res.OK, res.Output, res.IP, res.Latency, res.Country, res.Org = true, info.IP, info.IP, info.Latency, info.Country, info.Org
+		}
+	case "update":
+		if !a.cfg.AllowUpdate {
+			res.Output = "this agent is updated together with the panel"
+			break
+		}
+		if err := selfUpdate(c.URL, c.Version, a.cfg.InsecureTLS); err != nil {
+			res.Output = err.Error()
+			log.Printf("agent: update failed: %v", err)
+		} else {
+			res.OK, res.Output = true, "updated to "+c.Version+", restarting"
+			log.Printf("agent: updated to %s", c.Version)
+			a.mu.Lock()
+			a.restartPending = true
+			a.mu.Unlock()
 		}
 	default:
 		res.Output = "unknown command"
@@ -279,15 +346,24 @@ func (a *Agent) runCommand(c proto.Command) {
 	a.mu.Unlock()
 }
 
-// CheckIP asks an IPv6-only echo service which address it sees. If src is
+// IPInfo is what an external echo service saw.
+type IPInfo struct {
+	IP      string
+	Country string
+	Org     string // e.g. "AS18403 FPT Telecom Company"
+	Latency int    // ms for the whole request
+}
+
+// CheckIP asks IPv6-only echo services which address they see. If src is
 // valid the connection is bound to it.
-func CheckIP(src netip.Addr, timeout time.Duration) (string, error) {
+func CheckIP(src netip.Addr, timeout time.Duration) (IPInfo, error) {
 	d := &net.Dialer{Timeout: timeout}
 	if src.IsValid() {
 		d.LocalAddr = &net.TCPAddr{IP: src.AsSlice()}
 	}
 	tr := &http.Transport{
-		Proxy: nil,
+		Proxy:             nil,
+		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
 			return d.DialContext(ctx, "tcp6", addr)
 		},
@@ -295,7 +371,21 @@ func CheckIP(src netip.Addr, timeout time.Duration) (string, error) {
 	defer tr.CloseIdleConnections()
 	cl := &http.Client{Transport: tr, Timeout: timeout}
 	var lastErr error
+	// ipinfo gives country + ASN; ipify is a plain fallback
+	start := time.Now()
+	if res, err := cl.Get("https://v6.ipinfo.io/json"); err == nil {
+		var j struct{ IP, Country, Org string }
+		derr := json.NewDecoder(io.LimitReader(res.Body, 8192)).Decode(&j)
+		res.Body.Close()
+		if ip, err := netip.ParseAddr(j.IP); derr == nil && res.StatusCode == 200 && err == nil {
+			return IPInfo{IP: ip.String(), Country: j.Country, Org: j.Org, Latency: int(time.Since(start).Milliseconds())}, nil
+		}
+		lastErr = fmt.Errorf("ipinfo: %s", res.Status)
+	} else {
+		lastErr = err
+	}
 	for _, u := range []string{"https://api6.ipify.org", "https://ipv6.icanhazip.com"} {
+		start = time.Now()
 		res, err := cl.Get(u)
 		if err != nil {
 			lastErr = err
@@ -305,12 +395,12 @@ func CheckIP(src netip.Addr, timeout time.Duration) (string, error) {
 		res.Body.Close()
 		if res.StatusCode == 200 {
 			if ip, err := netip.ParseAddr(strings.TrimSpace(string(b))); err == nil {
-				return ip.String(), nil
+				return IPInfo{IP: ip.String(), Latency: int(time.Since(start).Milliseconds())}, nil
 			}
 		}
 		lastErr = fmt.Errorf("%s: %s", u, res.Status)
 	}
-	return "", lastErr
+	return IPInfo{}, lastErr
 }
 
 func (a *Agent) publicV4() string {
@@ -353,4 +443,21 @@ func lanIPv4() []string {
 		}
 	}
 	return out
+}
+
+func selfUpdate(url, version string, insecure bool) error {
+	if url == "" {
+		return fmt.Errorf("no download URL")
+	}
+	dst, err := update.SelfPath()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	tmp, err := update.Download(ctx, url, dst, insecure)
+	if err != nil {
+		return err
+	}
+	return update.Install(tmp, dst, version)
 }
