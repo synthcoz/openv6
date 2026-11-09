@@ -168,12 +168,17 @@ func TestSOCKS5(t *testing.T) {
 }
 
 func TestWhitelistBlocksNoAuth(t *testing.T) {
-	ts := target(t)
-	_, addr := setup(t, Config{ID: 4, Protocol: "both"}, "10.0.0.0/8") // 127.0.0.1 not allowed
-	pu, _ := url.Parse("http://" + addr)
-	cl := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}, Timeout: 3 * time.Second}
-	if _, err := cl.Get(ts.URL); err == nil {
-		t.Fatal("expected rejection")
+	m := NewManager()
+	m.SetAllow([]netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")})
+	c := &Config{Scope: "lan"}
+	if m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 1}) {
+		t.Fatal("client outside whitelist accepted")
+	}
+	if !m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("192.168.1.20"), Port: 1}) {
+		t.Fatal("LAN client rejected")
+	}
+	if !m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1}) {
+		t.Fatal("this machine rejected")
 	}
 }
 
@@ -195,5 +200,44 @@ func TestReconfigure(t *testing.T) {
 	m.Apply(nil)
 	if _, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
 		t.Fatal("listener should be closed")
+	}
+}
+
+func TestScopeLocalAndAny(t *testing.T) {
+	ts := target(t)
+	// "local" binds to 127.0.0.1 and accepts loopback without a password
+	_, addr := setup(t, Config{ID: 10, Protocol: "both", Scope: "local"})
+	pu, _ := url.Parse("http://" + addr)
+	cl := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}, Timeout: 3 * time.Second}
+	if resp, err := cl.Get(ts.URL); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("local scope: %v", err)
+	}
+	// "any" without password must not become an open proxy: whitelist applies
+	m := NewManager()
+	m.SetAllow([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+	c := &Config{Scope: "any"}
+	if m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("203.0.113.5"), Port: 1}) {
+		t.Fatal("open proxy without password")
+	}
+	c.User, c.Pass = "a", "b"
+	if !m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("203.0.113.5"), Port: 1}) {
+		t.Fatal("any+password should accept internet clients")
+	}
+	c.Scope = "lan"
+	if m.clientAllowed(c, &net.TCPAddr{IP: net.ParseIP("203.0.113.5"), Port: 1}) {
+		t.Fatal("lan scope accepted an internet client")
+	}
+}
+
+func TestClassify(t *testing.T) {
+	if Classify(ErrNoIPv6) != "no_ipv6_target" {
+		t.Fatal("no ipv6")
+	}
+	_, err := net.Listen("tcp", "127.0.0.1:1")
+	if err == nil {
+		t.Skip("running as root")
+	}
+	if c := Classify(err); c != "permission" {
+		t.Fatalf("listen on privileged port: %s", c)
 	}
 }

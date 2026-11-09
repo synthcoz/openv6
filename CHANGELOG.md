@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.0
+
+**Chạy ổn định khi máy bật VPN (Cloudflare WARP, Tailscale, WireGuard, VPN thương mại)**
+- Agent chọn card mạng theo prefix /64 thật, không theo đường ra mặc định. Trước đây, bật WARP hoặc exit node làm pool `auto` mất prefix và mọi proxy báo lỗi.
+- Bỏ qua địa chỉ nội bộ `fc00::/7` (ví dụ Tailscale `fd7a:…`) khi tìm prefix.
+- **Định tuyến proxy vòng qua VPN** (Linux, bật mặc định): mỗi IP proxy có một luật định tuyến riêng (`ip -6 rule … lookup 6464 pref 100`) để luôn đi qua card mạng thật và router của nhà mạng. Lưu lượng của chính máy vẫn đi qua VPN. Agent ghi nhớ router để vẫn hoạt động khi VPN xoá đường ra mặc định.
+- Nhận diện VPN: Cloudflare WARP, Tailscale, WireGuard, NordVPN, Proton VPN, OpenVPN/tun, ZeroTier, PPP. Phát hiện IPv6 bị tắt (chống rò IP của VPN).
+- **DNS riêng cho proxy** theo node: theo hệ thống, Cloudflare, Google, Quad9 hoặc tự nhập. DNS IPv6 được hỏi từ chính IP của proxy.
+- Lệnh `sudo openv6 selftest`: in tình trạng IPv6/VPN của máy và kiểm tra định tuyến vòng qua VPN trong một vùng mạng giả lập, không đụng tới mạng thật.
+
+**Phạm vi chia sẻ cho từng proxy**
+- *Chỉ máy này* (bind 127.0.0.1), *Mạng LAN* (theo whitelist; thiết bị Tailscale 100.x cũng tính là LAN), *Internet* (bắt buộc có mật khẩu).
+- Khi nâng cấp từ bản cũ: proxy có mật khẩu chuyển thành *Internet*, proxy không mật khẩu chuyển thành *LAN* (giữ nguyên cách hoạt động như trước).
+
+**Dịch vụ và thông báo lỗi**
+- Node hiện thời gian đã chạy; có nút *Khởi động lại* và *Áp dụng lại mạng* (gỡ rồi gán lại toàn bộ IPv6 và luật định tuyến).
+- Mọi lỗi của proxy và kết quả kiểm tra đều có mã lỗi, kèm giải thích và cách sửa bằng tiếng Việt và tiếng Anh: port bị chiếm, IPv6 không còn trên máy, quá thời gian chờ (VPN kill switch), website không có IPv6, website thấy sai IP… Chi tiết kỹ thuật vẫn xem được.
+- Tự chẩn đoán có thêm: IPv6 đang bật, card mạng IPv6, router IPv6, tình trạng VPN. Tổng quan hiện từng vấn đề kèm cách sửa.
+
 ## v0.2.0
 
 **Ổn định và vận hành**

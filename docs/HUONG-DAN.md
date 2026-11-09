@@ -166,7 +166,46 @@ Mở port trên tường lửa của VPS (cả tường lửa trên trang quản
 - **Sao lưu:** vào **Cài đặt → Sao lưu & khôi phục → Tải file sao lưu**. Panel còn tự sao lưu mỗi ngày vào `/var/lib/openv6/backups`. Chuyển sang máy mới: cài openv6 trên máy mới, rồi **Khôi phục từ file**.
 - **Log:** vào **Máy chủ (node) → Log** để xem nhật ký của panel hoặc của từng node, không cần gõ lệnh.
 
-## 7. Câu hỏi thường gặp và xử lý lỗi
+## 7. Máy có bật VPN, Cloudflare WARP hoặc Tailscale
+
+### Trên máy chạy proxy (node)
+
+| Trường hợp | Ảnh hưởng | openv6 xử lý |
+|---|---|---|
+| Ứng dụng 1.1.1.1 **chỉ đổi DNS** | Không | — |
+| **Cloudflare WARP** (chế độ VPN) | WARP giành đường ra mặc định, nên proxy không ra được Internet | Tự định tuyến proxy vòng qua VPN. Tự chẩn đoán hiện “VPN đang bật, proxy đi vòng” |
+| **Tailscale** bình thường | Không | Thiết bị trong mạng Tailscale (100.x) được coi là LAN |
+| **Tailscale exit node** | Giống WARP | Tự định tuyến vòng qua VPN |
+| **WireGuard, OpenVPN, VPN thương mại** | Giống WARP; một số VPN **tắt hẳn IPv6** hoặc có **kill switch** | Tự định tuyến vòng qua VPN. Tắt hẳn IPv6 hoặc kill switch thì **không phần mềm nào vượt qua được**: chẩn đoán báo rõ cách sửa (tắt “IPv6 leak protection” hoặc kill switch, hoặc không chạy VPN trên máy này) |
+
+- Tuỳ chọn nằm ở **Máy chủ (node) → Cài đặt → Định tuyến proxy vòng qua VPN** (mặc định bật, hiện chỉ có trên Linux).
+- Bật VPN mà proxy báo **“Website không hỗ trợ IPv6”**: đổi **DNS cho proxy** sang Cloudflare hoặc Google, vì một số VPN lọc bản ghi IPv6.
+- Kiểm tra nhanh trên máy node:
+
+```bash
+sudo openv6 selftest
+```
+
+Lệnh in card mạng, prefix, router, các VPN đang bật, rồi thử định tuyến vòng qua VPN trong một vùng mạng giả lập. Mạng thật không bị ảnh hưởng. Kết quả cuối phải là **ĐẠT / PASSED**.
+
+### Trên máy dùng proxy (máy chạy anti-detect)
+
+Máy dùng proxy kết nối tới IP LAN của node (ví dụ `192.168.1.10`). Nếu máy đó bật VPN:
+- **Cloudflare WARP:** mặc định không đưa các dải LAN vào đường hầm, nên vẫn dùng được.
+- **Tailscale exit node:** bật **“Allow local network access”**.
+- **VPN thương mại:** bật **“Allow LAN” / “LAN discovery” / “Local network sharing”**.
+
+## 8. Phạm vi chia sẻ của proxy
+
+| Lựa chọn | Ai dùng được | Ghi chú |
+|---|---|---|
+| **Chỉ máy này** | Phần mềm trên chính máy node, qua `127.0.0.1:port` | Máy khác không thấy proxy |
+| **Mạng LAN** (mặc định) | Thiết bị trong whitelist của node (mặc định các dải LAN và Tailscale) | Có hoặc không mật khẩu đều được |
+| **Internet** | Bất kỳ ai có user/pass | Bắt buộc mật khẩu. Dùng cho VPS hoặc máy nhà đã mở port |
+
+Đổi phạm vi cho nhiều proxy cùng lúc: chọn proxy rồi vào **Thao tác hàng loạt → Đổi phạm vi chia sẻ**.
+
+## 9. Câu hỏi thường gặp và xử lý lỗi
 
 | Hiện tượng | Nguyên nhân và cách xử lý |
 |---|---|
@@ -176,12 +215,14 @@ Mở port trên tường lửa của VPS (cả tường lửa trên trang quản
 | Kiểm tra báo lỗi timeout | Modem chặn IPv6 đi ra hoặc chưa nhận địa chỉ. Thử `curl -6 https://api6.ipify.org` trên máy node. |
 | Website mở được ở trình duyệt thường nhưng qua proxy báo 502 | Website đó **không có IPv6**. Có thể bật *Dự phòng IPv4* cho riêng proxy đó (đọc kỹ mục 6). |
 | Không vào được panel | Kiểm tra `systemctl status openv6-server`, tường lửa ufw, và đúng IP LAN. |
+| Bật VPN thì proxy lỗi | Xem mục 7 và chạy `sudo openv6 selftest` |
+| Đổi mạng hoặc card mạng xong proxy lỗi | **Máy chủ (node) → Áp dụng lại mạng** |
 | Quên mật khẩu admin | `sudo openv6 reset-password` |
 | Gỡ cài đặt | `sudo openv6 uninstall`: dừng dịch vụ và xoá mọi IPv6 đã thêm vào card mạng. |
 
 ---
 
-## 8. Lưu ý khi nuôi nhiều tài khoản
+## 10. Lưu ý khi nuôi nhiều tài khoản
 
 1. **Cùng /64 = dễ bị coi là một người.** Mạng nhà FPT thường chỉ cho một /64 trên LAN, nên mọi proxy chung một /64. Facebook, Google… có thể liên kết các tài khoản với nhau. Dashboard sẽ cảnh báo khi điều này xảy ra. Cách khắc phục là dùng VPS có /48 hoặc /56, hoặc router cấp prefix riêng (xem `docs/ROADMAP.md`, mục DHCPv6-PD).
 2. **Dự phòng IPv4 = mọi tài khoản chung một IPv4.** Chỉ bật cho proxy dùng việc khác, không bật cho proxy nuôi tài khoản.

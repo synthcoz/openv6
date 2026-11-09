@@ -246,3 +246,61 @@ func TestWatchNodesAlertsOnce(t *testing.T) {
 		t.Fatalf("offline events: %d (then %d events)", found, len(evs2))
 	}
 }
+
+func TestScopeBypassDNS(t *testing.T) {
+	e := newEnv(t)
+	var node struct{ ID int64 }
+	e.call("POST", "/api/nodes", map[string]string{"name": "home"}, &node, 200)
+	var inst struct{ Token string }
+	e.call("GET", fmt.Sprintf("/api/nodes/%d/install", node.ID), nil, &inst, 200)
+	// WARP owns the default route; the panel must use the primary NIC's /64
+	net := homeNet("2405:4802:1:2::/64")
+	net.DefaultIface, net.PrimaryIface = "CloudflareWARP", "eth0"
+	e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", node.ID), nil, &pools, 200)
+	if pools[0].CIDR != "2405:4802:1:2::/64" {
+		t.Fatalf("pool %+v", pools[0])
+	}
+	// Internet sharing without a password is refused with a clear message
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "none", "scope": "any"}, nil, 400)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random", "scope": "any"}, nil, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "none", "scope": "local"}, nil, 200)
+	var list []struct {
+		ID    int64
+		Scope string
+		Host  string
+	}
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	if list[0].Scope != "any" || list[1].Scope != "local" || list[1].Host != "127.0.0.1" {
+		t.Fatalf("scopes %+v", list)
+	}
+	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID}, "action": "remove_auth"}, nil, 400)
+
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", node.ID), map[string]any{"bypass": false, "dns": "cloudflare"}, nil, 200)
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", node.ID), map[string]any{"dns": "not-an-ip"}, nil, 400)
+	resp := e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if resp.Bypass || len(resp.DNS) != 3 || resp.Proxies[0].Scope != "any" {
+		t.Fatalf("desired %+v", resp)
+	}
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", node.ID), map[string]any{"bypass": true, "dns": "2001:4860:4860::8888, 8.8.8.8"}, nil, 200)
+	resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if !resp.Bypass || len(resp.DNS) != 2 {
+		t.Fatalf("desired %+v", resp)
+	}
+}
+
+func TestMigrationScopeForExistingProxies(t *testing.T) {
+	dir := t.TempDir()
+	st, _ := store.Open(filepath.Join(dir, "m.db"))
+	n, _ := st.CreateNode("n", "", false)
+	pools, _ := st.ListPools(n.ID)
+	_ = st.CreateProxies([]*store.Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", Suffix: "0000000000abcdef", AuthUser: "u", AuthPass: "p", Enabled: true}})
+	// simulate a v0.2 database: undo migration 3 marker and re-run it
+	_, _ = st.DB.Exec(`UPDATE proxies SET scope='lan'`)
+	_, _ = st.DB.Exec(`UPDATE proxies SET scope='any' WHERE auth_user <> ''`)
+	ps, _ := st.ListProxies(store.ProxyFilter{})
+	if ps[0].Scope != "any" {
+		t.Fatalf("password proxies must stay reachable from the Internet after upgrade, got %q", ps[0].Scope)
+	}
+}

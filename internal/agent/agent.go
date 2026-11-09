@@ -62,6 +62,10 @@ type Agent struct {
 	fwManaged      bool
 	iface          string
 	restartPending bool
+	reapply        bool
+	bypassStatus   string
+	bypassErr      string
+	startedAt      time.Time
 	testSem        chan struct{}
 }
 
@@ -73,15 +77,16 @@ func New(cfg Config) *Agent {
 		n.Run = func(args ...string) error { log.Printf("[dry-run] ip %s", strings.Join(args, " ")); return nil }
 	}
 	return &Agent{
-		cfg:      cfg,
-		client:   &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS}}},
-		net:      n,
-		proxies:  proxy.NewManager(),
-		lastSent: map[int64]proto.ProxyStats{},
-		applied:  map[int64]proto.Applied{},
-		running:  map[string]bool{},
-		specs:    map[int64]proto.ProxySpec{},
-		testSem:  make(chan struct{}, 8),
+		cfg:       cfg,
+		client:    &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS}}},
+		net:       n,
+		proxies:   proxy.NewManager(),
+		lastSent:  map[int64]proto.ProxyStats{},
+		applied:   map[int64]proto.Applied{},
+		running:   map[string]bool{},
+		specs:     map[int64]proto.ProxySpec{},
+		testSem:   make(chan struct{}, 8),
+		startedAt: time.Now(),
 	}
 }
 
@@ -133,7 +138,10 @@ func (a *Agent) Run(ctx context.Context) {
 
 func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	host, _ := os.Hostname()
-	st := a.net.Detect()
+	a.mu.Lock()
+	cfgIface := a.iface
+	a.mu.Unlock()
+	st := a.net.Detect(cfgIface)
 	st.LANv4 = lanIPv4()
 	st.PublicV4 = a.publicV4()
 
@@ -156,7 +164,10 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	}
 	results := a.results
 	errs := a.errors
-	checks := a.net.SystemChecks(st, a.ifaceFor(st), a.tuneFailed, a.fwManaged)
+	if a.bypassStatus != "" {
+		st.Bypass, st.BypassError = a.bypassStatus, a.bypassErr
+	}
+	checks := a.net.SystemChecks(st, a.tuneFailed, a.fwManaged)
 	var logs []string
 	nextSeq := a.logSeq
 	if a.cfg.Logs != nil {
@@ -167,6 +178,7 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	req := proto.SyncRequest{
 		AgentVersion: proto.Version, Hostname: host, OS: runtime.GOOS + "/" + runtime.GOARCH, Arch: runtime.GOARCH,
 		Net: st, Stats: stats, Applied: applied, Results: results, Errors: errs, Checks: checks, Logs: logs,
+		StartedAt: a.startedAt.Unix(),
 	}
 	body, _ := json.Marshal(req)
 	hr, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.cfg.PanelURL, "/")+"/api/agent/sync", bytes.NewReader(body))
@@ -198,19 +210,32 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 }
 
 func (a *Agent) apply(r *proto.SyncResponse) {
-	st := a.net.Detect()
 	a.mu.Lock()
 	a.iface = r.Iface
+	reapply := a.reapply
+	a.reapply = false
 	a.mu.Unlock()
-	iface := a.ifaceFor(st)
+	if reapply {
+		log.Printf("agent: re-applying network configuration from scratch")
+		a.net.Cleanup()
+	}
+	st := a.net.Detect(r.Iface)
+	iface := st.PrimaryIface
 	pools := map[int64]proto.PoolSpec{}
 	for _, p := range r.Pools {
 		pools[p.ID] = p
 	}
 	want := netcfg.Desired{Iface: iface, Addrs: map[netip.Addr]bool{}, Routes: map[string]bool{}}
+	bypass := netcfg.BypassDesired{Enabled: r.Bypass, Iface: iface, Gateway: st.Gateway}
 	for _, p := range r.Pools {
 		if p.Mode == "anyip" && p.CIDR != "" {
 			want.Routes[p.CIDR] = true
+			bypass.Sources = append(bypass.Sources, p.CIDR)
+		}
+	}
+	for _, it := range st.Interfaces {
+		if it.Name == iface {
+			bypass.OnLink = append(bypass.OnLink, it.Prefixes...)
 		}
 	}
 	applied := map[int64]proto.Applied{}
@@ -220,22 +245,45 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 		specs[s.ID] = s
 		ip, err := netip.ParseAddr(s.IP)
 		if err != nil {
-			applied[s.ID] = proto.Applied{IP: s.IP, Error: "no IPv6 prefix available yet"}
+			applied[s.ID] = proto.Applied{IP: s.IP, Error: "no IPv6 prefix available yet", Code: "no_prefix"}
 			continue
 		}
 		if p, ok := pools[s.PoolID]; !ok || p.Mode != "anyip" {
 			want.Addrs[ip] = true
+			bypass.Sources = append(bypass.Sources, ip.String()+"/128")
 		}
-		cfgs = append(cfgs, proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip, IPv4Fallback: s.IPv4Fallback})
+		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope}
+		if len(r.DNS) > 0 {
+			c.Resolver = proxy.NewResolver(r.DNS, ip)
+		}
+		cfgs = append(cfgs, c)
 	}
 	addrErrs, errs := a.net.Apply(want)
+	if st.IPv6Disabled {
+		errs = append(errs, fmt.Errorf("IPv6 is disabled on this machine (net.ipv6.conf.*.disable_ipv6=1)"))
+	}
 	var ok []proxy.Config
 	for _, c := range cfgs {
 		if err := addrErrs[c.OutIP]; err != nil {
-			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), Error: err.Error()}
+			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), Error: err.Error(), Code: "addr_add_failed"}
 			continue
 		}
 		ok = append(ok, c)
+	}
+	// keep proxy traffic on the physical NIC even if a VPN grabs the default route
+	bypassStatus, bypassErr := "off", ""
+	if !a.cfg.DryRun {
+		if r.Bypass {
+			if err := a.net.ApplyBypass(bypass); err != nil {
+				bypassStatus, bypassErr = "error", err.Error()
+				log.Printf("agent: VPN bypass routing: %v", err)
+			} else {
+				bypassStatus = "ok"
+			}
+		} else {
+			_ = a.net.ApplyBypass(netcfg.BypassDesired{})
+		}
 	}
 	var allow []netip.Prefix
 	for _, s := range r.AllowCIDRs {
@@ -250,16 +298,17 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	if r.Firewall {
 		var ports []int
 		for _, c := range ok {
-			ports = append(ports, c.Port)
+			if c.Scope != "local" {
+				ports = append(ports, c.Port)
+			}
 		}
 		if err := a.net.SyncFirewall(ports); err != nil {
 			errs = append(errs, err)
 		}
 	}
-	a.fwManaged = r.Firewall
 	for _, c := range ok {
 		if err := listenErrs[c.ID]; err != nil {
-			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), Error: "listen: " + err.Error()}
+			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), Error: "listen: " + err.Error(), Code: proxy.Classify(err)}
 		} else {
 			applied[c.ID] = proto.Applied{IP: c.OutIP.String(), OK: true}
 		}
@@ -269,6 +318,8 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 		errStrs = append(errStrs, e.Error())
 	}
 	a.mu.Lock()
+	a.fwManaged = r.Firewall
+	a.bypassStatus, a.bypassErr = bypassStatus, bypassErr
 	a.applied = applied
 	a.errors = errStrs
 	a.specs = specs
@@ -280,13 +331,6 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 		go a.runCommand(c)
 	}
 	a.mu.Unlock()
-}
-
-func (a *Agent) ifaceFor(st proto.NetState) string {
-	if a.iface != "" {
-		return a.iface
-	}
-	return st.DefaultIface
 }
 
 func (a *Agent) runCommand(c proto.Command) {
@@ -304,13 +348,14 @@ func (a *Agent) runCommand(c proto.Command) {
 		} else {
 			info, err := CheckIP(ip, 12*time.Second)
 			if err != nil {
-				res.Output = err.Error()
+				res.Output, res.Code = err.Error(), proxy.Classify(err)
 			} else {
 				res.IP, res.Latency, res.Country, res.Org = info.IP, info.Latency, info.Country, info.Org
 				res.OK = info.IP == ip.String()
 				res.Output = info.IP
 				if !res.OK {
 					res.Output = fmt.Sprintf("expected %s but target saw %s", ip, info.IP)
+					res.Code = "wrong_ip"
 				}
 			}
 		}
@@ -318,10 +363,25 @@ func (a *Agent) runCommand(c proto.Command) {
 	case "test_v6":
 		info, err := CheckIP(netip.Addr{}, 10*time.Second)
 		if err != nil {
-			res.Output = err.Error()
+			res.Output, res.Code = err.Error(), proxy.Classify(err)
 		} else {
 			res.OK, res.Output, res.IP, res.Latency, res.Country, res.Org = true, info.IP, info.IP, info.Latency, info.Country, info.Org
 		}
+	case "restart":
+		if !a.cfg.AllowUpdate {
+			res.Output = "restart the panel instead"
+			break
+		}
+		res.OK, res.Output = true, "restarting"
+		log.Printf("agent: restart requested from the panel")
+		a.mu.Lock()
+		a.restartPending = true
+		a.mu.Unlock()
+	case "reapply":
+		res.OK, res.Output = true, "network configuration will be re-applied"
+		a.mu.Lock()
+		a.reapply = true
+		a.mu.Unlock()
 	case "update":
 		if !a.cfg.AllowUpdate {
 			res.Output = "this agent is updated together with the panel"

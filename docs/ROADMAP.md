@@ -17,7 +17,16 @@ Phiên bản 0.2 đã có kiểm tra định kỳ, cảnh báo Telegram, tự ch
 | ✅ Cập nhật agent từ panel | Panel giữ binary mới, agent tự tải về và khởi động lại. |
 | Giới hạn tốc độ / dung lượng theo proxy | Token bucket trong `pipe()`, chặn khi vượt quota tháng. |
 
-## Đợt 2 (đã chốt): giao diện
+## Đã xong ở v0.3
+- Chạy ổn định khi có VPN, WARP hoặc Tailscale (định tuyến proxy vòng qua VPN, DNS riêng, tự chẩn đoán, `openv6 selftest`).
+- Phạm vi chia sẻ Chỉ máy này / LAN / Internet; Khởi động lại; Áp dụng lại mạng; mã lỗi kèm hướng dẫn sửa.
+
+## Kế hoạch tiếp theo (tính năng trước, giao diện sau)
+- **v0.4: node chạy trên Windows.** Gán IPv6 bằng `New-NetIPAddress -SkipAsSource $true`, chạy như Windows Service, bộ cài `.exe`. Trên Windows, mô hình "strong host" giữ gói tin đi đúng card mạng của IP nguồn, cần kiểm chứng khi bật WARP hoặc VPN.
+- **v0.5: chia sẻ ra Internet từ mạng nhà:** qua Tailscale (hướng dẫn và tự nhận diện), UPnP (khi modem có IPv4 public), hoặc chuyển tiếp qua VPS (máy nhà tự kết nối lên VPS, dùng được cả khi nằm sau CGNAT).
+- **v0.6: làm lại giao diện** dựa trên các tính năng đã ổn định.
+
+## Đợt giao diện (đã chốt nội dung, làm ở v0.6)
 
 - Trình hướng dẫn lần đầu (kiểm tra IPv6 → IP LAN → tạo proxy → xuất).
 - Lấy tên profile làm trung tâm, sao chép nhanh theo định dạng anti-detect trên từng dòng.

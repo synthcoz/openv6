@@ -83,6 +83,13 @@ var migrations = []string{
 	 CREATE INDEX IF NOT EXISTS checks_proxy ON checks(proxy_id, at);`,
 	// 2: profile name shown as the main label of a proxy
 	`ALTER TABLE proxies ADD COLUMN label TEXT NOT NULL DEFAULT '';`,
+	// 3: sharing scope, VPN bypass, per-node DNS, error codes
+	`ALTER TABLE proxies ADD COLUMN scope TEXT NOT NULL DEFAULT 'lan';
+	 UPDATE proxies SET scope='any' WHERE auth_user <> '';
+	 ALTER TABLE proxies ADD COLUMN check_code TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE checks ADD COLUMN code TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE nodes ADD COLUMN bypass INTEGER NOT NULL DEFAULT 1;
+	 ALTER TABLE nodes ADD COLUMN dns TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate() error {

@@ -130,7 +130,7 @@ func (s *Server) queueChecks(f store.ProxyFilter) int {
 // onCheckResult stores a test result and alerts on state changes. A proxy
 // is reported failing after 2 consecutive failures to avoid noise.
 func (s *Server) onCheckResult(nodeID, proxyID int64, res proto.CommandResult) {
-	rec := store.CheckRecord{At: time.Now().Unix(), OK: res.OK, IP: res.IP, Latency: res.Latency}
+	rec := store.CheckRecord{At: time.Now().Unix(), OK: res.OK, IP: res.IP, Latency: res.Latency, Code: res.Code}
 	if !res.OK {
 		rec.Error = res.Output
 	}

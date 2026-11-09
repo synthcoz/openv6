@@ -2,6 +2,7 @@ package update
 
 import (
 	"io"
+	"openv6/internal/proto"
 	"os"
 	"testing"
 )
@@ -28,7 +29,7 @@ func TestInstallRealBinary(t *testing.T) {
 	if b, _ := os.ReadFile(dst); string(b) != "old" {
 		t.Fatal("dst replaced on failure")
 	}
-	if err := Install(cp(), dst, "v0.2.0"); err != nil {
+	if err := Install(cp(), dst, "v"+proto.Version); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(dst); string(b) == "old" {
