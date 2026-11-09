@@ -3,7 +3,7 @@
 // works as long as it can reach the panel.
 package proto
 
-const Version = "0.6.0"
+const Version = "0.7.0"
 
 // SyncRequest is sent by an agent every few seconds.
 type SyncRequest struct {
@@ -129,6 +129,7 @@ type ProxySpec struct {
 	Scope        string `json:"scope"` // local | lan | any
 	MaxConns     int    `json:"max_conns,omitempty"`
 	RateKBps     int    `json:"rate_kbps,omitempty"`
+	Iface        string `json:"iface,omitempty"` // network card for this proxy ("" = node default)
 }
 
 type RelayServerSpec struct {
@@ -176,4 +177,5 @@ type Command struct {
 	ProxyID int64  `json:"proxy_id,omitempty"`
 	Version string `json:"version,omitempty"` // update: expected version
 	URL     string `json:"url,omitempty"`     // update: binary download URL
+	Fix     string `json:"fix,omitempty"`     // fix: id of the system check to repair
 }

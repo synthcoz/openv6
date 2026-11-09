@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.7.0 — bản thương mại
+
+- **openv6 Pro, bản quyền mua một lần** qua Polar. Nhập key ở *Cài đặt → Bản quyền*; có gói 1 máy và 3 máy.
+  - **Bản Free:** 3 proxy trên 1 máy, tính năng cơ bản (tạo, xuất, kiểm tra proxy, tự sửa lỗi, chọn nguồn mạng cho cả máy).
+  - **Bản Pro:** không giới hạn proxy và máy, relay qua VPS, UPnP, giới hạn tốc độ, API token, nhiều tài khoản, chế độ khách hàng, cảnh báo Telegram, chọn card mạng cho từng proxy.
+  - Key được kiểm tra online mỗi ngày. Mất mạng thì Pro vẫn chạy thêm 30 ngày.
+  - Chuyển key sang máy khác: bấm *Huỷ kích hoạt* trên máy cũ trước.
+- **Nhiều tài khoản và chế độ khách hàng (bán lại proxy):** admin tạo tài khoản khách rồi giao proxy cho khách (*Thêm → Giao cho khách hàng*). Khách chỉ thấy proxy của mình, được sao chép, xuất, kiểm tra, đổi IPv6 và đổi mật khẩu proxy.
+- **Chọn card mạng cho từng proxy:** ví dụ nhóm tài khoản A ra Wi-Fi, nhóm B ra mạng dây. Chọn khi tạo proxy hoặc trong mục *Sửa*.
+- **Mã hoá dữ liệu nhạy cảm:** mật khẩu proxy, token Telegram và license được mã hoá trong file dữ liệu. File sao lưu vẫn khôi phục được trên máy khác.
+- **Bản cập nhật có chữ ký số:** openv6 chỉ tự cập nhật lên bản có chữ ký hợp lệ.
+- **Chuẩn bị ký số bộ cài Windows:** khi có chứng chỉ, bộ cài hết cảnh báo "Unknown publisher" (xem docs/RELEASE.md).
+- **Rà soát cuối (bảo mật và ổn định):**
+  - Bản cập nhật cho node cũng phải khớp chữ ký số. Chữ ký gắn với đúng phiên bản, nên không thể dùng chữ ký của bản cũ để hạ cấp.
+  - License gắn với máy (mã máy lấy từ hệ điều hành): chép thư mục dữ liệu sang máy khác không mang theo Pro.
+  - Chỉnh lùi đồng hồ không kéo dài được 30 ngày ân hạn.
+  - Mạng chặn (captive portal, tường lửa) trả lỗi 403 không làm mất Pro.
+  - Mất hoặc hỏng `master.key`: dịch vụ vẫn chạy, mật khẩu proxy bị khoá (phải đặt lại) chứ không thành "không mật khẩu".
+  - Tài khoản khách cần bản Pro, và chỉ xem được kết quả kiểm tra của proxy được giao.
+  - Bỏ giới hạn đăng nhập sai chung cho mọi người, vì kẻ xấu có thể dùng nó khoá cả admin.
+  - Bản Free chạy 3 proxy cũ nhất đang bật, cố định khi đổi port. Khi vượt giới hạn có ghi một sự kiện báo rõ.
+  - Proxy chọn card riêng không bị đẩy sang card khác khi license hết hạn.
+  - Cắm lại Wi-Fi/USB làm card nhận số hiệu mới: openv6 tự áp dụng lại ngay.
+  - Mã hoá dữ liệu cũ trong một lần ghi, nên lần khởi động đầu sau khi nâng cấp không bị chậm.
+
+## v0.6.1
+
+- **Thoát từ icon khay giờ tắt hẳn openv6:** chuột phải icon → **Thoát openv6** sẽ dừng toàn bộ proxy, dịch vụ nền và icon. Trước đây chỉ đóng icon, còn proxy vẫn chạy.
+- **Mở lại:** bấm biểu tượng openv6 (Desktop hoặc menu Start) là openv6 tự chạy lại và mở dashboard, không hiện hộp hỏi quyền Administrator. Khởi động lại máy cũng tự chạy như bình thường.
+- Trên Linux và macOS, dịch vụ cũng không tự bật lại sau khi thoát từ icon khay.
+- **Sửa lỗi không khởi động được sau khi cập nhật lên v0.6.0** trên một số máy: `migrate: SQL logic error: table settings has no column named value`.
+  - Bước nâng cấp dữ liệu giờ chạy từng lệnh một và bỏ qua phần đã làm rồi.
+  - Nếu bảng cài đặt bị hỏng, openv6 tự dựng lại và giữ nguyên proxy, node và các thiết lập khác.
+- Khi dịch vụ không khởi động được hoặc bị crash, lý do được ghi vào `openv6.log` / `openv6-crash.log` trong thư mục dữ liệu.
+- **Ổn định hơn, hết báo "Mất kết nối node" chập chờn:**
+  - mỗi 5 giây máy chạy proxy chỉ gửi tín hiệu "còn sống"; cấu hình mạng (gán IPv6, mở cổng) chỉ áp dụng lại khi có thay đổi, cộng thêm một lần mỗi phút để tự sửa;
+  - trước đây Windows chạy lại netsh/PowerShell và chờ 1,2 giây ở mỗi vòng, nên máy chậm hoặc có nhiều proxy có thể trễ quá ngưỡng;
+  - kiểm tra loại mạng trên Windows chạy nền; ngưỡng báo mất kết nối tăng lên 45 giây.
+- **Chọn nguồn mạng (Mạng dây LAN / Wi-Fi):**
+  - hiện ngay trên thẻ máy chủ, trong hộp Tạo proxy và trong trình hướng dẫn;
+  - đổi nguồn mạng thì proxy tự chuyển sang IPv6 của card mạng đó.
+- **Kiểm tra & sửa lỗi:** liệt kê từng vấn đề kèm nguyên nhân và nút **Sửa**, hoặc **Tự sửa tất cả**. Các lỗi tự sửa được:
+  - tường lửa Windows chặn proxy, mạng đang ở chế độ Public;
+  - VPN chiếm đường đi của proxy, card mạng không còn;
+  - port bị chương trình khác chiếm: tự chuyển sang port trống;
+  - lỗi gán IPv6: tự áp dụng lại cấu hình mạng.
+  Việc ảnh hưởng tài khoản như đổi IPv6 vẫn để bạn tự bấm. Mở từ trang Tổng quan, thẻ máy chủ hoặc menu tài khoản.
+- Dropdown không còn bị cắt chữ: nhãn ngắn gọn, mũi tên thống nhất. Bỏ hiệu ứng làm mờ nền để giao diện mượt hơn khi điều khiển từ xa (Parsec, RDP).
+- **Bảo mật (rà soát trước khi bán):**
+  - Thư mục dữ liệu (token node, mật khẩu proxy, khoá relay) giờ chỉ SYSTEM/Admin đọc được. Icon khay và log chuyển sang `C:\ProgramData\openv6\shared` (macOS: `openv6-shared`).
+  - Không đổi được nguồn tải bản cập nhật qua dashboard hay file sao lưu. Trước đây đó là đường để chạy mã lạ với quyền SYSTEM/root.
+  - Proxy không đi vào được 127.0.0.1, mạng LAN, link-local hay metadata của VPS. Nhờ vậy không ai dùng proxy này để vào proxy khác hoặc vào máy chủ.
+  - Panel mới cài, nếu mở từ Internet (ví dụ trên VPS), phải nhập **mã cài đặt**. Mã do lệnh cài in ra và có trong file `setup-code.txt`. Mở từ máy này hoặc mạng LAN thì không cần mã.
+  - Giới hạn đăng nhập sai tính theo cả dải /64 và có giới hạn chung. Thêm Content-Security-Policy. Giới hạn số kết nối chờ trên relay.
+- **Ổn định (rà soát lần cuối):**
+  - Rút cáp, đổi Wi-Fi hay máy ngủ dậy thì proxy tự áp dụng lại trong vòng khoảng 10 giây, không phải chờ 1 phút.
+  - Mất card mạng tạm thời: không còn xoá hết IPv6 rồi vẫn báo "OK"; openv6 giữ nguyên và thử lại.
+  - Bấm Sửa tường lửa / mạng Private không còn làm ngắt toàn bộ proxy.
+  - "Chia sẻ qua relay" không còn cấp trùng port trên VPS.
+  - Nếu file dữ liệu mất số phiên bản, proxy không còn bị đổi sang phạm vi Internet.
+  - Kết quả "khởi động lại / cập nhật" luôn được gửi về trước khi tiến trình khởi động lại.
+
 ## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
 
 - **Relay qua VPS:** máy ở nhà (kể cả sau CGNAT của FPT) tự kết nối ra một VPS; proxy được dùng qua `IP-VPS:port` từ bất kỳ đâu, IP đi ra vẫn là IPv6 nhà. Kết nối mã hoá TLS và kiểm tra vân tay chứng chỉ; tự kết nối lại khi rớt mạng.

@@ -41,3 +41,10 @@ chmod +x "$OUT"
 mv -f "$OUT" /usr/local/bin/openv6
 if [ $# -eq 0 ]; then set -- server; fi
 /usr/local/bin/openv6 install "$@"
+if [ "$1" = "server" ]; then
+  for i in 1 2 3 4 5 6 7 8 9 10; do [ -s /var/lib/openv6/setup-code.txt ] && break; sleep 1; done
+  if [ -s /var/lib/openv6/setup-code.txt ]; then
+    echo ">> first-time setup code: $(cat /var/lib/openv6/setup-code.txt)"
+    echo "   (asked only when you create the admin account from outside this machine/LAN)"
+  fi
+fi

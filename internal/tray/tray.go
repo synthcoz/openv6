@@ -275,7 +275,7 @@ func onReady() {
 			case <-mReapply.ClickedCh:
 				action("reapply")
 			case <-mStart.ClickedCh:
-				go func() { _ = service.StartServiceElevated(); time.Sleep(3 * time.Second); refresh() }()
+				go func() { _ = service.StartService(); time.Sleep(3 * time.Second); refresh() }()
 			case <-mAuto.ClickedCh:
 				on := !mAuto.Checked()
 				if err := service.SetTrayAutostart(on); err == nil {
@@ -298,6 +298,11 @@ func onReady() {
 			case <-mUpdate.ClickedCh:
 				openDashboard("settings")
 			case <-mQuit.ClickedCh:
+				// Quit stops everything: proxies, the service and the icon.
+				// Opening openv6 again (or the next boot) starts it again.
+				if curOK {
+					_ = c.call("POST", "/api/tray/shutdown", nil)
+				}
 				systray.Quit()
 				return
 			}
@@ -321,7 +326,7 @@ var texts = map[string]map[string]string{
 	"vi": {
 		"open": "Mở bảng điều khiển", "pause": "Tạm dừng tất cả proxy", "resume": "Tiếp tục chạy proxy",
 		"check": "Kiểm tra tất cả proxy", "reapply": "Áp dụng lại mạng", "start_service": "Khởi động dịch vụ openv6",
-		"autostart": "Tự chạy khi đăng nhập", "language": "Ngôn ngữ", "quit": "Thoát biểu tượng (proxy vẫn chạy)",
+		"autostart": "Tự chạy khi đăng nhập", "language": "Ngôn ngữ", "quit": "Thoát openv6 (tắt proxy)",
 		"service_down": "Dịch vụ openv6 chưa chạy", "paused": "Đã tạm dừng %d proxy",
 		"diag_not_installed": "openv6 chưa được cài đặt", "diag_stopped": "Dịch vụ openv6 đang dừng",
 		"diag_starting": "Dịch vụ openv6 đang khởi động…", "diag_no_info": "Không đọc được thông tin kết nối của dịch vụ",
@@ -333,7 +338,7 @@ var texts = map[string]map[string]string{
 	"en": {
 		"open": "Open dashboard", "pause": "Pause all proxies", "resume": "Resume proxies",
 		"check": "Check all proxies", "reapply": "Re-apply network", "start_service": "Start the openv6 service",
-		"autostart": "Start at login", "language": "Language", "quit": "Quit icon (proxies keep running)",
+		"autostart": "Start at login", "language": "Language", "quit": "Quit openv6 (stops proxies)",
 		"service_down": "openv6 service is not running", "paused": "%d proxies paused",
 		"diag_not_installed": "openv6 is not installed", "diag_stopped": "openv6 service is stopped",
 		"diag_starting": "openv6 service is starting…", "diag_no_info": "Cannot read the service connection info",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -39,6 +40,8 @@ func (s *Server) RunBackground(ctx context.Context) {
 		case <-t.C:
 		}
 		s.watchNodes()
+		go s.checkLicense(ctx)
+		s.noticeFreeLimit()
 		s.scheduleHealthChecks()
 		s.autoBackup()
 		s.mon.mu.Lock()
@@ -162,7 +165,16 @@ func proxyName(p *store.Proxy) string {
 
 // ---- updates ----
 
-func (s *Server) updateRepo() string { return s.Store.GetSetting("update_repo", "synthcoz/openv6") }
+// updateRepo is where updates come from. It is not a dashboard setting: an
+// admin session (or a restored backup) must never be able to make the
+// service download and run someone else's binary as root/SYSTEM. Whoever
+// controls the machine can still point it elsewhere with OPENV6_UPDATE_REPO.
+func (s *Server) updateRepo() string {
+	if r := os.Getenv("OPENV6_UPDATE_REPO"); r != "" {
+		return r
+	}
+	return "synthcoz/openv6"
+}
 
 func (s *Server) checkForUpdate(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)

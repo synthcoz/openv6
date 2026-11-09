@@ -35,3 +35,5 @@ func (m *Manager) SyncFirewall(ports []int) error       { return nil }
 func toolCheck(dry bool) proto.SystemCheck              { return proto.SystemCheck{ID: "platform", OK: false} }
 func isAdmin() bool                                     { return false }
 func firewallChecks(fwManaged bool) []proto.SystemCheck { return nil }
+
+func (m *Manager) Fix(id string) (string, error) { return "", errors.New("no automatic fix for " + id) }

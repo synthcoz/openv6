@@ -5,7 +5,9 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -76,7 +78,21 @@ type Agent struct {
 	startedAt      time.Time
 	bindIf         int
 	testSem        chan struct{}
+
+	// apply only when the desired state changes (plus a periodic self-heal),
+	// so the 5 s heartbeat stays cheap and never stalls
+	lastHash  string
+	lastApply time.Time
+	lastOK    bool
+	force     bool // apply again without wiping addresses (after a fix)
+	netCache  proto.NetState
+	netAt     time.Time
+	netIface  string
 }
+
+// resyncEvery re-applies the configuration even when nothing changed, to
+// repair addresses or listeners the OS dropped (network change, sleep).
+const resyncEvery = 60 * time.Second
 
 func New(cfg Config) *Agent {
 	_ = os.MkdirAll(cfg.DataDir, 0o700)
@@ -126,14 +142,14 @@ func (a *Agent) Run(ctx context.Context) {
 				log.Printf("agent: panel reachable again")
 			}
 			failures = 0
-			a.apply(resp)
+			a.maybeApply(resp)
 			a.mu.Lock()
 			restart := a.restartPending && len(a.results) == 0
 			a.mu.Unlock()
 			if restart {
 				log.Printf("agent: restarting into the updated binary")
 				a.proxies.Close()
-				os.Exit(0) // systemd (Restart=always) starts the new binary
+				os.Exit(3) // non-zero: systemd, launchd and Windows recovery all restart it
 			}
 			if resp.Interval > 0 {
 				interval = time.Duration(resp.Interval) * time.Second
@@ -155,7 +171,7 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	a.mu.Lock()
 	cfgIface := a.iface
 	a.mu.Unlock()
-	st := a.net.Detect(cfgIface)
+	st := a.detectCached(cfgIface)
 	st.LANv4 = lanIPv4()
 	st.PublicV4 = a.publicV4()
 	st.TailscaleIP = tailscaleIP()
@@ -201,7 +217,9 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	}
 	var out proto.SyncResponse
 	if a.cfg.Direct != nil {
-		resp, err := a.cfg.Direct(ctx, &req)
+		dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		resp, err := a.cfg.Direct(dctx, &req)
 		if err != nil {
 			return nil, err
 		}
@@ -254,7 +272,11 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	for _, p := range r.Pools {
 		pools[p.ID] = p
 	}
-	want := netcfg.Desired{Iface: iface, Addrs: map[netip.Addr]bool{}, Routes: map[string]bool{}}
+	want := netcfg.Desired{Iface: iface, Addrs: map[netip.Addr]bool{}, Routes: map[string]bool{}, On: map[netip.Addr]string{}}
+	hasIf := map[string]bool{}
+	for _, it := range st.Interfaces {
+		hasIf[it.Name] = true
+	}
 	bypass := netcfg.BypassDesired{Enabled: r.Bypass, Iface: iface, Gateway: st.Gateway}
 	for _, p := range r.Pools {
 		if p.Mode == "anyip" && p.CIDR != "" {
@@ -282,18 +304,44 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			applied[s.ID] = proto.Applied{IP: s.IP, Error: "no IPv6 prefix available yet", Code: "no_prefix"}
 			continue
 		}
+		pBind := bindIf
+		other := s.Iface != "" && s.Iface != iface // this proxy uses another network card
+		if other {
+			if !hasIf[s.Iface] {
+				applied[s.ID] = proto.Applied{IP: s.IP, Error: "network card " + s.Iface + " is not connected or has no IPv6", Code: "iface_missing"}
+				continue
+			}
+			pBind = netcfg.IfIndex(s.Iface)
+		}
 		if p, ok := pools[s.PoolID]; !ok || p.Mode != "anyip" {
 			want.Addrs[ip] = true
-			bypass.Sources = append(bypass.Sources, ip.String()+"/128")
+			if other {
+				want.On[ip] = s.Iface
+			} else {
+				bypass.Sources = append(bypass.Sources, ip.String()+"/128")
+			}
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: bindIf, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
 		if len(r.DNS) > 0 {
-			c.Resolver = proxy.NewResolver(r.DNS, ip, bindIf)
+			c.Resolver = proxy.NewResolver(r.DNS, ip, pBind)
 		}
 		cfgs = append(cfgs, c)
 	}
-	addrErrs, errs := a.net.Apply(want)
+	var addrErrs map[netip.Addr]error
+	var errs []error
+	if iface == "" && len(want.Addrs) > 0 {
+		// interface gone for a moment (resume, Wi-Fi reconnect): keep the
+		// addresses we have and report every proxy as waiting, so the next
+		// tick retries instead of wiping everything and claiming success
+		addrErrs = map[netip.Addr]error{}
+		for ip := range want.Addrs {
+			addrErrs[ip] = fmt.Errorf("no network card with IPv6 right now; retrying")
+		}
+		errs = append(errs, fmt.Errorf("no IPv6 network card found (cable unplugged or Wi-Fi reconnecting?)"))
+	} else {
+		addrErrs, errs = a.net.Apply(want)
+	}
 	if st.IPv6Disabled {
 		errs = append(errs, fmt.Errorf("IPv6 is disabled on this machine (net.ipv6.conf.*.disable_ipv6=1)"))
 	}
@@ -379,25 +427,98 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	for _, e := range errs {
 		errStrs = append(errStrs, e.Error())
 	}
+	allOK := len(errs) == 0
+	for _, ap := range applied {
+		if !ap.OK {
+			allOK = false
+		}
+	}
 	a.mu.Lock()
+	a.lastOK = allOK
 	a.fwManaged = r.Firewall
 	a.bypassStatus, a.bypassErr = bypassStatus, bypassErr
 	a.applied = applied
 	a.errors = errStrs
 	a.specs = specs
 	a.bindIf = bindIf
-	for _, c := range r.Commands {
+	a.netCache, a.netAt, a.netIface = st, time.Now(), r.Iface
+	a.mu.Unlock()
+	a.runCommands(r.Commands)
+}
+
+// maybeApply applies the desired state when it changed, when a re-apply was
+// requested, or every resyncEvery; otherwise it only starts new commands.
+func (a *Agent) maybeApply(r *proto.SyncResponse) {
+	cp := *r
+	cp.Commands, cp.Interval = nil, 0
+	b, _ := json.Marshal(cp)
+	sum := sha256.Sum256(b)
+	h := hex.EncodeToString(sum[:])
+	// local facts the panel does not know about: which card is primary, its
+	// index (changes when an adapter resets), the router, vanished addresses
+	st := a.detectCached(r.Iface)
+	local := fmt.Sprintf("%s|%d|%s|%d", st.PrimaryIface, netcfg.IfIndex(st.PrimaryIface), st.Gateway, a.net.MissingManaged())
+	seen := map[string]bool{}
+	for _, p := range r.Proxies { // cards used by single proxies (Wi-Fi re-plugged = new index)
+		if p.Iface != "" && !seen[p.Iface] {
+			seen[p.Iface] = true
+			local += fmt.Sprintf("|%s:%d", p.Iface, netcfg.IfIndex(p.Iface))
+		}
+	}
+	sum2 := sha256.Sum256([]byte(h + local))
+	h = hex.EncodeToString(sum2[:])
+	a.mu.Lock()
+	force := a.reapply || a.force
+	a.force = false
+	lastOK := a.lastOK
+	a.mu.Unlock()
+	due := time.Since(a.lastApply) >= resyncEvery || (!lastOK && time.Since(a.lastApply) >= 15*time.Second)
+	if !force && h == a.lastHash && !due {
+		a.mu.Lock()
+		a.iface = r.Iface
+		a.mu.Unlock()
+		a.runCommands(r.Commands)
+		return
+	}
+	start := time.Now()
+	a.apply(r)
+	a.lastHash, a.lastApply = h, time.Now()
+	if d := time.Since(start); d > 10*time.Second {
+		log.Printf("agent: applying the configuration took %s", d.Round(time.Second))
+	}
+}
+
+func (a *Agent) runCommands(cmds []proto.Command) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, c := range cmds {
 		if a.running[c.ID] {
 			continue
 		}
 		a.running[c.ID] = true
 		go a.runCommand(c)
 	}
+}
+
+// detectCached returns the network state, re-detecting at most every 15 s
+// (detection runs system tools on Windows and macOS).
+func (a *Agent) detectCached(iface string) proto.NetState {
+	a.mu.Lock()
+	st, at, same := a.netCache, a.netAt, a.netIface == iface
 	a.mu.Unlock()
+	if same && !at.IsZero() && time.Since(at) < 10*time.Second {
+		return st
+	}
+	st = a.net.Detect(iface)
+	a.mu.Lock()
+	a.netCache, a.netAt, a.netIface = st, time.Now(), iface
+	a.mu.Unlock()
+	return st
 }
 
 func (a *Agent) runCommand(c proto.Command) {
 	res := proto.CommandResult{ID: c.ID}
+	restart := false
 	switch c.Type {
 	case "test_proxy":
 		a.testSem <- struct{}{}
@@ -440,9 +561,24 @@ func (a *Agent) runCommand(c proto.Command) {
 		}
 		res.OK, res.Output = true, "restarting"
 		log.Printf("agent: restart requested from the panel")
-		a.mu.Lock()
-		a.restartPending = true
-		a.mu.Unlock()
+		restart = true
+	case "fix":
+		out, err := a.net.Fix(c.Fix)
+		if err != nil {
+			res.Output = err.Error()
+		} else {
+			res.OK, res.Output = true, out
+			if c.Fix == "kernel_tuning" {
+				a.mu.Lock()
+				a.tuneFailed = nil
+				a.mu.Unlock()
+			}
+			a.mu.Lock()
+			a.force = true
+			a.netAt = time.Time{}
+			a.mu.Unlock()
+		}
+		log.Printf("agent: fix %s: ok=%v %s", c.Fix, res.OK, res.Output)
 	case "reapply":
 		res.OK, res.Output = true, "network configuration will be re-applied"
 		a.mu.Lock()
@@ -459,9 +595,7 @@ func (a *Agent) runCommand(c proto.Command) {
 		} else {
 			res.OK, res.Output = true, "updated to "+c.Version+", restarting"
 			log.Printf("agent: updated to %s", c.Version)
-			a.mu.Lock()
-			a.restartPending = true
-			a.mu.Unlock()
+			restart = true
 		}
 	default:
 		res.Output = "unknown command"
@@ -469,6 +603,9 @@ func (a *Agent) runCommand(c proto.Command) {
 	a.mu.Lock()
 	a.results = append(a.results, res)
 	delete(a.running, c.ID)
+	if restart { // same critical section: the result is queued before Run may exit
+		a.restartPending = true
+	}
 	a.mu.Unlock()
 }
 
@@ -616,6 +753,34 @@ func selfUpdate(url, version string, insecure bool) error {
 	defer cancel()
 	tmp, err := update.Download(ctx, url, dst, insecure)
 	if err != nil {
+		return err
+	}
+	// the panel (or anyone on the path to it) must not be able to push an
+	// arbitrary binary: check it against the release's signed checksums
+	base := url
+	if i := strings.Index(base, "/download/"); i >= 0 {
+		base = base[:i]
+	}
+	read := func(name string) ([]byte, error) {
+		p, err := update.Download(ctx, base+"/download/"+name, dst, insecure)
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(p)
+		return os.ReadFile(p)
+	}
+	sums, err1 := read("SHA256SUMS")
+	sig, err2 := read("SHA256SUMS.sig")
+	if err1 != nil || err2 != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("panel has no signed checksums: update refused")
+	}
+	m, err := update.VerifySums(sums, sig, version)
+	if err == nil {
+		err = update.VerifyFile(tmp, m[update.AssetName(runtime.GOOS, runtime.GOARCH)])
+	}
+	if err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return update.Install(tmp, dst, version)

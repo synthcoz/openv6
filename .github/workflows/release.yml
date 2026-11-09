@@ -75,6 +75,31 @@ jobs:
           go run github.com/tc-hib/go-winres@v0.3.3 simply --icon openv6.png --manifest gui || echo "icon embedding skipped"
           # GUI build: never opens a console window (CLI output attaches to the terminal)
           CGO_ENABLED=0 go build -ldflags "-s -w -H windowsgui" -o packaging/windows/openv6.exe .
+      - name: Code signing setup (optional)
+        id: sign
+        shell: pwsh
+        env:
+          CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          # Signing removes the SmartScreen "Unknown publisher" warning. It runs
+          # only when the WINDOWS_CERT_PFX (base64 .pfx) secret is set.
+          if (-not $env:CERT_PFX) { Write-Host "no code-signing certificate configured: building unsigned"; "enabled=false" >> $env:GITHUB_OUTPUT; exit 0 }
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:CERT_PFX))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1
+          "signtool=$($signtool.FullName)" >> $env:GITHUB_OUTPUT
+          "enabled=true" >> $env:GITHUB_OUTPUT
+      - name: Sign openv6.exe
+        if: steps.sign.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          & "${{ steps.sign.outputs.signtool }}" sign /f "$env:RUNNER_TEMP\cert.pfx" /p "$env:CERT_PASSWORD" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d openv6 packaging\windows\openv6.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Collect binary
+        shell: bash
+        run: |
           mkdir -p dist
           cp packaging/windows/openv6.exe dist/openv6-windows-amd64.exe
       - name: Installer (Inno Setup)
@@ -86,6 +111,15 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
           & $iscc packaging\windows\openv6.iss
           Copy-Item packaging\windows\openv6-setup-windows-amd64.exe dist\
+      - name: Sign installer
+        if: steps.sign.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          & "${{ steps.sign.outputs.signtool }}" sign /f "$env:RUNNER_TEMP\cert.pfx" /p "$env:CERT_PASSWORD" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "openv6 setup" dist\openv6-setup-windows-amd64.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Remove-Item "$env:RUNNER_TEMP\cert.pfx" -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -123,10 +157,25 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      - name: Sign checksums
+        env:
+          OPENV6_SIGNING_KEY: ${{ secrets.OPENV6_SIGNING_KEY }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          (cd out && { echo "# openv6 $TAG"; sha256sum *; } > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS && cat SHA256SUMS)
+          if [ -n "$OPENV6_SIGNING_KEY" ]; then
+            go run ./tools/sign out
+          else
+            echo "::warning::OPENV6_SIGNING_KEY is not set: this release is unsigned and in-app updates will refuse it"
+          fi
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

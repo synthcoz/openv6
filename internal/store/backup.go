@@ -16,6 +16,10 @@ type Backup struct {
 	Tables     map[string][]map[string]any `json:"tables"`
 }
 
+// settings tied to this machine: never copied to another one by a restore
+// (a license activation belongs to the machine it was activated on)
+var notBackedUp = map[string]bool{"schema_version": true, "license": true, "machine_id": true, "setup_code": true}
+
 // Dump exports configuration tables (not sessions, events or check history).
 func (s *Store) Dump(appVersion string) (*Backup, error) {
 	b := &Backup{Format: 1, AppVersion: appVersion, CreatedAt: Now(), Tables: map[string][]map[string]any{}}
@@ -38,12 +42,15 @@ func (s *Store) Dump(appVersion string) (*Backup, error) {
 			}
 			m := map[string]any{}
 			for i, c := range cols {
-				if t == "settings" && c == "key" && vals[i] == "schema_version" {
+				if t == "settings" && c == "key" && notBackedUp[fmt.Sprint(vals[i])] {
 					m = nil
 					break
 				}
 				if bs, ok := vals[i].([]byte); ok {
 					vals[i] = string(bs)
+				}
+				if str, ok := vals[i].(string); ok && strings.HasPrefix(str, encPrefix) {
+					vals[i] = s.dec(str) // backups move between machines: plaintext
 				}
 				m[c] = vals[i]
 			}
@@ -74,8 +81,8 @@ func (s *Store) Restore(b *Backup) error {
 	for i := len(backupTables) - 1; i >= 0; i-- {
 		t := backupTables[i]
 		q := "DELETE FROM " + t
-		if t == "settings" {
-			q += " WHERE key <> 'schema_version'"
+		if t == "settings" { // keep machine-bound settings (license activation, ids)
+			q += " WHERE key NOT IN ('schema_version','license','machine_id','setup_code')"
 		}
 		if _, err := tx.Exec(q); err != nil {
 			return err
@@ -101,7 +108,7 @@ func (s *Store) Restore(b *Backup) error {
 		for _, row := range b.Tables[t] {
 			var cols []string
 			for c := range row {
-				if valid[c] && !(t == "settings" && row["key"] == "schema_version") {
+				if valid[c] && !(t == "settings" && notBackedUp[fmt.Sprint(row["key"])]) {
 					cols = append(cols, c)
 				}
 			}
@@ -122,5 +129,8 @@ func (s *Store) Restore(b *Backup) error {
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.EncryptExisting()
 }

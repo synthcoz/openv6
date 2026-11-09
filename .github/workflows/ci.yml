@@ -41,21 +41,25 @@ jobs:
           if ($p.ExitCode -ne 0) { exit 1 }
           Start-Sleep -Seconds 5
           Get-Service openv6 | Format-List Name,Status,StartType
-          if ((Get-Service openv6).Status -ne 'Running') { Get-Content "$env:ProgramData\openv6\openv6.log" -ErrorAction SilentlyContinue; exit 1 }
+          if ((Get-Service openv6).Status -ne 'Running') { Get-Content "$env:ProgramData\openv6\shared\openv6.log" -ErrorAction SilentlyContinue; exit 1 }
           $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/api/status
           Write-Host $r.Content
-          $info = Get-Content "$env:ProgramData\openv6\tray.json" | ConvertFrom-Json
+          $info = Get-Content "$env:ProgramData\openv6\shared\tray.json" | ConvertFrom-Json
           $h = @{ 'X-Tray-Token' = $info.token }
           (Invoke-WebRequest -UseBasicParsing -Headers $h "$($info.url)/api/tray/status").Content
           icacls "$env:ProgramData\openv6"
+          icacls "$env:ProgramData\openv6\shared"
+          # data folder (tokens, passwords) must not be readable by normal users
+          if ((icacls "$env:ProgramData\openv6" | Out-String) -match 'BUILTIN\\Users|Authenticated Users|Everyone') { Write-Host "data folder readable by users"; exit 1 }
+          if (-not ((icacls "$env:ProgramData\openv6\shared" | Out-String) -match 'BUILTIN\\Users')) { Write-Host "shared folder not readable by users"; exit 1 }
           # port fallback: occupy 8080, restart, the dashboard must move to 8081
           $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'uninstall'
           $busy = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 8080); $busy.Start()
           $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'install','server'
           Start-Sleep -Seconds 6
-          $info = Get-Content "$env:ProgramData\openv6\tray.json" | ConvertFrom-Json
+          $info = Get-Content "$env:ProgramData\openv6\shared\tray.json" | ConvertFrom-Json
           Write-Host "dashboard url with 8080 busy: $($info.url)"
-          if ($info.url -notlike '*:8081') { Get-Content "$env:ProgramData\openv6\openv6.log"; exit 1 }
+          if ($info.url -notlike '*:8081') { Get-Content "$env:ProgramData\openv6\shared\openv6.log"; exit 1 }
           (Invoke-WebRequest -UseBasicParsing "$($info.url)/api/status").Content
           $busy.Stop()
           $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'uninstall'

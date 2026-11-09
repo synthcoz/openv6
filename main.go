@@ -14,9 +14,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
@@ -86,6 +88,11 @@ func main() {
 			break
 		}
 		mode, rest := os.Args[2], os.Args[3:]
+		// a crash in the background service would otherwise leave no trace
+		_ = os.MkdirAll(service.DataDir(), 0o700)
+		if f, ferr := os.OpenFile(filepath.Join(logDir(service.DataDir(), service.DataDir()), "openv6-crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+			_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+		}
 		err = service.RunService(func(ctx context.Context) error {
 			if mode == "agent" {
 				return runAgent(ctx, rest)
@@ -99,7 +106,7 @@ func main() {
 	case "tray":
 		err = tray.Run()
 	case "open": // open the dashboard, signed in (used by shortcuts)
-		err = tray.OpenDashboard("")
+		err = openApp()
 	case "reset-password":
 		err = runResetPassword(os.Args[2:])
 	case "selftest":
@@ -112,6 +119,12 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if os.Args[1] == "service-run" { // no console: keep the reason in the log file
+			if f, ferr := os.OpenFile(filepath.Join(logDir(service.DataDir(), service.DataDir()), "openv6.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+				fmt.Fprintf(f, "%s openv6 %s could not start: %v\n", time.Now().Format("2006/01/02 15:04:05"), proto.Version, err)
+				f.Close()
+			}
+		}
 		os.Exit(1)
 	}
 }
@@ -125,6 +138,16 @@ func signalContext() context.Context {
 }
 
 // logToFile adds a log file in the data dir (Windows services have no console).
+// logDir is where log files go: next to the tray info for the installed
+// service (so the tray can show them), otherwise in the data folder.
+func logDir(data, defaultData string) string {
+	if p := service.LogPath(); p != "" && runtime.GOOS == "windows" && filepath.Clean(data) == filepath.Clean(defaultData) {
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		return filepath.Dir(p)
+	}
+	return data
+}
+
 func logToFile(dir string, extra io.Writer) {
 	w := []io.Writer{os.Stderr, extra}
 	if runtime.GOOS == "windows" {
@@ -151,8 +174,9 @@ func runServer(ctx context.Context, args []string) error {
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		return err
 	}
+	service.SecureDataDir(*data)
 	logs := logbuf.New(5000)
-	logToFile(*data, logs)
+	logToFile(logDir(*data, service.DataDir()), logs)
 	st, err := store.Open(filepath.Join(*data, "openv6.db"))
 	if err != nil {
 		return err
@@ -167,6 +191,16 @@ func runServer(ctx context.Context, args []string) error {
 	srv := panel.New(st, web, *data, port, exe)
 	srv.PanelLogs = logs
 	srv.TrayToken = store.RandomToken(24)
+	if code := srv.SetupCode(); code != "" {
+		log.Printf("first-time setup code: %s (needed only when you open the dashboard from outside this machine and LAN)", code)
+	}
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	srv.OnShutdown = func() {
+		log.Printf("stopping: requested from the tray icon")
+		service.StopSelf()
+		stop()
+	}
 	go srv.RunBackground(ctx)
 
 	scheme := "http"
@@ -230,6 +264,7 @@ func runAgent(ctx context.Context, args []string) error {
 		return fmt.Errorf("-panel and -token are required")
 	}
 	_ = os.MkdirAll(*data, 0o700)
+	service.SecureDataDir(*data)
 	logs := logbuf.New(2000)
 	logToFile(*data, logs)
 	ag := agent.New(agent.Config{PanelURL: *panelURL, Token: *token, DataDir: *data, DryRun: *dry, InsecureTLS: *insecure,
@@ -354,4 +389,21 @@ func loopbackReachesUs(ln net.Listener, port int) bool {
 			return true
 		}
 	}
+}
+
+// openApp is what the desktop/start-menu shortcut does: start openv6 again if
+// it was quit from the tray, make sure the tray icon runs, open the dashboard.
+func openApp() error {
+	if service.Status() == "stopped" {
+		if err := service.StartService(); err == nil {
+			for i := 0; i < 40 && service.Status() != "running"; i++ {
+				time.Sleep(500 * time.Millisecond)
+			}
+			time.Sleep(1500 * time.Millisecond) // dashboard listening, tray info written
+		}
+		if !tray.Running() {
+			_ = exec.Command(service.BinPath(), "tray").Start()
+		}
+	}
+	return tray.OpenDashboard("")
 }

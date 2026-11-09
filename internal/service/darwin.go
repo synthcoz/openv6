@@ -17,7 +17,7 @@ const binPath = "/usr/local/bin/openv6"
 
 func DataDir() string      { return "/Library/Application Support/openv6" }
 func AgentDataDir() string { return "/Library/Application Support/openv6-agent" }
-func TrayInfoPath() string { return "/Library/Application Support/openv6/tray.json" }
+func TrayInfoPath() string { return "/Library/Application Support/openv6-shared/tray.json" }
 func BinPath() string      { return binPath }
 
 // Managed reports whether launchd started us from our plist.
@@ -163,7 +163,7 @@ func SetTrayAutostart(on bool) error {
 
 func StartServiceElevated() error {
 	return exec.Command("osascript", "-e",
-		`do shell script "launchctl kickstart -k system/com.openv6.server" with administrator privileges`).Run()
+		`do shell script "launchctl bootstrap system /Library/LaunchDaemons/com.openv6.server.plist; launchctl kickstart -k system/com.openv6.server" with administrator privileges`).Run()
 }
 
 func Status() string {
@@ -183,3 +183,24 @@ func Status() string {
 func LogPath() string { return "/Library/Logs/openv6.log" }
 
 func shareTrayDir(dir string) {}
+
+// StartService starts the service, asking for admin rights.
+func StartService() error { return StartServiceElevated() }
+
+// StopSelf unloads the launchd job so KeepAlive does not restart it; it is
+// loaded again at the next boot (RunAtLoad) or by StartService.
+func StopSelf() {
+	if os.Getenv("XPC_SERVICE_NAME") != "com.openv6.server" {
+		return
+	}
+	_ = exec.Command("launchctl", "bootout", "system/com.openv6.server").Start()
+}
+
+// SecureDataDir keeps the data folder private to root (the tray info lives
+// in openv6-shared instead).
+func SecureDataDir(dir string) {
+	_ = os.Chmod(dir, 0o700)
+	if filepath.Clean(dir) == filepath.Clean(DataDir()) {
+		_ = os.Remove(filepath.Join(dir, "tray.json")) // older versions kept it here
+	}
+}

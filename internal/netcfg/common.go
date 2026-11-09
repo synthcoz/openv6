@@ -140,6 +140,17 @@ type Desired struct {
 	Iface  string              // interface for "addr" mode addresses
 	Addrs  map[netip.Addr]bool // addresses that need to be on Iface
 	Routes map[string]bool     // anyip prefixes
+	// On: per-address interface when a proxy uses another network card
+	// than the node's (e.g. Wi-Fi while the node defaults to LAN).
+	On map[netip.Addr]string
+}
+
+// IfaceOf is the interface an address belongs on.
+func (d Desired) IfaceOf(ip netip.Addr) string {
+	if v := d.On[ip]; v != "" {
+		return v
+	}
+	return d.Iface
 }
 
 // Cleanup removes everything this agent installed.
@@ -368,4 +379,27 @@ func hasRoutableAddr(it net.Interface) bool {
 		}
 	}
 	return false
+}
+
+// MissingManaged counts addresses openv6 added that are no longer on their
+// interface (the OS dropped them after sleep, a cable/Wi-Fi change or an
+// adapter reset). One cheap interface listing; used by the agent to decide
+// when to re-apply without waiting for the periodic resync.
+func (m *Manager) MissingManaged() int {
+	if m.DryRun {
+		return 0
+	}
+	present := map[string]bool{}
+	for _, a := range netAddrs() {
+		present[a.Iface+"|"+a.Addr.String()] = true
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for a, ifc := range m.st.Addrs {
+		if !present[ifc+"|"+a] {
+			n++
+		}
+	}
+	return n
 }

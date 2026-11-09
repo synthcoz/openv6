@@ -110,6 +110,15 @@ func (s *Server) handleTrayAction(w http.ResponseWriter, r *http.Request) {
 		s.queueChecks(store.ProxyFilter{NodeID: n.ID})
 	case "reapply":
 		s.queueCommand(n.ID, proto.Command{Type: "reapply"})
+	case "shutdown": // tray "Quit": stop proxies and the service until next start
+		if s.OnShutdown == nil {
+			fail(w, 400, "shutdown not available")
+			return
+		}
+		s.Store.AddEvent(n.ID, "info", "openv6 stopped from the tray icon")
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		go func() { time.Sleep(300 * time.Millisecond); s.OnShutdown() }()
+		return
 	case "lang-vi", "lang-en":
 		_ = s.Store.SetSetting("lang", r.PathValue("action")[5:])
 	default:
@@ -159,7 +168,7 @@ func (s *Server) handleMagic(w http.ResponseWriter, r *http.Request) {
 	sess, err := s.Store.CreateSession(uid, sessionTTL)
 	if err == nil {
 		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: sess, Path: "/", HttpOnly: true,
-			SameSite: http.SameSiteLaxMode, MaxAge: sessionTTL})
+			SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil, MaxAge: sessionTTL})
 	}
 	http.Redirect(w, r, dest, http.StatusSeeOther)
 }

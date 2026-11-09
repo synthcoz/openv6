@@ -85,9 +85,17 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		logErr(w, err)
 		return
 	}
+	// only signed releases are installed (SHA256SUMS + ed25519 signature)
+	sums, rawSums, rawSig, err := rel.SignedSums(ctx)
+	if err != nil {
+		fail(w, 502, err.Error())
+		return
+	}
 	// other architectures first (best effort), then our own binary
 	binDir := filepath.Join(s.DataDir, "bin")
 	_ = os.MkdirAll(binDir, 0o755)
+	_ = os.WriteFile(filepath.Join(binDir, "SHA256SUMS"), rawSums, 0o644)
+	_ = os.WriteFile(filepath.Join(binDir, "SHA256SUMS.sig"), rawSig, 0o644)
 	for _, pl := range update.Platforms {
 		if pl[0] == runtime.GOOS && pl[1] == runtime.GOARCH {
 			continue
@@ -95,6 +103,10 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		if u := rel.Assets[update.AssetName(pl[0], pl[1])]; u != "" {
 			dst := filepath.Join(binDir, update.AssetName(pl[0], pl[1]))
 			if tmp, err := update.Download(ctx, u, dst, false); err == nil {
+				if update.VerifyFile(tmp, sums[update.AssetName(pl[0], pl[1])]) != nil {
+					_ = os.Remove(tmp)
+					continue
+				}
 				_ = os.Chmod(tmp, 0o755)
 				_ = os.Rename(tmp, dst)
 			}
@@ -110,6 +122,11 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, err.Error())
 		return
 	}
+	if err := update.VerifyFile(tmp, sums[update.AssetName(runtime.GOOS, runtime.GOARCH)]); err != nil {
+		_ = os.Remove(tmp)
+		fail(w, 502, err.Error())
+		return
+	}
 	if err := update.Install(tmp, self, rel.Tag); err != nil {
 		fail(w, 500, err.Error())
 		return
@@ -119,7 +136,9 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		if tu := rel.Assets[update.TrayAssetName(runtime.GOARCH)]; tu != "" {
 			trayPath := filepath.Join(filepath.Dir(self), "openv6-tray.exe")
 			if tt, err := update.Download(ctx, tu, trayPath, false); err == nil {
-				if err := update.Install(tt, trayPath, ""); err != nil {
+				if err := update.VerifyFile(tt, sums[update.TrayAssetName(runtime.GOARCH)]); err != nil {
+					_ = os.Remove(tt)
+				} else if err := update.Install(tt, trayPath, ""); err != nil {
 					log.Printf("tray update: %v", err)
 				}
 			}
@@ -144,6 +163,10 @@ func (s *Server) handleUpdateNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	only := pathID(r)
 	pu := s.panelURL(r)
+	if err := s.ensureSums(r.Context()); err != nil {
+		fail(w, 502, "cannot get the signed checksums of v"+proto.Version+" (needed by nodes to verify the update): "+err.Error())
+		return
+	}
 	var cmds []*commandState
 	for _, n := range nodes {
 		if n.IsLocal || (only > 0 && n.ID != only) {
@@ -276,6 +299,12 @@ func (s *Server) handleNodeLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleProxyChecks(w http.ResponseWriter, r *http.Request) {
+	if isCustomer(r) {
+		if p, err := s.Store.GetProxy(pathID(r)); err != nil || p.OwnerID != currentUser(r).ID {
+			fail(w, 404, "proxy not found")
+			return
+		}
+	}
 	cs, err := s.Store.ListChecks(pathID(r), 50)
 	if err != nil {
 		logErr(w, err)
@@ -323,4 +352,89 @@ func (s *Server) handleNodeReapply(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: network configuration re-applied", n.Name))
 	writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+}
+
+// handleNodeFix runs one repair for a node: panel-side settings or a fix
+// command executed by the node's agent.
+func (s *Server) handleNodeFix(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	var b struct {
+		Fix string `json:"fix"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	switch b.Fix {
+	case "bypass_on": // VPN captures proxy traffic: route it around the VPN
+		n.Bypass = true
+		if err := s.Store.UpdateNode(n); err != nil {
+			logErr(w, err)
+			return
+		}
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: VPN bypass turned on (fix)", n.Name))
+		writeJSON(w, 200, map[string]any{"ok": true})
+	case "iface_auto": // configured interface vanished: follow the default one
+		n.Iface = ""
+		if err := s.Store.UpdateNode(n); err != nil {
+			logErr(w, err)
+			return
+		}
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+	case "reapply":
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: network configuration re-applied (fix)", n.Name))
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "reapply"}))
+	case "firewall", "network_private", "kernel_tuning":
+		s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q: automatic fix %s", n.Name, b.Fix))
+		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "fix", Fix: b.Fix}))
+	default:
+		fail(w, 400, "unknown fix")
+	}
+}
+
+// ensureSums makes sure bin/SHA256SUMS(.sig) are the signed checksums of
+// this panel's own version, fetching them from the release when needed.
+func (s *Server) ensureSums(ctx context.Context) error {
+	binDir := filepath.Join(s.DataDir, "bin")
+	sums, err1 := os.ReadFile(filepath.Join(binDir, "SHA256SUMS"))
+	sig, err2 := os.ReadFile(filepath.Join(binDir, "SHA256SUMS.sig"))
+	if err1 == nil && err2 == nil {
+		if _, err := update.VerifySums(sums, sig, proto.Version); err == nil {
+			return nil
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	rel, err := update.ByTag(ctx, s.updateRepo(), "v"+proto.Version)
+	if err != nil {
+		return err
+	}
+	_, rawSums, rawSig, err := rel.SignedSums(ctx)
+	if err != nil {
+		return err
+	}
+	_ = os.MkdirAll(binDir, 0o755)
+	if err := os.WriteFile(filepath.Join(binDir, "SHA256SUMS"), rawSums, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(binDir, "SHA256SUMS.sig"), rawSig, 0o644)
+}
+
+// handleSums serves the signed checksums to nodes (public, like /download).
+func (s *Server) handleSums(w http.ResponseWriter, r *http.Request) {
+	name := "SHA256SUMS"
+	if strings.HasSuffix(r.URL.Path, ".sig") {
+		name = "SHA256SUMS.sig"
+	}
+	p := filepath.Join(s.DataDir, "bin", name)
+	if _, err := os.Stat(p); err != nil {
+		http.Error(w, "no signed checksums on this panel", 404)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	http.ServeFile(w, r, p)
 }

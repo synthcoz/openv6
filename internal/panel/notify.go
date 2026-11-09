@@ -59,6 +59,9 @@ func (s *Server) msg(key string, args ...any) string {
 
 // alert sends a Telegram message if configured and the alert kind is enabled.
 func (s *Server) alert(kind, text string) {
+	if !s.pro() { // Telegram alerts are a Pro feature
+		return
+	}
 	if s.Store.GetSetting("notify_"+kind, "1") != "1" {
 		return
 	}

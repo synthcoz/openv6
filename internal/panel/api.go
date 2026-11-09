@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"openv6/internal/license"
 	"openv6/internal/proto"
 	"openv6/internal/store"
 	"openv6/internal/v6"
@@ -135,6 +136,9 @@ func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "name required")
 		return
 	}
+	if nodes, _ := s.Store.ListNodes(); len(nodes) >= 1 && s.needPro(w, "More than one machine (node)") {
+		return
+	}
 	n, err := s.Store.CreateNode(strings.TrimSpace(b.Name), strings.TrimSpace(b.EntryHost), false)
 	if err != nil {
 		logErr(w, err)
@@ -175,6 +179,9 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Bypass != nil {
 		n.Bypass = *b.Bypass
+	}
+	if ((b.UPnP != nil && *b.UPnP) || (b.RelayPort != nil && *b.RelayPort > 0)) && s.needPro(w, "Sharing to the Internet (UPnP, relay)") {
+		return
 	}
 	if b.UPnP != nil {
 		n.UPnP = *b.UPnP
@@ -442,6 +449,10 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 	for _, p := range pools {
 		pm[p.ID] = p
 	}
+	var freeIDs map[int64]bool
+	if !s.pro() {
+		_, freeIDs = s.freeAllowed()
+	}
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
 	now := time.Now().Unix()
@@ -479,6 +490,8 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 		live := s.live[p.NodeID]
 		online := nm[p.NodeID] != nil && now-nm[p.NodeID].LastSeen <= onlineWindow
 		switch {
+		case freeIDs != nil && !freeIDs[p.ID]:
+			v.Status, v.Code = "license", "license_required"
 		case !p.Enabled:
 			v.Status = "disabled"
 		case nm[p.NodeID] != nil && nm[p.NodeID].Paused:
@@ -508,7 +521,11 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 
 func (s *Server) handleListProxies(w http.ResponseWriter, r *http.Request) {
 	nid, _ := strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
-	vs, err := s.proxyViews(store.ProxyFilter{NodeID: nid})
+	f := store.ProxyFilter{NodeID: nid}
+	if isCustomer(r) {
+		f = store.ProxyFilter{OwnerID: currentUser(r).ID}
+	}
+	vs, err := s.proxyViews(f)
 	if err != nil {
 		logErr(w, err)
 		return
@@ -546,6 +563,39 @@ type bulkReq struct {
 	MaxConns     int    `json:"max_conns"`
 	RateKBps     int    `json:"rate_kbps"`
 	RelayNodeID  int64  `json:"relay_node_id"`
+	Iface        string `json:"iface"` // network card ("" = node default)
+}
+
+// checkIface validates a per-proxy network card: it must be connected on
+// the node and carry the pool's IPv6 prefix.
+func (s *Server) checkIface(nodeID int64, poolID int64, iface string) error {
+	if iface == "" {
+		return nil
+	}
+	n, err := s.Store.GetNode(nodeID)
+	if err != nil {
+		return errors.New("node not found")
+	}
+	pool, _ := s.Store.GetPool(poolID)
+	for _, it := range nodeReq(n).Net.Interfaces {
+		if it.Name != iface {
+			continue
+		}
+		if pool == nil || pool.CIDR == "" {
+			return nil
+		}
+		pp, perr := netip.ParsePrefix(pool.CIDR)
+		for _, p := range it.Prefixes {
+			if p == pool.CIDR {
+				return nil
+			}
+			if cp, err := netip.ParsePrefix(p); err == nil && perr == nil && pp.Bits() <= cp.Bits() && pp.Contains(cp.Addr()) {
+				return nil
+			}
+		}
+		return fmt.Errorf("network card %s has a different IPv6 prefix than pool %s; create a pool for its prefix first", iface, pool.CIDR)
+	}
+	return fmt.Errorf("network card %s is not connected on this machine", iface)
 }
 
 func validLimits(maxConns, rate int) error {
@@ -596,6 +646,25 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validLimits(b.MaxConns, b.RateKBps); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if !s.pro() {
+		all, _ := s.Store.ListProxies(store.ProxyFilter{})
+		if len(all)+b.Count > license.FreeProxies && s.needPro(w, "More than "+itoa(license.FreeProxies)+" proxies") {
+			return
+		}
+		if (b.MaxConns > 0 || b.RateKBps > 0) && s.needPro(w, "Per-proxy limits") {
+			return
+		}
+		if b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
+			return
+		}
+		if b.Iface != "" && s.needPro(w, "Network card per proxy") {
+			return
+		}
+	}
+	if err := s.checkIface(b.NodeID, b.PoolID, strings.TrimSpace(b.Iface)); err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
@@ -657,7 +726,7 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		used[port] = true
 		p := &store.Proxy{NodeID: b.NodeID, PoolID: pool.ID, Port: port, Protocol: b.Protocol, Enabled: true,
 			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires,
-			Scope: b.Scope, MaxConns: b.MaxConns, RateKBps: b.RateKBps}
+			Scope: b.Scope, MaxConns: b.MaxConns, RateKBps: b.RateKBps, Iface: strings.TrimSpace(b.Iface)}
 		if b.Spread && subnetCount > 1 {
 			for {
 				sn := v6.RandomSubnet(subnetCount)
@@ -716,6 +785,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		RateKBps     *int    `json:"rate_kbps"`
 		RelayNodeID  *int64  `json:"relay_node_id"`
 		RelayPort    *int    `json:"relay_port"`
+		Iface        *string `json:"iface"`
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -778,6 +848,23 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.ExpiresAt != nil {
 		p.ExpiresAt = *b.ExpiresAt
+	}
+	if ((b.MaxConns != nil && *b.MaxConns > 0) || (b.RateKBps != nil && *b.RateKBps > 0)) && s.needPro(w, "Per-proxy limits") {
+		return
+	}
+	if b.RelayNodeID != nil && *b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
+		return
+	}
+	if b.Iface != nil && strings.TrimSpace(*b.Iface) != p.Iface {
+		v := strings.TrimSpace(*b.Iface)
+		if v != "" && s.needPro(w, "Network card per proxy") {
+			return
+		}
+		if err := s.checkIface(p.NodeID, p.PoolID, v); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		p.Iface = v
 	}
 	if b.MaxConns != nil {
 		p.MaxConns = *b.MaxConns
@@ -855,6 +942,40 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 		logErr(w, err)
 		return
 	}
+	if isCustomer(r) {
+		me := currentUser(r).ID
+		for _, p := range ps {
+			if p.OwnerID != me {
+				fail(w, 403, "not your proxy")
+				return
+			}
+		}
+		if b.Action != "test" && b.Action != "regen_pass" && b.Action != "regen_ip" {
+			fail(w, 403, "not available for customer accounts")
+			return
+		}
+	}
+	if b.Action == "set_owner" {
+		oid, _ := strconv.ParseInt(b.Value, 10, 64)
+		if oid != 0 {
+			if s.needPro(w, "Customer accounts") {
+				return
+			}
+			if u, err := s.Store.GetUser(oid); err != nil || u.Role != "customer" {
+				fail(w, 400, "customer account not found")
+				return
+			}
+		}
+		for _, p := range ps {
+			p.OwnerID = oid
+			if err := s.Store.UpdateProxy(p); err != nil {
+				logErr(w, err)
+				return
+			}
+		}
+		writeJSON(w, 200, map[string]int{"affected": len(ps)})
+		return
+	}
 	switch b.Action {
 	case "delete":
 		if err := s.Store.DeleteProxies(b.IDs); err != nil {
@@ -884,9 +1005,35 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pools {
 		pm[p.ID] = p
 	}
+	if (b.Action == "set_limits" && b.Value != "0,0") || (b.Action == "set_relay" && b.Value != "0") {
+		if s.needPro(w, "This action") {
+			return
+		}
+	}
 	var relayUsed map[int]bool
+	usedBy := map[int64]map[int]bool{}
 	for _, p := range ps {
 		switch b.Action {
+		case "fix_port": // the port is taken by another program: move to a free one
+			used := usedBy[p.NodeID]
+			if used == nil {
+				var err error
+				if used, err = s.usedPorts(p.NodeID, 0); err != nil {
+					logErr(w, err)
+					return
+				}
+				usedBy[p.NodeID] = used
+			}
+			np := p.Port + 1
+			for used[np] || s.reservedPort(np) {
+				np++
+				if np > 65535 {
+					fail(w, 400, "no free ports left")
+					return
+				}
+			}
+			used[np] = true
+			p.Port = np
 		case "enable":
 			p.Enabled = true
 		case "disable":
@@ -939,11 +1086,6 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 				if relayUsed, err = s.usedPorts(rid, 0); err != nil {
 					logErr(w, err)
 					return
-				}
-				for _, q := range ps { // ports of the selection are being reassigned
-					if q.RelayNodeID == rid && q.NodeID != rid {
-						delete(relayUsed, relayPub(q))
-					}
 				}
 			}
 			if p.RelayNodeID == rid {
@@ -1002,7 +1144,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
-	vs, err := s.proxyViews(store.ProxyFilter{IDs: b.IDs})
+	pf := store.ProxyFilter{IDs: b.IDs}
+	if isCustomer(r) {
+		pf.OwnerID = currentUser(r).ID
+	}
+	vs, err := s.proxyViews(pf)
 	if err != nil {
 		logErr(w, err)
 		return
@@ -1171,7 +1317,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"nodes": len(nodes), "nodes_online": online, "proxies": len(vs), "status": status,
 		"bytes_up": up, "bytes_down": down, "active": active, "subnets": len(subnets), "events": events,
-		"version": proto.Version, "failing": failing,
+		"version": proto.Version, "failing": failing, "pro": s.pro(),
 	})
 }
 
@@ -1185,11 +1331,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
-	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name", "update_repo"}
+	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name"}
 
 var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
 	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
-	"lang": "vi", "update_repo": "synthcoz/openv6"}
+	"lang": "vi"}
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"detected_url": s.panelURL(r)}
@@ -1217,6 +1363,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		if v, ok := b[k]; ok {
 			_ = s.Store.SetSetting(k, strings.TrimSpace(v))
 		}
+	}
+	if v, ok := b["telegram_token"]; ok && strings.TrimSpace(v) != "" && s.needPro(w, "Telegram alerts") {
+		return
 	}
 	if v, ok := b["telegram_token"]; ok && (strings.TrimSpace(v) != "" || b["telegram_token_clear"] == "1") {
 		_ = s.Store.SetSetting("telegram_token", strings.TrimSpace(v))

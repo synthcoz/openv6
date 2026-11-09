@@ -2,18 +2,23 @@
 package store
 
 import (
+	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ DB *sql.DB }
+type Store struct {
+	DB   *sql.DB
+	aead cipher.AEAD
+}
 
 var ErrNotFound = errors.New("not found")
 
@@ -65,6 +70,12 @@ func Open(path string) (*Store, error) {
 	if err := st.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if st.aead, err = loadKey(path); err != nil {
+		return nil, fmt.Errorf("encryption key: %w", err)
+	}
+	if err := st.EncryptExisting(); err != nil {
+		return nil, fmt.Errorf("encrypt secrets: %w", err)
+	}
 	return st, nil
 }
 
@@ -102,26 +113,127 @@ var migrations = []string{
 	 CREATE TABLE IF NOT EXISTS api_tokens (
 	   id INTEGER PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL,
 	   created_at INTEGER NOT NULL, last_used INTEGER NOT NULL DEFAULT 0);`,
+	// 6: reseller mode: proxies assigned to customer accounts
+	`ALTER TABLE proxies ADD COLUMN owner_id INTEGER NOT NULL DEFAULT 0;`,
+	// 7: network card per proxy ("" = node default)
+	`ALTER TABLE proxies ADD COLUMN iface TEXT NOT NULL DEFAULT '';`,
 }
 
+// migrate brings the schema up to date. Each statement runs on its own and
+// steps that were already applied (duplicate column, existing table) are
+// skipped, so a half-applied or unusual database still upgrades.
 func (s *Store) migrate() error {
-	v, _ := strconv.Atoi(s.GetSetting("schema_version", "0"))
+	if err := s.repairSettings(); err != nil {
+		return fmt.Errorf("settings table: %w (%s)", err, s.describe("settings"))
+	}
+	v, err := strconv.Atoi(s.GetSetting("schema_version", ""))
+	if err != nil {
+		v = s.inferVersion()
+	}
 	for i := v; i < len(migrations); i++ {
-		tx, err := s.DB.Begin()
-		if err != nil {
+		for _, stmt := range strings.Split(migrations[i], ";") {
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" {
+				continue
+			}
+			if _, err := s.DB.Exec(stmt); err != nil && !alreadyApplied(err) {
+				return fmt.Errorf("migration %d (%s): %w", i+1, firstLine(stmt), err)
+			}
+		}
+		if err := s.SetSetting("schema_version", strconv.Itoa(i+1)); err != nil {
+			return fmt.Errorf("save schema version %d: %w (%s)", i+1, err, s.describe("settings"))
+		}
+	}
+	return nil
+}
+
+// inferVersion works out the schema version from the columns present when
+// the stored version is missing, so data-changing migrations (e.g. 3, which
+// sets the sharing scope) never run twice.
+func (s *Store) inferVersion() int {
+	has := func(table, col string) bool {
+		for _, c := range s.columns(table) {
+			if strings.EqualFold(c, col) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("proxies", "iface"):
+		return 7
+	case has("proxies", "owner_id"):
+		return 6
+	case has("proxies", "max_conns"):
+		return 5
+	case has("nodes", "paused"):
+		return 4
+	case has("proxies", "scope"):
+		return 3
+	case has("proxies", "label"):
+		return 2
+	case has("proxies", "check_ok"):
+		return 1
+	}
+	return 0
+}
+
+func alreadyApplied(err error) bool {
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "duplicate column") || strings.Contains(m, "already exists")
+}
+
+func firstLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 70 {
+		s = s[:70] + "…"
+	}
+	return s
+}
+
+func (s *Store) columns(table string) []string {
+	rows, err := s.DB.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var n string
+		_ = rows.Scan(&n)
+		out = append(out, n)
+	}
+	return out
+}
+
+func (s *Store) describe(table string) string {
+	return table + " columns: " + strings.Join(s.columns(table), ",")
+}
+
+// repairSettings rebuilds the settings table if it lacks key/value columns,
+// keeping its rows when the shape allows it.
+func (s *Store) repairSettings() error {
+	cols := s.columns("settings")
+	has := map[string]bool{}
+	for _, c := range cols {
+		has[strings.ToLower(c)] = true
+	}
+	if has["key"] && has["value"] {
+		return nil
+	}
+	old := fmt.Sprintf("settings_old_%d", time.Now().Unix())
+	if len(cols) > 0 {
+		if _, err := s.DB.Exec(`ALTER TABLE settings RENAME TO ` + old); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(migrations[i]); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-		if _, err := tx.Exec(`INSERT INTO settings(key,value) VALUES('schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, strconv.Itoa(i+1)); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+	}
+	if _, err := s.DB.Exec(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		return err
+	}
+	if len(cols) >= 2 {
+		q := func(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + `"` }
+		_, _ = s.DB.Exec(fmt.Sprintf(`INSERT OR IGNORE INTO settings(key,value) SELECT %s, CAST(%s AS TEXT) FROM %s WHERE %s IS NOT NULL AND %s IS NOT NULL`,
+			q(cols[0]), q(cols[1]), q(old), q(cols[0]), q(cols[1])))
 	}
 	return nil
 }
@@ -141,10 +253,13 @@ func (s *Store) GetSetting(k, def string) string {
 	if err := s.DB.QueryRow(`SELECT value FROM settings WHERE key=?`, k).Scan(&v); err != nil {
 		return def
 	}
-	return v
+	return s.dec(v)
 }
 
 func (s *Store) SetSetting(k, v string) error {
+	if sensitiveSettings[k] {
+		v = s.enc(v)
+	}
 	_, err := s.DB.Exec(`INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, v)
 	return err
 }

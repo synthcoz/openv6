@@ -2,6 +2,7 @@ package panel
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"openv6/internal/license"
 	"openv6/internal/proto"
 	"openv6/internal/store"
 )
@@ -32,6 +34,7 @@ func newEnv(t *testing.T) *env {
 	}
 	t.Cleanup(func() { st.DB.Close() }) // Windows cannot delete an open file
 	srv := New(st, fstest.MapFS{"index.html": {Data: []byte("ok")}}, dir, 8080, "")
+	srv.ForcePro = true // feature tests; licensing has its own test
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)
@@ -418,5 +421,197 @@ func TestStaticGzipETag(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/../secret", nil))
 	if rec.Code != 404 {
 		t.Fatalf("traversal %d", rec.Code)
+	}
+}
+
+func TestTrayShutdown(t *testing.T) {
+	e := newEnv(t)
+	e.srv.TrayToken = "tt"
+	called := make(chan bool, 1)
+	e.srv.OnShutdown = func() { called <- true }
+	if _, err := e.srv.Store.CreateNode("local", "", true); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest("POST", e.ts.URL+"/api/tray/shutdown", nil)
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 403 {
+		t.Fatalf("without token: %d", res.StatusCode)
+	}
+	req.Header.Set("X-Tray-Token", "tt")
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 200 {
+		t.Fatalf("with token: %d", res.StatusCode)
+	}
+	select {
+	case <-called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("OnShutdown not called")
+	}
+}
+
+func TestRemoteSetupNeedsCode(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.DB.Close() })
+	srv := New(st, fstest.MapFS{"index.html": {Data: []byte("ok")}}, dir, 8080, "")
+	code := srv.SetupCode()
+	h := srv.Handler()
+	try := func(remote, host, code string) int {
+		b, _ := json.Marshal(map[string]string{"username": "admin", "password": "password123", "code": code})
+		req := httptest.NewRequest("POST", "/api/setup", bytes.NewReader(b))
+		req.RemoteAddr, req.Host = remote, host
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if c := try("203.0.113.9:5555", "203.0.113.1:8080", ""); c != 403 {
+		t.Fatalf("remote without code: %d", c)
+	}
+	if c := try("127.0.0.1:5555", "evil.example.com:8080", "000"); c != 403 { // DNS rebinding
+		t.Fatalf("rebinding: %d", c)
+	}
+	if c := try("203.0.113.9:5555", "203.0.113.1:8080", code); c != 200 {
+		t.Fatalf("remote with code: %d", c)
+	}
+	if srv.SetupCode() != "" {
+		t.Fatal("code kept after setup")
+	}
+}
+
+func TestLicenseFreeTierAndActivation(t *testing.T) {
+	// fake Polar
+	var validateStatus = 200
+	polar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		key, _ := b["key"].(string)
+		benefit := "e2f37fe8-4ecd-430d-a02e-8b8265487fa8"
+		if key == "OTHER-PRODUCT" {
+			benefit = "00000000-0000-0000-0000-000000000000"
+		}
+		lk := map[string]any{"benefit_id": benefit, "display_key": "****-1234", "status": "granted", "customer": map[string]any{"email": "a@b.c"}}
+		switch r.URL.Path {
+		case "/v1/customer-portal/license-keys/activate":
+			if key == "BAD" {
+				w.WriteHeader(404)
+				fmt.Fprint(w, `{"error":"ResourceNotFound","detail":"not found"}`)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "act-1", "license_key": lk})
+		case "/v1/customer-portal/license-keys/validate":
+			w.WriteHeader(validateStatus)
+			if validateStatus != 200 {
+				fmt.Fprint(w, `{"error":"ResourceNotFound","detail":"License key not found"}`)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(lk)
+		case "/v1/customer-portal/license-keys/deactivate":
+			w.WriteHeader(204)
+		}
+	}))
+	defer polar.Close()
+	old := license.APIBase
+	license.APIBase = polar.URL
+	defer func() { license.APIBase = old }()
+
+	e := newEnv(t)
+	e.srv.ForcePro = false
+	local, _ := e.srv.Store.CreateNode("local", "", true)
+	tok := local.Token
+	e.sync(tok, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", local.ID), nil, &pools, 200)
+
+	// free: 3 proxies, 1 machine, no Pro features
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 4, "auth": "random"}, nil, 402)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 3, "auth": "random"}, nil, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random"}, nil, 402)
+	e.call("POST", "/api/nodes", map[string]string{"name": "vps"}, nil, 402)
+	e.call("POST", "/api/tokens", map[string]string{"name": "x"}, nil, 402)
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", local.ID), map[string]any{"upnp": true}, nil, 402)
+
+	// wrong key / other product
+	e.call("POST", "/api/license", map[string]string{"key": "BAD"}, nil, 400)
+	e.call("POST", "/api/license", map[string]string{"key": "OTHER-PRODUCT"}, nil, 400)
+	// activation unlocks Pro
+	var lv struct{ Pro bool }
+	e.call("POST", "/api/license", map[string]string{"key": "OV6-GOOD"}, &lv, 200)
+	if !lv.Pro {
+		t.Fatal("not pro after activation")
+	}
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 5, "auth": "random"}, nil, 200)
+	resp := e.sync(tok, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	if len(resp.Proxies) != 8 {
+		t.Fatalf("pro serves %d proxies", len(resp.Proxies))
+	}
+	// Polar unreachable: stays Pro (grace); revoked: back to free, only 3 proxies served
+	st := e.srv.licState()
+	st.CheckedAt = 0
+	e.srv.saveLic(st)
+	license.APIBase = "http://127.0.0.1:1"
+	e.srv.checkLicense(context.Background())
+	if !e.srv.pro() {
+		t.Fatal("lost Pro on network error")
+	}
+	license.APIBase = polar.URL
+	validateStatus = 404
+	st = e.srv.licState()
+	st.CheckedAt = 0
+	e.srv.saveLic(st)
+	e.srv.checkLicense(context.Background())
+	if e.srv.pro() {
+		t.Fatal("revoked key still Pro")
+	}
+	resp = e.sync(tok, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	if len(resp.Proxies) != 3 {
+		t.Fatalf("free serves %d proxies", len(resp.Proxies))
+	}
+	e.call("DELETE", "/api/license", nil, &lv, 200)
+}
+
+func TestCustomerAccounts(t *testing.T) {
+	e := newEnv(t)
+	local, _ := e.srv.Store.CreateNode("local", "", true)
+	e.sync(local.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", local.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": local.ID, "pool_id": pools[0].ID, "count": 3, "auth": "random"}, nil, 200)
+	e.call("POST", "/api/users", map[string]string{"username": "khach1", "password": "password123", "role": "customer"}, nil, 200)
+	var users []store.UserInfo
+	e.call("GET", "/api/users", nil, &users, 200)
+	var cid int64
+	for _, u := range users {
+		if u.Username == "khach1" {
+			cid = u.ID
+		}
+	}
+	var list []struct{ ID int64 }
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID, list[1].ID}, "action": "set_owner", "value": fmt.Sprint(cid)}, nil, 200)
+
+	jar, _ := cookiejar.New(nil)
+	c := &env{t: t, srv: e.srv, ts: e.ts, cl: &http.Client{Jar: jar}}
+	c.call("POST", "/api/login", map[string]string{"username": "khach1", "password": "password123"}, nil, 200)
+	var mine []struct{ ID int64 }
+	c.call("GET", "/api/proxies", nil, &mine, 200)
+	if len(mine) != 2 {
+		t.Fatalf("customer sees %d proxies", len(mine))
+	}
+	c.call("GET", "/api/nodes", nil, nil, 403)
+	c.call("GET", "/api/dashboard", nil, nil, 403)
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[2].ID}, "action": "regen_pass"}, nil, 403) // not theirs
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{mine[0].ID}, "action": "delete"}, nil, 403)
+	c.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{mine[0].ID}, "action": "regen_pass"}, nil, 200)
+	var x struct{ Text string }
+	c.call("POST", "/api/proxies/export", map[string]any{"ids": []int64{list[0].ID, list[1].ID, list[2].ID}}, &x, 200)
+	if strings.Count(x.Text, "\n") != 2 {
+		t.Fatalf("customer export: %q", x.Text)
+	}
+	e.call("DELETE", fmt.Sprintf("/api/users/%d", cid), nil, nil, 200)
+	p, _ := e.srv.Store.GetProxy(list[0].ID)
+	if p.OwnerID != 0 {
+		t.Fatal("owner kept after account deletion")
 	}
 }

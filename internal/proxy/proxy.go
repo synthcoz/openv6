@@ -276,6 +276,49 @@ func (b *bufConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
 var ErrNoIPv6 = errors.New("target has no IPv6 address")
 
+// ErrBlocked: proxies must not be a way into this machine, the LAN or a
+// cloud metadata service (and no hop from one proxy into another one's
+// loopback listener, which skips its password).
+var ErrBlocked = errors.New("destination is a local or private address (blocked for safety)")
+
+var blockedNets = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, s := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4", "64:ff9b:1::/48"} {
+		out = append(out, netip.MustParsePrefix(s))
+	}
+	return out
+}()
+
+// publicAddr reports whether a destination may be dialed.
+func publicAddr(a netip.Addr) bool {
+	a = a.Unmap()
+	if !a.IsGlobalUnicast() || a.IsPrivate() || a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsMulticast() || a.IsUnspecified() {
+		return false
+	}
+	for _, p := range blockedNets {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	return true
+}
+
+// filterTargets drops non-public destinations when the proxy itself goes out
+// on a public address (always the case in production; tests and lab setups
+// that use private outbound addresses are left alone).
+func filterTargets(out netip.Addr, addrs []netip.Addr) ([]netip.Addr, bool) {
+	if !publicAddr(out) {
+		return addrs, false
+	}
+	var keep []netip.Addr
+	for _, a := range addrs {
+		if publicAddr(a) {
+			keep = append(keep, a)
+		}
+	}
+	return keep, len(keep) < len(addrs)
+}
+
 func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -294,6 +337,10 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 		for _, ip := range ips {
 			addrs = append(addrs, ip.Unmap())
 		}
+	}
+	addrs, dropped := filterTargets(cfg.OutIP, addrs)
+	if len(addrs) == 0 && dropped {
+		return nil, ErrBlocked
 	}
 	// Primary family = family of the configured outbound IP (normally IPv6).
 	// An IPv4 outbound IP is supported too (multi-IPv4 servers, tests).

@@ -29,12 +29,21 @@ async function api(method, path, body) {
   let data = null;
   try { data = await r.json(); } catch (e) { /* empty */ }
   if (r.status === 401 && path !== '/api/login') { state.user = null; renderLogin(false); throw new Error(t('login_required')); }
-  if (!r.ok) throw new Error((data && data.error) || r.statusText);
+  if (!r.ok) {
+    const err = new Error((data && data.error) || r.statusText);
+    err.code = data && data.code;
+    if (err.code === 'license_required') {
+      toast(t('pro_needed'), { err: true, ms: 7000, action: { label: t('upgrade'), fn: () => { location.hash = 'settings'; setTimeout(() => { const c = $('#licCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 400); } } });
+      err.message = t('pro_needed_detail'); err.shown = true; state.licMsg = err.message; // toast() skips repeating it
+    }
+    throw err;
+  }
   return data;
 }
 
 // toast(msg) · toast(msg, true) for errors · toast(msg, {action: {label, fn}, ms})
 function toast(msg, opt) {
+  if (!msg || (msg === state.licMsg && opt === true)) return;
   if (opt === true) opt = { err: true };
   opt = opt || {};
   let box = $('#toasts');
@@ -85,7 +94,7 @@ function flag(cc) {
   if (!cc || cc.length !== 2) return '';
   return String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 }
-const DOT = { ok: 'ok', error: 'error', expired: 'error', pending: 'pending', warn: 'warn' };
+const DOT = { ok: 'ok', error: 'error', expired: 'error', pending: 'pending', warn: 'warn', license: 'warn' };
 const badge = (st) => `<span class="badge ${esc(st)}">${esc(t('st_' + st))}</span>`;
 const statusDot = (st) => `<span class="status"><span class="dot ${DOT[st] || ''}"></span>${esc(t('st_' + st))}</span>`;
 
@@ -137,7 +146,7 @@ document.addEventListener('keydown', (e) => {
   const typing = /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '');
   if (typing || e.ctrlKey || e.metaKey || e.altKey || $('#modal')) return;
   if (e.key === '/' && state.page === 'proxies') { e.preventDefault(); const q = $('#fQ'); if (q) q.focus(); }
-  if (e.key === 'n' && state.page === 'proxies') { e.preventDefault(); openCreate(); }
+  if (e.key === 'n' && !isCustomerUser() && state.page === 'proxies') { e.preventDefault(); openCreate(); }
   if (e.key === 'g') state.gPending = Date.now();
   else if (state.gPending && Date.now() - state.gPending < 800) {
     const map = { d: 'dashboard', p: 'proxies', n: 'nodes', s: 'settings', e: 'events' };
@@ -162,12 +171,18 @@ function confirmBox(msg, opt = {}) {
 }
 
 // ---------- login / setup ----------
+function ownerName(id) { const u = (state.users || []).find((x) => x.id === id); return u ? u.username : '#' + id; }
+
+function isPro() { return !!(state.summary && state.summary.pro); }
+function proTag() { return isPro() ? '' : ' · Pro'; }
+
 function setHTML(el, html) {
   if (!el || el._h === html) return false;
   el._h = html; el.innerHTML = html; return true;
 }
 
-function brand() { return `<div class="brand"><span class="logo"><i></i></span>openv6</div>`; }
+const MARK = '<svg viewBox="0 0 64 64" width="16" height="16" aria-hidden="true"><path d="M32 8 52.78 20V44L32 56 11.22 44V20Z" fill="none" stroke="currentColor" stroke-width="8" stroke-linejoin="round"/><circle cx="32" cy="32" r="8" fill="currentColor"/></svg>';
+function brand() { return `<div class="brand"><span class="logo">${MARK}</span>openv6</div>`; }
 
 function langSeg(id) {
   return `<div class="seg" id="${id}"><button data-lang="vi" class="${LANG === 'vi' ? 'on' : ''}">VI</button><button data-lang="en" class="${LANG === 'en' ? 'on' : ''}">EN</button></div>`;
@@ -180,7 +195,7 @@ function bindLangSeg(root, after) {
   };
 }
 
-function renderLogin(setup) {
+function renderLogin(setup, needCode) {
   stopTimer();
   document.documentElement.lang = LANG;
   $('#app').innerHTML = `<div class="center"><form class="card login" id="loginForm">
@@ -189,15 +204,16 @@ function renderLogin(setup) {
       <p class="muted small" style="margin:0">${setup ? t('setup_hint') : t('login_sub')}</p></div>
     <label class="field">${t('username')}<input name="username" autocomplete="username" required value="${setup ? 'admin' : ''}"></label>
     <label class="field">${t('password')}<input name="password" type="password" autocomplete="${setup ? 'new-password' : 'current-password'}" required minlength="${setup ? 8 : 1}"></label>
+    ${setup && needCode ? `<label class="field">${t('setup_code')}<input name="code" inputmode="numeric" autocomplete="one-time-code" required><span class="hint">${t('setup_code_hint')}</span></label>` : ''}
     <div id="loginErr"></div>
     <button class="primary" type="submit" style="justify-content:center">${setup ? t('create_account') : t('login')}</button>
   </form></div>`;
-  bindLangSeg($('#loginLang'), () => renderLogin(setup));
+  bindLangSeg($('#loginLang'), () => renderLogin(setup, needCode));
   $('#loginForm').onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
     try {
-      const r = await api('POST', setup ? '/api/setup' : '/api/login', { username: f.get('username'), password: f.get('password') });
+      const r = await api('POST', setup ? '/api/setup' : '/api/login', { username: f.get('username'), password: f.get('password'), code: f.get('code') || '' });
       state.user = r.user; renderShell();
     } catch (err) { $('#loginErr').innerHTML = `<div class="alert err">${icon('alert')}<div>${esc(err.message)}</div></div>`; }
   };
@@ -205,35 +221,40 @@ function renderLogin(setup) {
 
 // ---------- shell ----------
 const PAGES = ['dashboard', 'proxies', 'nodes', 'events', 'settings'];
+// customer accounts (reseller mode) only see their own proxies
+function isCustomerUser() { return !!(state.user && state.user.role === 'customer'); }
+function pages() { return isCustomerUser() ? ['proxies'] : PAGES; }
 const PAGE_ICON = { dashboard: 'dashboard', proxies: 'proxies', nodes: 'nodes', events: 'events', settings: 'settings' };
 
 function renderShell() {
-  const page = (location.hash.slice(1) || 'dashboard');
-  state.page = PAGES.includes(page) ? page : 'dashboard';
+  const page = (location.hash.slice(1) || pages()[0]);
+  state.page = pages().includes(page) ? page : pages()[0];
   document.documentElement.lang = LANG;
   const th = themeMode();
   $('#app').innerHTML = `<div class="layout">
     <aside class="sidebar">
       ${brand()}
-      <nav class="nav">${PAGES.map((p) => `<a href="#${p}" data-nav="${p}" class="${p === state.page ? 'active' : ''}">${icon(PAGE_ICON[p])}<span class="lbl">${t('nav_' + p)}</span><span class="lbl-s">${t('navs_' + p)}</span>${p === 'proxies' || p === 'nodes' ? `<span class="count" data-count="${p}"></span>` : ''}</a>`).join('')}</nav>
+      <nav class="nav">${pages().map((p) => `<a href="#${p}" data-nav="${p}" class="${p === state.page ? 'active' : ''}">${icon(PAGE_ICON[p])}<span class="lbl">${t('nav_' + p)}</span><span class="lbl-s">${t('navs_' + p)}</span>${p === 'proxies' || p === 'nodes' ? `<span class="count" data-count="${p}"></span>` : ''}</a>`).join('')}</nav>
     </aside>
     <div class="content">
       <header class="topbar">
         <div class="mbrand">${brand()}</div>
         <div class="title" id="pageTitle">${t('nav_' + state.page)}</div>
         <div class="spacer"></div>
-        <button class="pill" id="statusPill" title="${t('nav_dashboard')}"><span class="dot pending"></span><span class="pill-txt">…</span></button>
+        <button class="pill" ${isCustomerUser() ? 'hidden' : ''} id="statusPill" title="${t('nav_dashboard')}"><span class="dot pending"></span><span class="pill-txt">…</span></button>
         <div class="acct">
           <button class="avatar" id="acctBtn" aria-haspopup="true" aria-expanded="false" title="${esc(state.user ? state.user.username : '')}">${esc((state.user ? state.user.username : '?').slice(0, 1).toUpperCase())}</button>
           <div class="menu" id="acctMenu" hidden>
-            <div class="menu-head"><b>${esc(state.user ? state.user.username : '')}</b><span class="muted small" id="verFoot">openv6</span></div>
+            <div class="menu-head"><b>${esc(state.user ? state.user.username : '')}</b><span class="muted small" id="verFoot">openv6</span>
+              <a href="#settings" class="plan" id="planBadge"></a></div>
             <div class="menu-row"><span>${t('language')}</span>${langSeg('topLang')}</div>
             <div class="menu-row"><span>${t('appearance')}</span><div class="seg" id="themeSeg">
               <button data-th="light" class="${th === 'light' ? 'on' : ''}" title="${t('theme_light')}">${icon('sun', 'sm')}</button>
               <button data-th="system" class="${th === 'system' ? 'on' : ''}" title="${t('theme_system')}">${icon('monitor', 'sm')}</button>
               <button data-th="dark" class="${th === 'dark' ? 'on' : ''}" title="${t('theme_dark')}">${icon('moon', 'sm')}</button></div></div>
             <div class="menu-sep"></div>
-            <a class="menu-item" href="#settings">${icon('settings', 'sm')} ${t('nav_settings')}</a>
+            <button class="menu-item" id="menuDoctor" ${isCustomerUser() ? 'hidden' : ''}>${icon('wrench', 'sm')} ${t('doctor_open')}</button>
+            ${isCustomerUser() ? `<button class="menu-item" id="menuPass">${icon('key', 'sm')} ${t('change_password')}</button>` : `<a class="menu-item" href="#settings">${icon('settings', 'sm')} ${t('nav_settings')}</a>`}
             <button class="menu-item" id="logoutBtn">${icon('logout', 'sm')} ${t('logout')}</button>
           </div>
         </div>
@@ -252,6 +273,8 @@ function renderShell() {
   ab.onclick = (e) => { e.stopPropagation(); setMenu(menu.hidden); };
   menu.onclick = (e) => { e.stopPropagation(); if (e.target.closest('a.menu-item')) setMenu(false); };
   document.onclick = () => setMenu(false);
+  $('#menuDoctor').onclick = () => { setMenu(false); openDoctor(); };
+  if ($('#menuPass')) $('#menuPass').onclick = () => { setMenu(false); openChangePassword(); };
   $('#logoutBtn').onclick = async () => { await api('POST', '/api/logout', {}).catch(() => {}); state.user = null; renderLogin(false); };
   refreshSummary();
   renderPage();
@@ -259,6 +282,10 @@ function renderShell() {
 
 // summary drives the status pill and nav counters (every page)
 async function refreshSummary() {
+  if (isCustomerUser()) {
+    const v = $('#verFoot'); if (v) v.textContent = t('customer_account');
+    return;
+  }
   try {
     const d = await api('GET', '/api/dashboard');
     state.summary = d;
@@ -274,6 +301,7 @@ async function refreshSummary() {
     const c1 = $('[data-count=proxies]'); if (c1) c1.textContent = d.proxies || '';
     const c2 = $('[data-count=nodes]'); if (c2) c2.textContent = d.nodes || '';
     const v = $('#verFoot'); if (v) v.textContent = 'openv6 v' + d.version;
+    const pb = $('#planBadge'); if (pb) { pb.className = 'plan ' + (d.pro ? 'pro' : 'free'); pb.textContent = d.pro ? 'Pro' : t('plan_free_upgrade'); }
   } catch (e) { /* ignore */ }
 }
 setInterval(() => { if (state.user && !document.hidden) refreshSummary(); }, 10000);
@@ -282,8 +310,8 @@ window.addEventListener('hashchange', () => { if (state.user) { closeModal(); cl
 
 function navigate() {
   if (!$('#page')) { renderShell(); return; }
-  const page = location.hash.slice(1) || 'dashboard';
-  state.page = PAGES.includes(page) ? page : 'dashboard';
+  const page = location.hash.slice(1) || pages()[0];
+  state.page = pages().includes(page) ? page : pages()[0];
   for (const a of $$('[data-nav]')) a.classList.toggle('active', a.dataset.nav === state.page);
   $('#pageTitle').textContent = t('nav_' + state.page);
   const m = $('#acctMenu'); if (m) m.hidden = true;
@@ -348,7 +376,7 @@ async function pageDashboard() {
     if (!setHTML($('#page'), `
       <div class="hero ${hero.cls}"><div class="big">${icon(hero.ic)}</div>
         <div style="flex:1"><h2>${esc(hero.title)}</h2><p>${esc(hero.sub)}</p></div>
-        ${d.proxies === 0 ? `<button class="primary" id="startWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button>` :
+        ${hero.cls === 'error' || hero.cls === 'warn' ? `<div class="row"><button class="primary" id="dashFix">${icon('wrench', 'sm')} ${t('doctor_open')}</button></div>` : d.proxies === 0 ? `<button class="primary" id="startWizard">${icon('sparkle', 'sm')} ${t('wizard_start')}</button>` :
           `<div class="row hide-sm"><button id="dashCheck">${icon('pulse', 'sm')} ${t('check_all')}</button><a class="btn primary" href="#proxies">${icon('proxies', 'sm')} ${t('nav_proxies')}</a></div>`}
       </div>
       ${warnings.join('')}
@@ -370,6 +398,7 @@ async function pageDashboard() {
       </div>`)) return;
     for (const x of $$('[data-tip] .tip-x')) x.onclick = () => { const a = x.closest('[data-tip]'); store(a.dataset.tip, '1'); a.hidden = true; };
     const w = $('#startWizard'); if (w) w.onclick = () => openWizard();
+    const df = $('#dashFix'); if (df) df.onclick = () => openDoctor();
     const dc = $('#dashCheck'); if (dc) dc.onclick = async () => { const r = await api('POST', '/api/checks/run', {}); toast(t('check_queued', { n: r.queued })); };
     if (d.proxies === 0 && !store('v6p_wizard_seen') && !$('#modal')) { store('v6p_wizard_seen', '1'); openWizard(); }
   };
@@ -410,6 +439,7 @@ async function openWizard() {
         <div class="big-check"><div class="stat"><div class="ico ${p && p.cidr ? 'ok' : 'warn'}">${icon(p && p.cidr ? 'check' : 'alert')}</div></div>
           <div><b>${p && p.cidr ? esc(p.cidr) : t('pool_waiting')}</b><div class="small muted">${esc(n.net.primary_iface || '')} ${n.net.gateway ? '· router ' + esc(n.net.gateway) : ''}</div></div></div>
         ${bad.map((c) => alertBox('err', `<b>${esc(t('chk_' + c.id))}:</b> ${esc(t('chkfix_' + c.id))}`)).join('')}
+        <div class="field" style="margin:10px 0 12px">${t('net_source')}<div data-srcbox>${sourcePicker(n, true)}</div></div>
         <button class="small" id="wizTest">${icon('pulse', 'sm')} ${t('test_v6')}</button> <span id="wizTestOut" class="small muted"></span>`;
     } else if (w.step === 2) {
       body = `<h2>${t('wiz2_title')}</h2><p class="muted">${t('wiz2_sub')}</p>
@@ -441,6 +471,10 @@ async function openWizard() {
       ${w.step === 4 ? `<button id="wCopy">${icon('copy', 'sm')} ${t('copy')}</button><a class="btn primary" href="#proxies" id="wDone">${t('wiz_done')}</a>` : ''}
     </div>`;
     const go = (s) => { w.step = s; render(m); };
+    if (w.step === 1 && $('[data-srcbox]', m)) {
+      const n1 = state.nodes.find((x) => x.id === local.id) || local;
+      bindSourcePicker($('[data-srcbox]', m), n1, async () => { state.nodes = await api('GET', '/api/nodes'); render(m); });
+    }
     if ($('#wSkip', m)) $('#wSkip', m).onclick = closeModal;
     if ($('#wBack', m)) $('#wBack', m).onclick = () => go(w.step - 1);
     if ($('#wNext', m)) $('#wNext', m).onclick = () => {
@@ -486,8 +520,14 @@ async function openWizard() {
 
 // ---------- proxy data ----------
 async function loadProxies() {
-  const [nodes, proxies] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies')]);
-  state.nodes = nodes; state.proxies = proxies;
+  if (isCustomerUser()) {
+    state.nodes = []; state.users = [];
+    state.proxies = await api('GET', '/api/proxies');
+  } else {
+    const [nodes, proxies, users] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies'), api('GET', '/api/users').catch(() => [])]);
+    state.nodes = nodes; state.proxies = proxies; state.users = users;
+  }
+  const proxies = state.proxies;
   const ids = new Set(proxies.map((p) => p.id));
   for (const id of [...state.selected]) if (!ids.has(id)) state.selected.delete(id);
 }
@@ -500,20 +540,20 @@ function filteredProxies() {
 }
 
 // ---------- proxies ----------
-const STATUS_FILTERS = ['', 'ok', 'error', 'pending', 'offline', 'paused', 'disabled', 'expired'];
+const STATUS_FILTERS = ['', 'ok', 'error', 'pending', 'offline', 'paused', 'disabled', 'expired', 'license'];
 
 async function pageProxies() {
   await loadProxies();
   $('#page').innerHTML = `<div class="page-head">
       <div><h1>${t('nav_proxies')}</h1><p id="pCount"></p></div><div class="spacer"></div>
-      <button id="btnCheckAll" title="${t('check_all_hint')}">${icon('pulse', 'sm')} <span class="hide-sm">${t('check_all')}</span></button>
-      <button id="btnExport">${icon('download', 'sm')} <span class="hide-sm">${t('export')}</span></button>
-      <button class="primary" id="btnCreate" title="N">${icon('plus', 'sm')} ${t('create_proxies')}</button>
+      ${isCustomerUser() ? '' : `<button id="btnCheckAll" title="${t('check_all_hint')}">${icon('pulse', 'sm')} <span class="hide-sm">${t('check_all')}</span></button>`}
+      <button id="btnExport" class="${isCustomerUser() ? 'primary' : ''}">${icon('download', 'sm')} <span class="hide-sm">${t('export')}</span></button>
+      ${isCustomerUser() ? '' : `<button class="primary" id="btnCreate" title="N">${icon('plus', 'sm')} ${t('create_proxies')}</button>`}
     </div>
     <div class="row" style="margin-bottom:12px">
       <div class="search">${icon('search', 'sm')}<input id="fQ" placeholder="${t('search')}"></div>
       <select id="fNode"></select><select id="fTag"></select>
-      <span class="muted small hide-sm"><span class="kbd">/</span> ${t('kbd_search')} · <span class="kbd">N</span> ${t('kbd_new')}</span>
+      <span class="muted small hide-sm"><span class="kbd">/</span> ${t('kbd_search')}${isCustomerUser() ? '' : ` · <span class="kbd">N</span> ${t('kbd_new')}`}</span>
     </div>
     <div class="row" id="chips" style="margin-bottom:14px"></div>
     <div id="ptable"></div>
@@ -523,9 +563,9 @@ async function pageProxies() {
   $('#fNode').onchange = (e) => { f.node = e.target.value; drawProxyRows(); };
   $('#fTag').onchange = (e) => { f.tag = e.target.value; drawProxyRows(); };
   $('#fQ').oninput = (e) => { f.q = e.target.value; drawProxyRows(); };
-  $('#btnCreate').onclick = () => openCreate();
+  if ($('#btnCreate')) $('#btnCreate').onclick = () => openCreate();
   $('#btnExport').onclick = () => openExport();
-  $('#btnCheckAll').onclick = async (e) => {
+  if ($('#btnCheckAll')) $('#btnCheckAll').onclick = async (e) => {
     e.currentTarget.disabled = true;
     try { const r = await api('POST', '/api/checks/run', {}); toast(t('check_queued', { n: r.queued })); } catch (err) { toast(err.message, true); }
     const b = e.currentTarget; setTimeout(() => { b.disabled = false; }, 5000);
@@ -556,7 +596,7 @@ function limitsText(p) {
   return a.join(' · ');
 }
 function scopeSelect(name, value) {
-  return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scope_' + v)}</option>`).join('')}</select>`;
+  return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scopeopt_' + v)}</option>`).join('')}</select>`;
 }
 
 function fmtDuration(sec) {
@@ -631,7 +671,7 @@ function drawProxyRows() {
       <th class="hide-sm">${t('health')}</th><th class="hide-sm hide-md">${t('traffic')}</th><th></th></tr></thead>
     <tbody>${list.map((p) => `<tr class="clickable ${state.selected.has(p.id) ? 'selected' : ''}" data-id="${p.id}">
       <td class="ck"><input type="checkbox" class="sel" ${state.selected.has(p.id) ? 'checked' : ''}></td>
-      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
+      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.iface ? ` · <span class="badge neutral">${icon(ifaceKind(p.iface) === 'wifi' ? 'wifi' : 'ethernet', 'sm')} ${esc(ifaceLabel(p.iface))}</span>` : ''}${p.owner_id && !isCustomerUser() ? ` · <span class="badge neutral">${icon('key', 'sm')} ${esc(ownerName(p.owner_id))}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
       <td class="cn"><span class="copyable mono" data-copy="${esc(proxyLine(p))}" title="${t('click_copy_line')}">${esc(hostPort(p))}${icon('copy', 'sm')}</span>
         <div class="sub">${p.auth_user ? `${icon('key', 'sm')} ${esc(p.auth_user)}` : t('no_auth')} · ${esc(t('scope_short_' + p.scope))}</div></td>
       <td class="hide-sm hide-lg mono small"><span class="copyable" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}${p.ip ? icon('copy', 'sm') : ''}</span></td>
@@ -658,7 +698,14 @@ function drawBulkBar() {
   const n = state.selected.size;
   bar.classList.toggle('show', n > 0);
   if (!n) return;
-  bar.innerHTML = `<span class="n">${t('selected_n', { n })}</span>
+  if (isCustomerUser()) {
+    bar.innerHTML = `<span class="n">${t('selected_n', { n })}</span>
+      <button data-b="copy">${icon('copy', 'sm')} ${t('copy')}</button>
+      <button data-b="test">${icon('pulse', 'sm')} ${t('act_test')}</button>
+      <button data-b="regen_ip">${icon('refresh', 'sm')} ${t('act_regen_ip')}</button>
+      <button data-b="regen_pass">${icon('key', 'sm')} ${t('act_regen_pass')}</button>
+      <button data-b="clear" title="${t('clear_selection')}">${icon('x', 'sm')}</button>`;
+  } else bar.innerHTML = `<span class="n">${t('selected_n', { n })}</span>
     <button data-b="copy">${icon('copy', 'sm')} ${t('copy')}</button>
     <button data-b="test">${icon('pulse', 'sm')} ${t('act_test')}</button>
     <button data-b="enable">${icon('play', 'sm')} ${t('act_enable')}</button>
@@ -680,7 +727,7 @@ function drawBulkBar() {
 }
 
 function openMoreActions() {
-  const acts = ['regen_pass', 'remove_auth', 'set_scope', 'set_limits', 'set_relay', 'set_tag', 'set_protocol', 'fallback_on', 'fallback_off', 'reset_stats'];
+  const acts = ['regen_pass', 'remove_auth', 'set_scope', 'set_owner', 'set_limits', 'set_relay', 'set_tag', 'set_protocol', 'fallback_on', 'fallback_off', 'reset_stats'];
   modal(`<h2>${t('more_actions', { n: state.selected.size })}</h2>
     <div class="choice">${acts.map((a) => `<label data-act="${a}" style="align-items:center"><span><b>${t('act_' + a)}</b></span></label>`).join('')}</div>
     <div class="actions"><button id="cl">${t('close')}</button></div>`, (m) => {
@@ -763,6 +810,7 @@ async function bulkAction(action, idsIn) {
   if (action === 'set_protocol') { value = await chooseProtocol(); if (!value) return; }
   if (action === 'set_scope') { value = await chooseScope(); if (!value) return; }
   if (action === 'set_limits') { value = await chooseLimits(); if (value === null) return; }
+  if (action === 'set_owner') { value = await chooseOwner(); if (value === null) return; }
   if (action === 'set_relay') { value = await chooseRelay(); if (value === null) return; }
   if (action === 'regen_ip' && !(await confirmBox(t('confirm_regen_ip', { n: ids.length }), { ok: t('act_regen_ip') }))) return;
   if (action === 'regen_pass' && !(await confirmBox(t('confirm_regen_pass', { n: ids.length }), { ok: t('act_regen_pass') }))) return;
@@ -773,11 +821,39 @@ async function bulkAction(action, idsIn) {
   } catch (e) { toast(e.message, true); }
 }
 
+function chooseOwner() {
+  return new Promise((resolve) => {
+    const cs = (state.users || []).filter((u) => u.role === 'customer');
+    modal(`<h2>${t('act_set_owner')}</h2>
+      ${cs.length ? '' : alertBox('info', esc(t('no_customers')))}
+      <div class="choice"><label><input type="radio" name="ow" value="0" checked><span><b>${t('owner_none')}</b><span class="small muted">${t('owner_none_hint')}</span></span></label>
+      ${cs.map((u) => `<label><input type="radio" name="ow" value="${u.id}"><span><b>${esc(u.username)}</b><span class="small muted">${t('owner_count', { n: u.proxies })}</span></span></label>`).join('')}</div>
+      <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
+      $('#no', m).onclick = () => { closeModal(); resolve(null); };
+      $('#yes', m).onclick = () => { const v = $('input[name=ow]:checked', m).value; closeModal(); resolve(v); };
+    });
+  });
+}
+
+function openChangePassword() {
+  modal(`<h2>${t('change_password')}</h2><form id="cpf" class="stack">
+      <label class="field">${t('current_password')}<input name="current" type="password" autocomplete="current-password" required></label>
+      <label class="field">${t('new_password')}<input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
+      <div class="actions"><button type="button" id="no">${t('cancel')}</button><button class="primary" type="submit">${t('save')}</button></div></form>`, (m) => {
+    $('#no', m).onclick = closeModal;
+    $('#cpf', m).onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api('POST', '/api/account/password', { current: e.target.current.value, new: e.target.new.value }); closeModal(); toast(t('saved')); renderLogin(false); }
+      catch (err) { toast(err.message, true); }
+    };
+  });
+}
+
 function chooseLimits() {
   return new Promise((resolve) => {
     modal(`<h2>${t('act_set_limits')}</h2>
-      <div class="form-grid"><label class="field">${t('max_conns')}<input id="lc" type="number" min="0" value="0"></label>
-      <label class="field">${t('rate_kbps')}<input id="lr" type="number" min="0" value="0"></label></div>
+      <div class="form-grid"><label class="field">${t('max_conns')}${proTag()}<input id="lc" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}${proTag()}<input id="lr" type="number" min="0" value="0"></label></div>
       <p class="hint">${t('limits_hint')}</p>
       <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
       $('#no', m).onclick = () => { closeModal(); resolve(null); };
@@ -824,7 +900,7 @@ async function openProxyDrawer(id, tab = 'info') {
       <div class="row small muted">${statusDot(p.status)} · ${esc(p.node_name)} · :${p.port}</div></div>
       <button class="ghost icon-btn" id="dClose" title="Esc">${icon('x')}</button></div>
     <div class="drawer-body">
-      <div class="tabs"><button data-tab="info">${t('tab_overview')}</button><button data-tab="health">${t('tab_health')}</button><button data-tab="edit">${t('edit')}</button></div>
+      <div class="tabs"><button data-tab="info">${t('tab_overview')}</button><button data-tab="health">${t('tab_health')}</button>${isCustomerUser() ? '' : `<button data-tab="edit">${t('edit')}</button>`}</div>
       <div data-pane="info">
         ${p.error ? alertBox('err', errInfo(p.code, p.error)) : ''}
         <h3 style="margin-top:0">${t('copy_for_antidetect')}</h3>
@@ -861,9 +937,10 @@ async function openProxyDrawer(id, tab = 'info') {
           <label class="field">${t('scope')}${scopeSelect('scope', p.scope)}</label>
           <label class="field">${t('tag')}<input name="tag" value="${esc(p.tag)}"></label>
           <label class="field">${t('expires')}<input name="expires" type="date" value="${p.expires_at ? new Date(p.expires_at * 1000).toISOString().slice(0, 10) : ''}"></label>
-          <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
-          <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
-          <label class="field">${t('relay')}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
+          <label class="field">${t('max_conns')}${proTag()}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
+          <label class="field">${t('rate_kbps')}${proTag()}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
+          <label class="field">${t('relay')}${proTag()}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
+          <label class="field">${t('net_source')}${proTag()}${ifaceSelect('iface', p)}</label>
           <label class="field">${t('relay_public_port')}<input name="relay_port" type="number" min="0" max="65535" value="${p.relay_port || 0}"></label>
         </div>
         <p class="hint">${t('limits_hint')} ${t('relay_edit_hint')}</p>
@@ -878,9 +955,9 @@ async function openProxyDrawer(id, tab = 'info') {
     <div class="drawer-foot">
       <button id="dTest2">${icon('pulse', 'sm')} ${t('test')}</button>
       <button id="dRegen">${icon('refresh', 'sm')} ${t('act_regen_ip')}</button>
-      <button id="dToggle">${icon(p.enabled ? 'pause' : 'play', 'sm')} ${p.enabled ? t('act_disable') : t('act_enable')}</button>
+      ${isCustomerUser() ? '' : `<button id="dToggle">${icon(p.enabled ? 'pause' : 'play', 'sm')} ${p.enabled ? t('act_disable') : t('act_enable')}</button>
       <div class="spacer"></div>
-      <button class="danger" id="dDel">${icon('trash', 'sm')}</button>
+      <button class="danger" id="dDel">${icon('trash', 'sm')}</button>`}
     </div>`, (d) => {
     const show = (name) => {
       for (const b of $$('[data-tab]', d)) b.classList.toggle('on', b.dataset.tab === name);
@@ -902,9 +979,10 @@ async function openProxyDrawer(id, tab = 'info') {
     $('#dTest', d).onclick = (e) => test(e.currentTarget);
     $('#dTest2', d).onclick = (e) => test(e.currentTarget);
     $('#dRegen', d).onclick = () => bulkAction('regen_ip', [p.id]).then(() => openProxyDrawer(p.id));
-    $('#dToggle', d).onclick = () => bulkAction(p.enabled ? 'disable' : 'enable', [p.id]).then(() => openProxyDrawer(p.id));
-    $('#dDel', d).onclick = () => deleteWithUndo([p.id]);
+    if ($('#dToggle', d)) $('#dToggle', d).onclick = () => bulkAction(p.enabled ? 'disable' : 'enable', [p.id]).then(() => openProxyDrawer(p.id));
+    if ($('#dDel', d)) $('#dDel', d).onclick = () => deleteWithUndo([p.id]);
     const form = $('#ef', d);
+    if (isCustomerUser()) { show(tab === 'edit' ? 'info' : tab); return; }
     form.protocol.value = p.protocol;
     form.onsubmit = async (e) => {
       e.preventDefault();
@@ -912,7 +990,7 @@ async function openProxyDrawer(id, tab = 'info') {
         label: form.label.value, port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
         tag: form.tag.value, note: form.note.value, enabled: form.enabled.checked, ipv4_fallback: form.ipv4_fallback.checked, scope: form.scope.value,
         max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
-        relay_node_id: Number(form.relay_node_id.value) || 0, relay_port: Number(form.relay_port.value) || 0,
+        relay_node_id: Number(form.relay_node_id.value) || 0, relay_port: Number(form.relay_port.value) || 0, iface: form.iface.value,
         expires_at: form.expires.value ? Math.floor(new Date(form.expires.value + 'T23:59:59').getTime() / 1000) : 0,
       };
       if (form.ip.value.trim() && form.ip.value.trim() !== p.ip) body.ip = form.ip.value.trim();
@@ -951,11 +1029,13 @@ function openCreate() {
   modal(`<h2>${t('create_proxies')}</h2>
     <form id="cf"><div class="form-grid">
       <label class="field">${t('node')}<select name="node_id">${state.nodes.map((n) => `<option value="${n.id}">${esc(n.name)}${n.online ? '' : ' (' + t('st_offline') + ')'}</option>`).join('')}</select></label>
+
       <label class="field">${t('pool')}<select name="pool_id"></select></label>
-      <label class="field">${t('count')}<input name="count" type="number" min="1" max="5000" value="10" required></label>
+      <div class="field" style="grid-column:1/-1">${t('net_source')}<div data-srcbox></div></div>
+      <label class="field">${t('count')}<input name="count" type="number" min="1" max="5000" value="${isPro() ? 10 : Math.max(1, 3 - ((state.summary && state.summary.proxies) || 0))}" required></label>
       <label class="field">${t('start_port')}<input name="start_port" type="number" min="1024" max="65535" value="10001"></label>
       <label class="field">${t('protocol')}<select name="protocol"><option value="both">HTTP + SOCKS5</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
-      <label class="field">${t('auth')}<select name="auth"><option value="random">${t('auth_random')}</option><option value="none">${t('auth_none')}</option><option value="fixed">${t('auth_fixed')}</option></select></label>
+      <label class="field">${t('auth')}<select name="auth"><option value="random">${t('authopt_random')}</option><option value="none">${t('authopt_none')}</option><option value="fixed">${t('authopt_fixed')}</option></select></label>
       <label class="field fixed-auth" hidden>${t('username')}<input name="user"></label>
       <label class="field fixed-auth" hidden>${t('password')}<input name="pass"></label>
       <label class="field">${t('scope')}${scopeSelect('scope', 'lan')}</label>
@@ -963,8 +1043,8 @@ function openCreate() {
       <label class="field">${t('tag')}<input name="tag" placeholder="facebook, tiktok…"></label>
       <label class="field">${t('note')}<input name="note"></label>
       <label class="field">${t('expires_days')}<input name="expires_days" type="number" min="0" value="0"></label>
-      <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="0"></label>
-      <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="0"></label>
+      <label class="field">${t('max_conns')}${proTag()}<input name="max_conns" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}${proTag()}<input name="rate_kbps" type="number" min="0" value="0"></label>
       <label class="field" id="relayWrap">${t('relay')}<span data-relay></span></label>
     </div>
     <p class="hint">${t('limits_hint')}</p>
@@ -981,12 +1061,22 @@ function openCreate() {
     const form = $('#cf', m);
     const fillPools = () => {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
+      drawProxySource();
       form.pool_id.innerHTML = (node.pools || []).map((p) => `<option value="${p.id}">${esc(p.name)} — ${esc(p.cidr || t('pool_waiting'))}</option>`).join('');
       onPool();
+    };
+    let chosenIface = '';
+    const drawProxySource = () => {
+      const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
+      const pool = (node.pools || []).find((p) => String(p.id) === form.pool_id.value);
+      const box = $('[data-srcbox]', m);
+      box.innerHTML = proxySourcePicker(node, pool, chosenIface);
+      for (const b of $$('[data-psrc]', box)) b.onclick = (e) => { e.preventDefault(); chosenIface = b.dataset.psrc; drawProxySource(); };
     };
     const onPool = () => {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
       const pool = (node.pools || []).find((p) => String(p.id) === form.pool_id.value);
+      drawProxySource();
       $('#poolHint', m).textContent = pool ? poolInfo(pool) : '';
       $('[data-relay]', m).innerHTML = relaySelect('relay_node_id', 0, node.id);
       $('#relayWrap', m).hidden = !relayNodes(node.id).length;
@@ -1012,7 +1102,7 @@ function openCreate() {
         user: form.user.value, pass: form.pass.value, tag: form.tag.value, label_prefix: form.label_prefix.value, note: form.note.value,
         expires_days: Number(form.expires_days.value), spread: form.spread.checked, ipv4_fallback: form.ipv4_fallback.checked,
         scope: form.scope.value, max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
-        relay_node_id: form.relay_node_id ? Number(form.relay_node_id.value) || 0 : 0,
+        relay_node_id: form.relay_node_id ? Number(form.relay_node_id.value) || 0 : 0, iface: chosenIface,
       };
       try {
         const r = await api('POST', '/api/proxies/bulk', body);
@@ -1175,7 +1265,8 @@ function nodeCard(n) {
         <button class="small ghost icon-btn" data-a="more" title="${t('more')}">${icon('more', 'sm')}</button>
       </div>
     </div>
-    ${(n.errors || []).map((e) => alertBox('err', esc(e))).join('')}
+    ${bad.length || (n.errors || []).length || !n.online ? `<div class="alert ${bad.some((c) => !c.warn) || (n.errors || []).length || !n.online ? 'err' : 'warn'} fixbar">${icon('alert')}<div>${t('node_issues', { n: bad.length + (n.errors || []).length + (n.online ? 0 : 1) })}</div><button class="small" data-a="doctor">${icon('wrench', 'sm')} ${t('doctor_open')}</button></div>` : ''}
+    <div class="srcrow"><div class="small muted" style="font-weight:550;margin-bottom:6px">${t('net_source')}</div>${sourcePicker(n)}</div>
     <div class="grid cols-2" style="gap:18px">
       <div class="kv">
         <div>${t('service')}</div><div>${n.online ? t('running_for', { d: fmtDuration(n.uptime) }) : t('st_offline') + ' · ' + ago(n.last_seen)}</div>
@@ -1188,8 +1279,8 @@ function nodeCard(n) {
       </div>
       <div>
         <div class="small muted" style="margin-bottom:8px;font-weight:550">${t('system_checks')}</div>
-        <div class="checks">${checks.map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${icon(c.ok ? 'check' : 'alert', 'sm')} ${esc(t('chk_' + c.id))}</span>`).join('') || '—'}</div>
-        ${bad.map((c) => alertBox(c.warn ? 'warn' : 'err', `<b>${esc(t('chk_' + c.id))}:</b> ${esc(t('chkfix_' + c.id))}${c.detail ? ` <span class="muted">(${esc(c.detail)})</span>` : ''}`)).join('').replace(/alert /g, 'alert small ')}
+        <div class="checks">${checks.map((c) => `<span class="badge ${c.ok ? 'ok' : (c.warn ? 'warn' : 'error')}" title="${esc(c.detail)}">${icon(c.ok ? 'check' : 'alert', 'sm')} ${esc(c.ok ? t('chk_' + c.id) : chkText(c, n, 'title'))}</span>`).join('') || '—'}</div>
+
       </div>
     </div>
     <details class="section" data-keep="set-${n.id}"><summary><b>${icon('settings', 'sm')} ${t('settings')}</b> <span class="muted small">— ${t('node_settings_sub')}</span></summary>
@@ -1236,6 +1327,8 @@ function nodeCard(n) {
 
 function bindNodeCard(card, n) {
   const act = (a) => $(`[data-a=${a}]`, card);
+  if (act('doctor')) act('doctor').onclick = () => openDoctor(n.id);
+  bindSourcePicker($('.srcrow', card), n, () => renderPage());
   act('test').onclick = async (e) => {
     e.target.disabled = true;
     try { const c = await api('POST', `/api/nodes/${n.id}/test`, {}); const r = await pollCommand(c.id); toast(r.ok ? t('v6_ok', { ip: r.output }) : t('test_fail', { err: r.output }), !r.ok); }
@@ -1392,6 +1485,8 @@ async function pageSettings() {
   $('#page').innerHTML = `<h1>${t('nav_settings')}</h1>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
 
+    <div class="card" id="licCard"><h2>${t('license')}</h2><div id="licBox"><div class="skel"></div></div></div>
+
     <div class="card" id="upd"><h2>${t('updates')}</h2>
       <div class="kv"><div>${t('current_version')}</div><div>v${esc(u.current || '')}</div>
         <div>${t('latest_version')}</div><div>${u.latest ? esc(u.latest) : (u.error ? `<span class="muted">${esc(u.error)}</span>` : '—')}</div></div>
@@ -1428,6 +1523,15 @@ async function pageSettings() {
       <p class="small muted" style="margin-top:0">${t('backup_hint')}</p>
       <div class="row"><a class="btn primary" href="/api/backup" download>${t('download_backup')}</a>
         <label class="btn">${t('restore')}<input type="file" id="restoreFile" accept=".json,application/json" hidden></label></div></div>
+
+    <div class="card"><h2>${t('accounts')}</h2>
+      <p class="small muted" style="margin-top:0">${t('accounts_hint')}</p>
+      <div id="userList"><div class="skel"></div></div>
+      <form class="row" id="userf" style="margin-top:10px;align-items:flex-end">
+        <input name="username" placeholder="${t('username')}" style="flex:1;min-width:120px" required>
+        <input name="password" type="password" placeholder="${t('password')}" minlength="8" style="flex:1;min-width:120px" required autocomplete="new-password">
+        <select name="role"><option value="customer">${t('role_customer')}</option><option value="admin">${t('role_admin')}</option></select>
+        <button type="submit">${icon('plus', 'sm')} ${t('add_account')}</button></form></div>
 
     <div class="card"><h2>${t('api_tokens')}</h2>
       <p class="small muted" style="margin-top:0">${t('api_tokens_hint')}</p>
@@ -1494,6 +1598,63 @@ async function pageSettings() {
       toast(t('restored')); setTimeout(() => location.reload(), 1200);
     } catch (err) { toast(err.message, true); }
   };
+  const loadLicense = async () => {
+    const l = await api('GET', '/api/license').catch(() => null);
+    if (!l) return;
+    const box = $('#licBox');
+    if (l.pro) {
+      box.innerHTML = `<div class="row" style="gap:10px"><span class="plan pro">Pro</span><b>${t('lic_active', { n: l.machines || 1 })}</b></div>
+        <div class="kv small" style="margin-top:12px">
+          <div>${t('lic_key')}</div><div class="mono">${esc(l.display_key || '—')}</div>
+          ${l.email ? `<div>Email</div><div>${esc(l.email)}</div>` : ''}
+          <div>${t('lic_machine')}</div><div>${esc(l.machine)}</div>
+          <div>${t('lic_checked')}</div><div>${l.validated_at ? fmtTime(l.validated_at) : '—'}</div></div>
+        ${l.error ? alertBox('warn', esc(t('lic_offline', { d: l.grace_days })) + ` <span class="muted">(${esc(l.error)})</span>`) : ''}
+        <p class="hint">${t('lic_move_hint')}</p>
+        <div class="row"><button class="danger" id="licOff">${t('lic_deactivate')}</button></div>`;
+      $('#licOff').onclick = async (e) => {
+        if (!(await confirmBox(t('lic_deactivate_confirm'), { danger: true, ok: t('lic_deactivate') }))) return;
+        e.target.disabled = true;
+        try { await api('DELETE', '/api/license'); toast(t('lic_deactivated')); loadLicense(); refreshSummary(); } catch (err) { toast(err.message, true); e.target.disabled = false; }
+      };
+    } else {
+      box.innerHTML = `<div class="row" style="gap:10px"><span class="plan free">Free</span><span class="small muted">${t('lic_free_desc', { p: l.free_proxies })}</span></div>
+        ${l.status === 'invalid' ? alertBox('err', esc(t('lic_invalid')) + (l.error ? ` <span class="muted">(${esc(l.error)})</span>` : '')) : ''}
+        <ul class="pro-list small">${['pro_f_unlimited', 'pro_f_nodes', 'pro_f_share', 'pro_f_limits', 'pro_f_api', 'pro_f_alerts'].map((k) => `<li>${icon('check', 'sm')} ${t(k)}</li>`).join('')}</ul>
+        <form class="row" id="licForm" style="margin-top:12px"><input name="key" placeholder="OV6-XXXX-XXXX-XXXX" class="mono" style="flex:1;min-width:200px" autocomplete="off" required>
+          <button class="primary" type="submit">${icon('key', 'sm')} ${t('lic_activate')}</button></form>
+        <p class="hint">${t('lic_buy_hint')} <a href="${esc(l.buy_url)}" target="_blank" rel="noopener">${t('lic_buy')} →</a></p>`;
+      $('#licForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const b = $('button', e.target); b.disabled = true;
+        try { await api('POST', '/api/license', { key: e.target.key.value }); toast(t('lic_activated')); loadLicense(); refreshSummary(); }
+        catch (err) { toast(err.message, true); b.disabled = false; }
+      };
+    }
+  };
+  loadLicense();
+  const loadUsers = async () => {
+    const us = await api('GET', '/api/users').catch(() => []);
+    $('#userList').innerHTML = us.map((u) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:nowrap">
+      <div style="flex:1;min-width:0"><b>${esc(u.username)}</b> <span class="badge ${u.role === 'admin' ? 'accent' : 'neutral'}">${t('role_' + u.role)}</span>
+        ${u.role === 'customer' ? `<div class="small muted">${t('owner_count', { n: u.proxies })}</div>` : ''}</div>
+      <button class="small" data-pw="${u.id}">${icon('key', 'sm')}</button>
+      ${state.user && state.user.username === u.username ? '' : `<button class="small danger icon-btn" data-deluser="${u.id}" title="${t('act_delete')}">${icon('trash', 'sm')}</button>`}</div>`).join('');
+    for (const b of $$('[data-pw]')) b.onclick = async () => {
+      const pw = await promptBox(t('reset_password'), t('new_password')); if (!pw) return;
+      try { await api('PUT', '/api/users/' + b.dataset.pw, { password: pw }); toast(t('saved')); } catch (err) { toast(err.message, true); }
+    };
+    for (const b of $$('[data-deluser]')) b.onclick = async () => {
+      if (!(await confirmBox(t('confirm_delete_account'), { danger: true, ok: t('act_delete') }))) return;
+      try { await api('DELETE', '/api/users/' + b.dataset.deluser); loadUsers(); } catch (err) { toast(err.message, true); }
+    };
+  };
+  loadUsers();
+  $('#userf').onsubmit = async (e) => {
+    e.preventDefault(); const f = e.target;
+    try { await api('POST', '/api/users', { username: f.username.value, password: f.password.value, role: f.role.value }); f.reset(); toast(t('saved')); loadUsers(); }
+    catch (err) { toast(err.message, true); }
+  };
   const loadTokens = async () => {
     const ts = await api('GET', '/api/tokens').catch(() => []);
     $('#tokList').innerHTML = ts.length ? ts.map((x) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:nowrap">
@@ -1536,10 +1697,222 @@ async function pageSettings() {
   applyTheme();
   try {
     const s = await (await fetch('/api/status')).json();
-    if (s.setup_required) renderLogin(true);
+    if (s.setup_required) renderLogin(true, s.setup_code_required);
     else if (!s.user) renderLogin(false);
     else { state.user = s.user; renderShell(); }
   } catch (e) {
     $('#app').innerHTML = `<div class="center"><div class="alert err">${esc(e.message)}</div></div>`;
   }
 })();
+
+// ---------- network source (LAN / Wi-Fi) ----------
+function ifaceKind(name) {
+  const n = String(name || '').toLowerCase();
+  if (/^(wl|wlan|wifi|wi-fi|wireless)/.test(n) || n.includes('wi-fi') || n.includes('wireless') || n.includes('wlan')) return 'wifi';
+  if (/^(en|eth|lan)/.test(n) || n.includes('ethernet')) return 'lan';
+  return 'other';
+}
+function ifaceLabel(name) {
+  const k = ifaceKind(name);
+  return k === 'wifi' ? 'Wi-Fi' : k === 'lan' ? t('src_lan') : name;
+}
+function sourcePicker(n, compact) {
+  const list = (n.net.interfaces || []).filter((i) => (i.prefixes || []).length);
+  const cur = n.iface || n.net.primary_iface || '';
+  if (!list.length) return `<div class="small muted">${t('src_none')}</div>`;
+  return `<div class="source ${compact ? 'compact' : ''}">${list.map((i) => {
+    const on = i.name === cur;
+    const k = ifaceKind(i.name);
+    return `<button type="button" class="src ${on ? 'on' : ''}" data-src="${esc(i.name)}" aria-pressed="${on}">
+      <span class="src-ico">${icon(k === 'wifi' ? 'wifi' : k === 'lan' ? 'ethernet' : 'globe', 'sm')}</span>
+      <span class="src-txt"><b>${esc(ifaceLabel(i.name))}</b>${ifaceLabel(i.name) !== i.name ? ` <span class="muted small">${esc(i.name)}</span>` : ''}
+      <span class="mono small muted">${esc(i.prefixes[0])}</span></span>
+      ${on ? `<span class="src-on">${icon('check', 'sm')}</span>` : ''}</button>`;
+  }).join('')}</div>${n.iface ? '' : `<div class="hint">${t('src_auto_hint')}</div>`}`;
+}
+// cards that can carry a proxy of this pool (same IPv6 prefix)
+function cardsForPool(n, pool) {
+  return (n.net.interfaces || []).filter((i) => (i.prefixes || []).length && (!pool || !pool.cidr || i.prefixes.includes(pool.cidr)));
+}
+function proxySourcePicker(n, pool, chosen) {
+  const def = n.iface || n.net.primary_iface || '';
+  const cards = cardsForPool(n, pool).filter((i) => i.name !== def);
+  const opt = (val, title, sub, kind) => `<button type="button" class="src ${chosen === val ? 'on' : ''}" data-psrc="${esc(val)}">
+    <span class="src-ico">${icon(kind === 'wifi' ? 'wifi' : kind === 'lan' ? 'ethernet' : 'globe', 'sm')}</span>
+    <span class="src-txt"><b>${esc(title)}</b><span class="small muted">${esc(sub)}</span></span>${chosen === val ? `<span class="src-on">${icon('check', 'sm')}</span>` : ''}</button>`;
+  return `<div class="source compact">${opt('', t('src_default', { name: ifaceLabel(def) }), t('src_default_hint'), ifaceKind(def))}
+    ${cards.map((i) => opt(i.name, ifaceLabel(i.name) + (isPro() ? '' : ' · Pro'), i.prefixes[0], ifaceKind(i.name))).join('')}</div>
+    ${cards.length ? `<div class="hint">${t('src_per_proxy_hint')}</div>` : ''}`;
+}
+function ifaceSelect(name, p) {
+  const n = (state.nodes || []).find((x) => x.id === p.node_id);
+  const pool = n && (n.pools || []).find((x) => x.id === p.pool_id);
+  const def = n ? (n.iface || n.net.primary_iface || '') : '';
+  const cards = n ? cardsForPool(n, pool).filter((i) => i.name !== def) : [];
+  if (p.iface && !cards.some((i) => i.name === p.iface)) cards.push({ name: p.iface });
+  return `<select name="${name}"><option value="">${esc(t('src_default', { name: ifaceLabel(def) }))}</option>${cards.map((i) => `<option value="${esc(i.name)}" ${i.name === p.iface ? 'selected' : ''}>${esc(ifaceLabel(i.name))} (${esc(i.name)})</option>`).join('')}</select>`;
+}
+
+function bindSourcePicker(root, n, after) {
+  if (!root) return;
+  for (const b of $$('[data-src]', root)) b.onclick = async (e) => {
+    e.preventDefault();
+    const name = b.dataset.src;
+    if (name === (n.iface || n.net.primary_iface)) return;
+    if (n.proxies && !(await confirmBox(t('src_confirm', { name: ifaceLabel(name), n: n.proxies }), { ok: t('src_switch') }))) return;
+    b.disabled = true;
+    try {
+      await api('PUT', '/api/nodes/' + n.id, { iface: name });
+      await api('POST', `/api/nodes/${n.id}/reapply`, {});
+      toast(t('src_switched', { name: ifaceLabel(name) }));
+      if (after) await after();
+    } catch (err) { toast(err.message, true); b.disabled = false; }
+  };
+}
+
+// ---------- check & fix ----------
+// chkText picks the platform-specific explanation when one exists (Windows
+// firewall is not ufw) and the "problem" wording for a failed check.
+function chkText(c, n, kind) {
+  const os = String((n && n.os) || '').split('/')[0];
+  const suffix = os === 'windows' ? '_win' : os === 'darwin' ? '_mac' : '';
+  const d = I18N[LANG];
+  if (kind === 'title') return d['chkbad_' + c.id] || t('chk_' + c.id);
+  return (suffix && d['chkfix_' + c.id + suffix]) || t('chkfix_' + c.id);
+}
+
+// Each issue says what is wrong, why, and offers buttons that fix it; "auto"
+// fixes are safe to run unattended ("Fix all"), the others need a decision.
+const CHECK_FIX = { firewall: 'firewall', network_private: 'network_private', vpn_captures: 'bypass_on', vpn_bypass_failed: 'reapply',
+  ipv6_route: 'reapply', ipv6_prefix: 'reapply', kernel_tuning: 'kernel_tuning' };
+
+async function nodeFix(n, fix) {
+  const r = await api('POST', `/api/nodes/${n.id}/fix`, { fix });
+  if (r && r.id && !r.done) {
+    const c = await pollCommand(r.id);
+    if (!c.ok) throw new Error(c.output || t('fix_failed'));
+    return c.output;
+  }
+  return '';
+}
+
+function collectIssues(nodes, proxies) {
+  const out = [];
+  for (const n of nodes) {
+    if (!n.online) {
+      out.push({ sev: 'err', title: t('dr_offline', { name: n.name }), cause: n.is_local ? t('dr_offline_local') : t('dr_offline_remote'),
+        fixes: n.is_local ? [{ label: t('restart'), auto: false, run: () => api('POST', `/api/nodes/${n.id}/restart`, {}) }]
+          : [{ label: t('install_cmd'), auto: false, run: async () => showInstall(await api('GET', `/api/nodes/${n.id}/install`), n.name), keep: true }] });
+      continue;
+    }
+    for (const c of (n.checks || []).filter((x) => !x.ok)) {
+      const fixes = [];
+      const f = CHECK_FIX[c.id];
+      if (f) fixes.push({ label: t('fix'), auto: true, run: () => nodeFix(n, f) });
+      if (c.id === 'ipv6_iface' || c.id === 'ipv6_prefix') {
+        if (n.iface) fixes.unshift({ label: t('src_auto'), auto: true, run: () => nodeFix(n, 'iface_auto') });
+        fixes.push({ label: t('src_choose'), auto: false, keep: true, run: () => openSourceModal(n) });
+      }
+      if (c.id === 'root') fixes.push({ label: t('restart'), auto: false, run: () => api('POST', `/api/nodes/${n.id}/restart`, {}) });
+      out.push({ sev: c.warn ? 'warn' : 'err', node: n.name, title: chkText(c, n, 'title'), cause: chkText(c, n) + (c.detail ? ` (${c.detail})` : ''), fixes });
+    }
+    for (const e of n.errors || []) {
+      out.push({ sev: 'err', node: n.name, title: t('dr_node_error'), cause: e, fixes: [{ label: t('reapply'), auto: true, run: () => nodeFix(n, 'reapply') }] });
+    }
+  }
+  const byCode = {};
+  for (const p of proxies) {
+    if (p.status === 'error') (byCode[p.code || 'other'] = byCode[p.code || 'other'] || []).push(p);
+  }
+  for (const [code, list] of Object.entries(byCode)) {
+    const ids = list.map((p) => p.id);
+    const names = list.slice(0, 4).map((p) => p.label || ':' + p.port).join(', ') + (list.length > 4 ? '…' : '');
+    const fixes = [];
+    if (code === 'port_in_use') fixes.push({ label: t('fix_port'), auto: true, run: () => api('POST', '/api/proxies/action', { ids, action: 'fix_port' }) });
+    else if (code === 'iface_missing') fixes.push({ label: t('fix_iface_default'), auto: false, run: () => Promise.all(ids.map((id) => api('PUT', '/api/proxies/' + id, { iface: '' }))) });
+    else if (['addr_add_failed', 'addr_not_available', 'no_prefix', 'permission'].includes(code)) {
+      for (const nid of [...new Set(list.map((p) => p.node_id))]) {
+        const n = nodes.find((x) => x.id === nid);
+        if (n) fixes.push({ label: t('reapply'), auto: true, run: () => nodeFix(n, 'reapply') });
+      }
+    }
+    fixes.push({ label: t('act_test'), auto: false, run: () => api('POST', '/api/proxies/action', { ids, action: 'test' }) });
+    out.push({ sev: 'err', title: t('dr_proxy_error', { n: list.length }) + ' · ' + names, cause: I18N[LANG]['err_' + code] || list[0].error || code, fixes });
+  }
+  const failing = proxies.filter((p) => p.enabled && p.check_ok === 0 && p.fail_streak >= 2 && p.status !== 'error');
+  if (failing.length) {
+    const ids = failing.map((p) => p.id);
+    out.push({ sev: 'warn', title: t('dr_failing', { n: failing.length }), cause: (I18N[LANG]['err_' + failing[0].check_code] || failing[0].check_result || ''),
+      fixes: [{ label: t('act_test'), auto: true, run: () => api('POST', '/api/proxies/action', { ids, action: 'test' }) },
+        { label: t('act_regen_ip'), auto: false, run: () => api('POST', '/api/proxies/action', { ids, action: 'regen_ip' }) }] });
+  }
+  return out.sort((a, b) => (a.sev === b.sev ? 0 : a.sev === 'err' ? -1 : 1));
+}
+
+async function openDoctor(nodeId) {
+  modal(`<div id="dr"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%;margin-top:12px"></div></div>`, async (m) => {
+    const box = $('#dr', m);
+    const load = async (note) => {
+      const [nodes, proxies] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies')]);
+      state.nodes = nodes;
+      const scoped = nodeId ? nodes.filter((n) => n.id === nodeId) : nodes;
+      const issues = collectIssues(scoped, nodeId ? proxies.filter((p) => p.node_id === nodeId) : proxies);
+      const autoN = issues.filter((i) => i.fixes.some((f) => f.auto)).length;
+      box.innerHTML = `<div class="row" style="align-items:flex-start"><div style="flex:1"><h2 style="margin-bottom:4px">${t('doctor_title')}</h2>
+          <p class="muted small" style="margin:0">${issues.length ? t('doctor_found', { n: issues.length }) : t('doctor_ok_sub')}</p></div>
+          <button class="ghost icon-btn" id="drClose">${icon('x')}</button></div>
+        ${note ? `<div class="alert info small" style="margin-top:12px">${icon('info')}<div>${esc(note)}</div></div>` : ''}
+        ${issues.length ? `<div class="doctor">${issues.map((it, i) => `<div class="dr-item ${it.sev}" data-i="${i}">
+            <span class="dr-ico">${icon(it.sev === 'err' ? 'alert' : 'info', 'sm')}</span>
+            <div class="dr-body"><b>${esc(it.title)}</b>${it.node && nodes.length > 1 ? ` <span class="badge neutral">${esc(it.node)}</span>` : ''}
+              <div class="small muted">${esc(it.cause)}</div><div class="dr-out small"></div></div>
+            <div class="dr-act">${it.fixes.map((f, j) => `<button class="small ${j === 0 && f.auto ? 'primary' : ''}" data-f="${j}">${esc(f.label)}</button>`).join('')}</div>
+          </div>`).join('')}</div>`
+          : `<div class="empty" style="padding:28px 10px"><div class="art" style="background:var(--ok-soft);color:var(--ok)">${icon('check')}</div><h2>${t('doctor_ok')}</h2></div>`}
+        <div class="actions"><button id="drRecheck">${icon('refresh', 'sm')} ${t('doctor_recheck')}</button>
+          ${autoN ? `<button class="primary" id="drAll">${icon('wrench', 'sm')} ${t('doctor_fix_all', { n: autoN })}</button>` : ''}</div>`;
+      $('#drClose', m).onclick = closeModal;
+      $('#drRecheck', m).onclick = () => load();
+      const runFix = async (it, f, el) => {
+        const out = $('.dr-out', el);
+        out.className = 'dr-out small'; out.textContent = t('fixing');
+        for (const b of $$('button', el)) b.disabled = true;
+        try {
+          const r = await f.run();
+          if (f.keep) { out.textContent = ''; for (const b of $$('button', el)) b.disabled = false; return true; }
+          out.classList.add('ok'); out.textContent = '✓ ' + (typeof r === 'string' && r ? r : t('fix_done'));
+          return true;
+        } catch (err) {
+          out.classList.add('bad'); out.textContent = '✗ ' + err.message;
+          for (const b of $$('button', el)) b.disabled = false;
+          return false;
+        }
+      };
+      for (const el of $$('.dr-item', m)) {
+        const it = issues[Number(el.dataset.i)];
+        for (const b of $$('[data-f]', el)) b.onclick = () => runFix(it, it.fixes[Number(b.dataset.f)], el);
+      }
+      const all = $('#drAll', m);
+      if (all) all.onclick = async () => {
+        all.disabled = true; all.innerHTML = `<span class="dot pending"></span> ${t('fixing')}`;
+        for (const el of $$('.dr-item', m)) {
+          const it = issues[Number(el.dataset.i)];
+          const f = it.fixes.find((x) => x.auto);
+          if (f) await runFix(it, f, el);
+        }
+        await new Promise((r) => setTimeout(r, 6000)); // let the node apply and report back
+        await load(t('doctor_after'));
+        refreshSummary();
+      };
+    };
+    load().catch((e) => { box.innerHTML = alertBox('err', esc(e.message)); });
+  }, true);
+}
+
+function openSourceModal(n) {
+  modal(`<h2>${t('net_source')} · ${esc(n.name)}</h2><p class="muted small">${t('src_modal_sub')}</p><div data-srcbox>${sourcePicker(n)}</div>
+    <div class="actions"><button id="cl">${t('close')}</button></div>`, (m) => {
+    bindSourcePicker($('[data-srcbox]', m), n, () => { closeModal(); renderPage(); });
+    $('#cl', m).onclick = closeModal;
+  });
+}

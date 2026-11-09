@@ -125,7 +125,7 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 	idxOf := func(name string) string { return strconv.Itoa(IfIndex(name)) }
 	for a, ifc := range m.st.Addrs {
 		ip, _ := netip.ParseAddr(a)
-		if !d.Addrs[ip] || ifc != d.Iface {
+		if !d.Addrs[ip] || ifc != d.IfaceOf(ip) {
 			_ = m.Run("interface", "ipv6", "delete", "address", "interface="+idxOf(ifc), "address="+a, "store=active")
 			delete(m.st.Addrs, a)
 		}
@@ -133,30 +133,29 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 	if len(d.Addrs) > 0 && d.Iface == "" {
 		errs = append(errs, fmt.Errorf("no IPv6 interface found"))
 	} else if len(d.Addrs) > 0 {
-		present := map[netip.Addr]bool{}
+		present := map[string]bool{}
 		for _, a := range netAddrs() {
-			if a.Iface == d.Iface {
-				present[a.Addr] = true
-			}
+			present[a.Iface+"|"+a.Addr.String()] = true
 		}
-		idx := idxOf(d.Iface)
+		added := 0
 		for ip := range d.Addrs {
-			s := ip.String()
-			if _, ok := m.st.Addrs[s]; ok && (present[ip] || m.DryRun) {
+			s, ifc := ip.String(), d.IfaceOf(ip)
+			if _, ok := m.st.Addrs[s]; ok && (present[ifc+"|"+s] || m.DryRun) {
 				continue
 			}
-			if present[ip] { // added earlier (e.g. by a previous run): adopt it
-				m.st.Addrs[s] = d.Iface
+			if present[ifc+"|"+s] { // added earlier (e.g. by a previous run): adopt it
+				m.st.Addrs[s] = ifc
 				continue
 			}
-			if err := m.Run("interface", "ipv6", "add", "address", "interface="+idx, "address="+s+"/128", "store=active", "skipassource=true"); err != nil {
+			if err := m.Run("interface", "ipv6", "add", "address", "interface="+idxOf(ifc), "address="+s+"/128", "store=active", "skipassource=true"); err != nil {
 				addrErrs[ip] = err
 				continue
 			}
-			m.st.Addrs[s] = d.Iface
+			m.st.Addrs[s] = ifc
+			added++
 		}
 		// new addresses run duplicate address detection (~1s) before use
-		if len(addrErrs) < len(d.Addrs) {
+		if added > 0 {
 			time.Sleep(1200 * time.Millisecond)
 		}
 	}
@@ -185,6 +184,8 @@ func (m *Manager) SyncFirewall(ports []int) error {
 	if m.DryRun || len(ports) == 0 {
 		return nil
 	}
+	fwMu.Lock()
+	defer fwMu.Unlock()
 	fwOnce.Do(func() {
 		exe, err := os.Executable()
 		if err != nil {
@@ -202,6 +203,7 @@ func (m *Manager) SyncFirewall(ports []int) error {
 
 var (
 	fwOnce sync.Once
+	fwMu   sync.Mutex
 	fwErr  error
 
 	profMu    sync.Mutex
@@ -211,19 +213,24 @@ var (
 
 // networkCategories returns the categories of connected networks
 // (Public/Private/DomainAuthenticated), cached for a minute.
+// PowerShell takes seconds to start, so it is refreshed in the background
+// and callers never wait for it.
 func networkCategories() []string {
 	profMu.Lock()
 	defer profMu.Unlock()
-	if time.Since(profAt) < time.Minute {
-		return profCache
+	if time.Since(profAt) >= time.Minute {
+		profAt = time.Now()
+		go func() {
+			out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+				"(Get-NetConnectionProfile | Where-Object { $_.IPv6Connectivity -ne 'Disconnected' -or $_.IPv4Connectivity -ne 'Disconnected' }).NetworkCategory")).Output()
+			if err != nil {
+				return
+			}
+			profMu.Lock()
+			profCache = strings.Fields(string(out))
+			profMu.Unlock()
+		}()
 	}
-	profAt = time.Now()
-	out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		"(Get-NetConnectionProfile | Where-Object { $_.IPv6Connectivity -ne 'Disconnected' -or $_.IPv4Connectivity -ne 'Disconnected' }).NetworkCategory")).Output()
-	if err != nil {
-		return profCache
-	}
-	profCache = strings.Fields(string(out))
 	return profCache
 }
 
@@ -237,10 +244,45 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 		}
 	}
 	c = append(c, proto.SystemCheck{ID: "network_private", OK: !pub, Warn: true, Detail: strings.Join(cats, ", ")})
-	fw := proto.SystemCheck{ID: "firewall", OK: fwErr == nil, Warn: true, Detail: "Windows Defender Firewall"}
-	if fwErr != nil {
-		fw.Detail = fwErr.Error()
+	fwMu.Lock()
+	ferr := fwErr
+	fwMu.Unlock()
+	fw := proto.SystemCheck{ID: "firewall", OK: ferr == nil, Warn: true, Detail: "Windows Defender Firewall"}
+	if ferr != nil {
+		fw.Detail = ferr.Error()
 	}
 	c = append(c, fw)
 	return c
+}
+
+// Fix repairs a failing system check (id as in SystemChecks).
+func (m *Manager) Fix(id string) (string, error) {
+	switch id {
+	case "firewall":
+		exe, err := os.Executable()
+		if err != nil {
+			return "", err
+		}
+		_ = runNetsh("advfirewall", "firewall", "delete", "rule", "name=openv6")
+		err = runNetsh("advfirewall", "firewall", "add", "rule", "name=openv6", "dir=in", "action=allow",
+			"program="+exe, "enable=yes", "profile=private,domain")
+		fwMu.Lock()
+		fwErr = err
+		fwMu.Unlock()
+		if err != nil {
+			return "", err
+		}
+		return "firewall rule re-created", nil
+	case "network_private":
+		out, err := hidden(exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+			"Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' } | Set-NetConnectionProfile -NetworkCategory Private")).CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+		}
+		profMu.Lock()
+		profAt = time.Time{}
+		profMu.Unlock()
+		return "network set to Private", nil
+	}
+	return "", fmt.Errorf("no automatic fix for %q", id)
 }

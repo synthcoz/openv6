@@ -24,6 +24,7 @@ type Server struct {
 	SelfExe    string // path of the running binary, served to agents for install
 
 	cmdMu    sync.Mutex
+	licMu    sync.Mutex
 	pending  map[int64][]pendingCmd   // node id -> queued commands
 	results  map[string]*commandState // command id -> state
 	loginMu  sync.Mutex
@@ -35,9 +36,13 @@ type Server struct {
 
 	// PanelLogs holds this process's own log output (panel + local agent).
 	PanelLogs *logbuf.Buffer
+	// OnShutdown stops the whole server (tray "Quit").
+	OnShutdown func()
 	// TrayToken authorizes the local tray app (see tray.go).
 	TrayToken string
-	magic     map[string]time.Time // one-time login links from the tray
+	// ForcePro unlocks Pro features without a license (tests, development).
+	ForcePro bool
+	magic    map[string]time.Time // one-time login links from the tray
 }
 
 func New(st *store.Store, web fs.FS, dataDir string, port int, exe string) *Server {
@@ -58,6 +63,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 	mux.HandleFunc("POST /api/agent/sync", s.handleAgentSync)
 	mux.HandleFunc("GET /install.sh", s.handleInstallScript)
+	mux.HandleFunc("GET /download/SHA256SUMS", s.handleSums)
+	mux.HandleFunc("GET /download/SHA256SUMS.sig", s.handleSums)
 	mux.HandleFunc("GET /download/{arch}", s.handleDownload)
 	mux.HandleFunc("GET /download/{os}/{arch}", s.handleDownload)
 	mux.HandleFunc("GET /install.ps1", s.handleInstallPS1)
@@ -97,12 +104,20 @@ func (s *Server) Handler() http.Handler {
 	a("POST /api/nodes/{id}/update", s.handleUpdateNodes)
 	a("POST /api/nodes/{id}/restart", s.handleNodeRestart)
 	a("POST /api/nodes/{id}/reapply", s.handleNodeReapply)
+	a("POST /api/nodes/{id}/fix", s.handleNodeFix)
 	a("POST /api/nodes/{id}/pause", s.handleNodePause)
 	a("GET /api/backup", s.handleBackup)
 	a("POST /api/restore", s.handleRestore)
 	a("GET /api/nodes/{id}/logs", s.handleNodeLogs)
 	a("GET /api/proxies/{id}/checks", s.handleProxyChecks)
 	a("POST /api/checks/run", s.handleCheckNow)
+	a("GET /api/users", s.handleListUsers)
+	a("POST /api/users", s.handleCreateUser)
+	a("PUT /api/users/{id}", s.handleUpdateUser)
+	a("DELETE /api/users/{id}", s.handleDeleteUser)
+	a("GET /api/license", s.handleGetLicense)
+	a("POST /api/license", s.handleActivateLicense)
+	a("DELETE /api/license", s.handleDeactivateLicense)
 	a("GET /api/tokens", s.handleListTokens)
 	a("POST /api/tokens", s.handleCreateToken)
 	a("DELETE /api/tokens/{id}", s.handleDeleteToken)
@@ -117,6 +132,7 @@ func securityHeaders(h http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		h.ServeHTTP(w, r)
 	})
 }

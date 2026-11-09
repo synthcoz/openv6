@@ -102,3 +102,24 @@ func TestParseRuleSelectors(t *testing.T) {
 		t.Fatalf("%v", m)
 	}
 }
+
+// A proxy on another network card gets its address there, and moving it
+// back removes it from that card.
+func TestApplyPerAddressIface(t *testing.T) {
+	m := NewManager(t.TempDir())
+	var cmds []string
+	m.DryRun = true
+	m.Run = func(a ...string) error { cmds = append(cmds, strings.Join(a, " ")); return nil }
+	a := netip.MustParseAddr("2405:4802:abcd:1234::a")
+	b := netip.MustParseAddr("2405:4802:abcd:1234::b")
+	m.Apply(Desired{Iface: "enp3s0", Addrs: map[netip.Addr]bool{a: true, b: true}, On: map[netip.Addr]string{b: "wlp2s0"}})
+	cmds = nil
+	m.Apply(Desired{Iface: "enp3s0", Addrs: map[netip.Addr]bool{a: true, b: true}}) // b back to the default card
+	want := []string{
+		"-6 addr del 2405:4802:abcd:1234::b/128 dev wlp2s0",
+		"-6 addr replace 2405:4802:abcd:1234::b/128 dev enp3s0 nodad valid_lft forever preferred_lft 0",
+	}
+	if strings.Join(cmds, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("commands:\n%s", strings.Join(cmds, "\n"))
+	}
+}

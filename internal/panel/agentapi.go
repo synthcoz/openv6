@@ -14,7 +14,7 @@ import (
 	"openv6/internal/v6"
 )
 
-const onlineWindow = 30 // seconds without sync before a node is "offline"
+const onlineWindow = 45 // seconds without sync before a node is "offline"
 
 type liveState struct {
 	At      time.Time
@@ -72,6 +72,12 @@ func (s *Server) handleGetCommand(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		fail(w, 404, "unknown command")
 		return
+	}
+	if isCustomer(r) {
+		if p, err := s.Store.GetProxy(cp.ProxyID); cp.ProxyID == 0 || err != nil || p.OwnerID != currentUser(r).ID {
+			fail(w, 404, "unknown command")
+			return
+		}
 	}
 	if !cp.Done && time.Since(cp.Created) > 60*time.Second {
 		cp.Done, cp.Output = true, "timeout: node did not answer"
@@ -282,19 +288,34 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		return nil, err
 	}
 	now := time.Now().Unix()
+	pro := s.pro()
+	var freeIDs map[int64]bool
+	if !pro {
+		_, freeIDs = s.freeAllowed()
+		resp.UPnP = false
+	}
 	for _, p := range proxies {
 		if node.Paused || !p.Enabled || (p.ExpiresAt > 0 && p.ExpiresAt < now) {
 			continue
 		}
+		if !pro {
+			if !freeIDs[p.ID] {
+				continue
+			}
+			p.MaxConns, p.RateKBps, p.RelayNodeID = 0, 0, 0
+		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
 			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope, MaxConns: p.MaxConns, RateKBps: p.RateKBps}
+		spec.Iface = p.Iface
 		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
 			spec.IP = ip.String()
 		}
 		resp.Proxies = append(resp.Proxies, spec)
 	}
-	if err := s.addRelaySpecs(node, resp, proxies); err != nil {
-		return nil, err
+	if pro {
+		if err := s.addRelaySpecs(node, resp, proxies); err != nil {
+			return nil, err
+		}
 	}
 	return resp, nil
 }

@@ -133,7 +133,7 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 
 	for a, ifc := range m.st.Addrs {
 		ip, _ := netip.ParseAddr(a)
-		if !d.Addrs[ip] || ifc != d.Iface {
+		if !d.Addrs[ip] || ifc != d.IfaceOf(ip) {
 			_ = m.Run("-6", "addr", "del", a+"/128", "dev", ifc)
 			delete(m.st.Addrs, a)
 		}
@@ -142,24 +142,22 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 		errs = append(errs, fmt.Errorf("no IPv6 interface found"))
 	} else {
 		// addresses vanish on reboot / link reset; re-add anything not present
-		present := map[netip.Addr]bool{}
+		present := map[string]bool{}
 		if cur, err := readIfInet6(); err == nil {
 			for _, a := range cur {
-				if a.Iface == d.Iface {
-					present[a.Addr] = true
-				}
+				present[a.Iface+"|"+a.Addr.String()] = true
 			}
 		}
 		for ip := range d.Addrs {
-			s := ip.String()
-			if _, ok := m.st.Addrs[s]; ok && (present[ip] || m.DryRun) {
+			s, ifc := ip.String(), d.IfaceOf(ip)
+			if _, ok := m.st.Addrs[s]; ok && (present[ifc+"|"+s] || m.DryRun) {
 				continue
 			}
-			if err := m.Run("-6", "addr", "replace", s+"/128", "dev", d.Iface, "nodad", "valid_lft", "forever", "preferred_lft", "0"); err != nil {
+			if err := m.Run("-6", "addr", "replace", s+"/128", "dev", ifc, "nodad", "valid_lft", "forever", "preferred_lft", "0"); err != nil {
 				addrErrs[ip] = err
 				continue
 			}
-			m.st.Addrs[s] = d.Iface
+			m.st.Addrs[s] = ifc
 		}
 	}
 	m.save()
@@ -447,3 +445,15 @@ func firewallChecks(fwManaged bool) []proto.SystemCheck {
 // SocketBypass reports whether proxies must bind sockets to the physical
 // interface themselves (false on Linux: policy routing does it).
 const SocketBypass = false
+
+// Fix repairs a failing system check (id as in SystemChecks).
+func (m *Manager) Fix(id string) (string, error) {
+	switch id {
+	case "kernel_tuning":
+		if failed := TuneKernel(); len(failed) > 0 {
+			return "", fmt.Errorf("could not set %s", strings.Join(failed, ", "))
+		}
+		return "kernel limits raised", nil
+	}
+	return "", fmt.Errorf("no automatic fix for %q", id)
+}

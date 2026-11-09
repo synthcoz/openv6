@@ -92,6 +92,10 @@ func guiStart() error {
 		}
 		return tray.Run()
 	}
+	// installed but stopped (e.g. after "Quit" in the tray): start it again
+	if service.Status() == "stopped" {
+		return openApp()
+	}
 	if tray.Running() {
 		return tray.OpenDashboard("")
 	}
