@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
@@ -87,6 +88,11 @@ func main() {
 			break
 		}
 		mode, rest := os.Args[2], os.Args[3:]
+		// a crash in the background service would otherwise leave no trace
+		_ = os.MkdirAll(service.DataDir(), 0o700)
+		if f, ferr := os.OpenFile(filepath.Join(service.DataDir(), "openv6-crash.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+			_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+		}
 		err = service.RunService(func(ctx context.Context) error {
 			if mode == "agent" {
 				return runAgent(ctx, rest)
@@ -113,6 +119,12 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
+		if os.Args[1] == "service-run" { // no console: keep the reason in the log file
+			if f, ferr := os.OpenFile(filepath.Join(service.DataDir(), "openv6.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); ferr == nil {
+				fmt.Fprintf(f, "%s openv6 %s could not start: %v\n", time.Now().Format("2006/01/02 15:04:05"), proto.Version, err)
+				f.Close()
+			}
+		}
 		os.Exit(1)
 	}
 }
