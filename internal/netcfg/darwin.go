@@ -106,40 +106,40 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 	}
 	for a, ifc := range m.st.Addrs {
 		ip, _ := netip.ParseAddr(a)
-		if !d.Addrs[ip] || ifc != d.Iface {
+		if !d.Addrs[ip] || ifc != d.IfaceOf(ip) {
 			_ = m.Run(ifc, "inet6", a, "-alias")
 			delete(m.st.Addrs, a)
 		}
 	}
-	var added []string
+	added := map[string][]string{}
 	if len(d.Addrs) > 0 && d.Iface == "" {
 		errs = append(errs, fmt.Errorf("no IPv6 interface found"))
 	} else {
-		present := map[netip.Addr]bool{}
+		present := map[string]bool{}
 		for _, a := range netAddrs() {
-			if a.Iface == d.Iface {
-				present[a.Addr] = true
-			}
+			present[a.Iface+"|"+a.Addr.String()] = true
 		}
 		for ip := range d.Addrs {
-			s := ip.String()
-			if _, ok := m.st.Addrs[s]; ok && (present[ip] || m.DryRun) {
+			s, ifc := ip.String(), d.IfaceOf(ip)
+			if _, ok := m.st.Addrs[s]; ok && (present[ifc+"|"+s] || m.DryRun) {
 				continue
 			}
-			err := m.Run(d.Iface, "inet6", s, "prefixlen", "128", "alias", "pltime", "0")
+			err := m.Run(ifc, "inet6", s, "prefixlen", "128", "alias", "pltime", "0")
 			if err != nil { // older ifconfig without pltime
-				err = m.Run(d.Iface, "inet6", s, "prefixlen", "128", "alias")
+				err = m.Run(ifc, "inet6", s, "prefixlen", "128", "alias")
 			}
 			if err != nil {
 				addrErrs[ip] = err
 				continue
 			}
-			m.st.Addrs[s] = d.Iface
-			added = append(added, s)
+			m.st.Addrs[s] = ifc
+			added[ifc] = append(added[ifc], s)
 		}
 	}
-	if len(added) > 0 && !m.DryRun {
-		waitDAD(d.Iface, added)
+	if !m.DryRun {
+		for ifc, list := range added {
+			waitDAD(ifc, list)
+		}
 	}
 	m.save()
 	return addrErrs, errs

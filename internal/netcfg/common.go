@@ -140,6 +140,17 @@ type Desired struct {
 	Iface  string              // interface for "addr" mode addresses
 	Addrs  map[netip.Addr]bool // addresses that need to be on Iface
 	Routes map[string]bool     // anyip prefixes
+	// On: per-address interface when a proxy uses another network card
+	// than the node's (e.g. Wi-Fi while the node defaults to LAN).
+	On map[netip.Addr]string
+}
+
+// IfaceOf is the interface an address belongs on.
+func (d Desired) IfaceOf(ip netip.Addr) string {
+	if v := d.On[ip]; v != "" {
+		return v
+	}
+	return d.Iface
 }
 
 // Cleanup removes everything this agent installed.

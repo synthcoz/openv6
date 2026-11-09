@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.7.0 — bản thương mại
+
+- **openv6 Pro, bản quyền mua một lần** qua Polar. Nhập key ở *Cài đặt → Bản quyền*; có gói 1 máy và 3 máy.
+  - **Bản Free:** 3 proxy trên 1 máy, tính năng cơ bản (tạo, xuất, kiểm tra proxy, tự sửa lỗi, chọn nguồn mạng cho cả máy).
+  - **Bản Pro:** không giới hạn proxy và máy, relay qua VPS, UPnP, giới hạn tốc độ, API token, nhiều tài khoản, chế độ khách hàng, cảnh báo Telegram, chọn card mạng cho từng proxy.
+  - Key được kiểm tra online mỗi ngày. Mất mạng thì Pro vẫn chạy thêm 30 ngày.
+  - Chuyển key sang máy khác: bấm *Huỷ kích hoạt* trên máy cũ trước.
+- **Nhiều tài khoản và chế độ khách hàng (bán lại proxy):** admin tạo tài khoản khách rồi giao proxy cho khách (*Thêm → Giao cho khách hàng*). Khách chỉ thấy proxy của mình, được sao chép, xuất, kiểm tra, đổi IPv6 và đổi mật khẩu proxy.
+- **Chọn card mạng cho từng proxy:** ví dụ nhóm tài khoản A ra Wi-Fi, nhóm B ra mạng dây. Chọn khi tạo proxy hoặc trong mục *Sửa*.
+- **Mã hoá dữ liệu nhạy cảm:** mật khẩu proxy, token Telegram và license được mã hoá trong file dữ liệu. File sao lưu vẫn khôi phục được trên máy khác.
+- **Bản cập nhật có chữ ký số:** openv6 chỉ tự cập nhật lên bản có chữ ký hợp lệ.
+- **Chuẩn bị ký số bộ cài Windows:** khi có chứng chỉ, bộ cài hết cảnh báo "Unknown publisher" (xem docs/RELEASE.md).
+
 ## v0.6.1
 
 - **Thoát từ icon khay giờ tắt hẳn openv6:** chuột phải icon → **Thoát openv6** sẽ dừng toàn bộ proxy, dịch vụ nền và icon. Trước đây chỉ đóng icon, còn proxy vẫn chạy.

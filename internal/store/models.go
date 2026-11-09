@@ -326,9 +326,10 @@ type Proxy struct {
 	RelayNodeID  int64  `json:"relay_node_id"` // publish through this public node (0 = off)
 	RelayPort    int    `json:"relay_port"`    // port opened on the relay node
 	OwnerID      int64  `json:"owner_id"`      // customer account (reseller mode), 0 = none
+	Iface        string `json:"iface"`         // network card for this proxy, "" = node default
 }
 
-const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port,owner_id`
+const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port,owner_id,iface`
 
 func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var p Proxy
@@ -336,7 +337,7 @@ func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var subnet int64
 	if err := r.Scan(&p.ID, &p.NodeID, &p.PoolID, &p.Port, &p.Protocol, &p.AuthUser, &p.AuthPass, &subnet, &p.Suffix, &fb, &en,
 		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult,
-		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort, &p.OwnerID); err != nil {
+		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort, &p.OwnerID, &p.Iface); err != nil {
 		return nil, err
 	}
 	p.Subnet = uint64(subnet)
@@ -438,9 +439,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 		if p.Scope == "" {
 			p.Scope = "lan"
 		}
-		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope,max_conns,rate_kbps,relay_node_id,relay_port,owner_id)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, s.enc(p.AuthPass), int64(p.Subnet), p.Suffix,
-			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope, p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID)
+		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope,max_conns,rate_kbps,relay_node_id,relay_port,owner_id,iface)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, s.enc(p.AuthPass), int64(p.Subnet), p.Suffix,
+			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope, p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.Iface)
 		if err != nil {
 			return err
 		}
@@ -450,9 +451,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 }
 
 func (s *Store) UpdateProxy(p *Proxy) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=?,owner_id=? WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=?,owner_id=?,iface=? WHERE id=?`,
 		p.PoolID, p.Port, p.Protocol, p.AuthUser, s.enc(p.AuthPass), int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.Scope,
-		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.ID)
+		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.Iface, p.ID)
 	return err
 }
 

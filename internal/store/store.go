@@ -115,6 +115,8 @@ var migrations = []string{
 	   created_at INTEGER NOT NULL, last_used INTEGER NOT NULL DEFAULT 0);`,
 	// 6: reseller mode: proxies assigned to customer accounts
 	`ALTER TABLE proxies ADD COLUMN owner_id INTEGER NOT NULL DEFAULT 0;`,
+	// 7: network card per proxy ("" = node default)
+	`ALTER TABLE proxies ADD COLUMN iface TEXT NOT NULL DEFAULT '';`,
 }
 
 // migrate brings the schema up to date. Each statement runs on its own and
@@ -158,6 +160,8 @@ func (s *Store) inferVersion() int {
 		return false
 	}
 	switch {
+	case has("proxies", "iface"):
+		return 7
 	case has("proxies", "owner_id"):
 		return 6
 	case has("proxies", "max_conns"):

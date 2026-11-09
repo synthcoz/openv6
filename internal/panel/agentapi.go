@@ -300,6 +300,9 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
 			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope, MaxConns: p.MaxConns, RateKBps: p.RateKBps}
+		if pro {
+			spec.Iface = p.Iface
+		}
 		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
 			spec.IP = ip.String()
 		}

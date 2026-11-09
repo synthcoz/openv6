@@ -563,6 +563,35 @@ type bulkReq struct {
 	MaxConns     int    `json:"max_conns"`
 	RateKBps     int    `json:"rate_kbps"`
 	RelayNodeID  int64  `json:"relay_node_id"`
+	Iface        string `json:"iface"` // network card ("" = node default)
+}
+
+// checkIface validates a per-proxy network card: it must be connected on
+// the node and carry the pool's IPv6 prefix.
+func (s *Server) checkIface(nodeID int64, poolID int64, iface string) error {
+	if iface == "" {
+		return nil
+	}
+	n, err := s.Store.GetNode(nodeID)
+	if err != nil {
+		return errors.New("node not found")
+	}
+	pool, _ := s.Store.GetPool(poolID)
+	for _, it := range nodeReq(n).Net.Interfaces {
+		if it.Name != iface {
+			continue
+		}
+		if pool == nil || pool.CIDR == "" {
+			return nil
+		}
+		for _, p := range it.Prefixes {
+			if p == pool.CIDR {
+				return nil
+			}
+		}
+		return fmt.Errorf("network card %s has a different IPv6 prefix than pool %s; create a pool for its prefix first", iface, pool.CIDR)
+	}
+	return fmt.Errorf("network card %s is not connected on this machine", iface)
 }
 
 func validLimits(maxConns, rate int) error {
@@ -627,6 +656,13 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		if b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
 			return
 		}
+		if b.Iface != "" && s.needPro(w, "Network card per proxy") {
+			return
+		}
+	}
+	if err := s.checkIface(b.NodeID, b.PoolID, strings.TrimSpace(b.Iface)); err != nil {
+		fail(w, 400, err.Error())
+		return
 	}
 	if b.RelayNodeID != 0 && b.Auth == "none" {
 		fail(w, 400, "proxies shared through a relay must have a username and password")
@@ -686,7 +722,7 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		used[port] = true
 		p := &store.Proxy{NodeID: b.NodeID, PoolID: pool.ID, Port: port, Protocol: b.Protocol, Enabled: true,
 			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires,
-			Scope: b.Scope, MaxConns: b.MaxConns, RateKBps: b.RateKBps}
+			Scope: b.Scope, MaxConns: b.MaxConns, RateKBps: b.RateKBps, Iface: strings.TrimSpace(b.Iface)}
 		if b.Spread && subnetCount > 1 {
 			for {
 				sn := v6.RandomSubnet(subnetCount)
@@ -745,6 +781,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		RateKBps     *int    `json:"rate_kbps"`
 		RelayNodeID  *int64  `json:"relay_node_id"`
 		RelayPort    *int    `json:"relay_port"`
+		Iface        *string `json:"iface"`
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -813,6 +850,17 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.RelayNodeID != nil && *b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
 		return
+	}
+	if b.Iface != nil && strings.TrimSpace(*b.Iface) != p.Iface {
+		v := strings.TrimSpace(*b.Iface)
+		if v != "" && s.needPro(w, "Network card per proxy") {
+			return
+		}
+		if err := s.checkIface(p.NodeID, p.PoolID, v); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		p.Iface = v
 	}
 	if b.MaxConns != nil {
 		p.MaxConns = *b.MaxConns

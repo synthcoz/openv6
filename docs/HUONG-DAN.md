@@ -260,3 +260,19 @@ Trong **Sửa** proxy hoặc **Thêm → Đặt giới hạn** cho nhiều proxy
 3. **Không phải website nào cũng hỗ trợ IPv6.** Facebook, Google, YouTube, TikTok, Instagram, Cloudflare… đều có IPv6. Một số trang nhỏ thì không.
 4. Mỗi profile anti-detect nên gắn với **một proxy cố định**, đừng đổi qua lại.
 5. Tuân thủ điều khoản sử dụng của nền tảng và của nhà mạng hoặc nhà cung cấp VPS.
+
+## 11. Bản quyền, tài khoản khách và card mạng riêng cho từng proxy
+
+**Bản quyền (openv6 Pro)**
+- Bản Free chạy 3 proxy trên 1 máy. Muốn dùng nhiều hơn: mua license key, rồi vào *Cài đặt → Bản quyền*, dán key và bấm *Kích hoạt*.
+- Mỗi key dùng được trên 1 hoặc 3 máy, tuỳ gói đã mua. Muốn chuyển sang máy khác thì bấm *Huỷ kích hoạt* trên máy cũ trước.
+- Máy cần Internet khi kích hoạt. Sau đó mỗi ngày openv6 kiểm tra key một lần; nếu mất mạng, Pro vẫn chạy thêm 30 ngày.
+
+**Bán lại proxy cho khách**
+1. Vào *Cài đặt → Tài khoản*, thêm tài khoản với vai trò *Khách hàng*.
+2. Ở trang *Proxy*, chọn các proxy → *Thêm → Giao cho khách hàng*.
+3. Khách đăng nhập cùng địa chỉ dashboard. Họ chỉ thấy proxy của mình, được sao chép, xuất danh sách, kiểm tra, đổi IPv6 và đổi mật khẩu proxy.
+
+**Card mạng riêng cho từng proxy**
+- Máy có cả mạng dây và Wi-Fi thì khi tạo proxy, phần *Nguồn mạng* cho chọn proxy đi ra qua card nào. Có thể đổi sau trong *Sửa*.
+- Card được chọn phải có cùng dải IPv6 với pool. Nếu card đó ngắt kết nối, proxy báo lỗi và *Kiểm tra & sửa lỗi* có nút đưa proxy về card mặc định.

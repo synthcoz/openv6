@@ -272,7 +272,11 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	for _, p := range r.Pools {
 		pools[p.ID] = p
 	}
-	want := netcfg.Desired{Iface: iface, Addrs: map[netip.Addr]bool{}, Routes: map[string]bool{}}
+	want := netcfg.Desired{Iface: iface, Addrs: map[netip.Addr]bool{}, Routes: map[string]bool{}, On: map[netip.Addr]string{}}
+	hasIf := map[string]bool{}
+	for _, it := range st.Interfaces {
+		hasIf[it.Name] = true
+	}
 	bypass := netcfg.BypassDesired{Enabled: r.Bypass, Iface: iface, Gateway: st.Gateway}
 	for _, p := range r.Pools {
 		if p.Mode == "anyip" && p.CIDR != "" {
@@ -300,14 +304,27 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			applied[s.ID] = proto.Applied{IP: s.IP, Error: "no IPv6 prefix available yet", Code: "no_prefix"}
 			continue
 		}
+		pBind := bindIf
+		other := s.Iface != "" && s.Iface != iface // this proxy uses another network card
+		if other {
+			if !hasIf[s.Iface] {
+				applied[s.ID] = proto.Applied{IP: s.IP, Error: "network card " + s.Iface + " is not connected or has no IPv6", Code: "iface_missing"}
+				continue
+			}
+			pBind = netcfg.IfIndex(s.Iface)
+		}
 		if p, ok := pools[s.PoolID]; !ok || p.Mode != "anyip" {
 			want.Addrs[ip] = true
-			bypass.Sources = append(bypass.Sources, ip.String()+"/128")
+			if other {
+				want.On[ip] = s.Iface
+			} else {
+				bypass.Sources = append(bypass.Sources, ip.String()+"/128")
+			}
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: bindIf, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
 		if len(r.DNS) > 0 {
-			c.Resolver = proxy.NewResolver(r.DNS, ip, bindIf)
+			c.Resolver = proxy.NewResolver(r.DNS, ip, pBind)
 		}
 		cfgs = append(cfgs, c)
 	}

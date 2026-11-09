@@ -670,7 +670,7 @@ function drawProxyRows() {
       <th class="hide-sm">${t('health')}</th><th class="hide-sm hide-md">${t('traffic')}</th><th></th></tr></thead>
     <tbody>${list.map((p) => `<tr class="clickable ${state.selected.has(p.id) ? 'selected' : ''}" data-id="${p.id}">
       <td class="ck"><input type="checkbox" class="sel" ${state.selected.has(p.id) ? 'checked' : ''}></td>
-      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.owner_id && !isCustomerUser() ? ` · <span class="badge neutral">${icon('key', 'sm')} ${esc(ownerName(p.owner_id))}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
+      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.iface ? ` · <span class="badge neutral">${icon(ifaceKind(p.iface) === 'wifi' ? 'wifi' : 'ethernet', 'sm')} ${esc(ifaceLabel(p.iface))}</span>` : ''}${p.owner_id && !isCustomerUser() ? ` · <span class="badge neutral">${icon('key', 'sm')} ${esc(ownerName(p.owner_id))}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
       <td class="cn"><span class="copyable mono" data-copy="${esc(proxyLine(p))}" title="${t('click_copy_line')}">${esc(hostPort(p))}${icon('copy', 'sm')}</span>
         <div class="sub">${p.auth_user ? `${icon('key', 'sm')} ${esc(p.auth_user)}` : t('no_auth')} · ${esc(t('scope_short_' + p.scope))}</div></td>
       <td class="hide-sm hide-lg mono small"><span class="copyable" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}${p.ip ? icon('copy', 'sm') : ''}</span></td>
@@ -939,6 +939,7 @@ async function openProxyDrawer(id, tab = 'info') {
           <label class="field">${t('max_conns')}${proTag()}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
           <label class="field">${t('rate_kbps')}${proTag()}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
           <label class="field">${t('relay')}${proTag()}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
+          <label class="field">${t('net_source')}${proTag()}${ifaceSelect('iface', p)}</label>
           <label class="field">${t('relay_public_port')}<input name="relay_port" type="number" min="0" max="65535" value="${p.relay_port || 0}"></label>
         </div>
         <p class="hint">${t('limits_hint')} ${t('relay_edit_hint')}</p>
@@ -988,7 +989,7 @@ async function openProxyDrawer(id, tab = 'info') {
         label: form.label.value, port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
         tag: form.tag.value, note: form.note.value, enabled: form.enabled.checked, ipv4_fallback: form.ipv4_fallback.checked, scope: form.scope.value,
         max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
-        relay_node_id: Number(form.relay_node_id.value) || 0, relay_port: Number(form.relay_port.value) || 0,
+        relay_node_id: Number(form.relay_node_id.value) || 0, relay_port: Number(form.relay_port.value) || 0, iface: form.iface.value,
         expires_at: form.expires.value ? Math.floor(new Date(form.expires.value + 'T23:59:59').getTime() / 1000) : 0,
       };
       if (form.ip.value.trim() && form.ip.value.trim() !== p.ip) body.ip = form.ip.value.trim();
@@ -1059,15 +1060,22 @@ function openCreate() {
     const form = $('#cf', m);
     const fillPools = () => {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
-      const box = $('[data-srcbox]', m);
-      box.innerHTML = sourcePicker(node, true);
-      bindSourcePicker(box, node, async () => { state.nodes = await api('GET', '/api/nodes'); fillPools(); });
+      drawProxySource();
       form.pool_id.innerHTML = (node.pools || []).map((p) => `<option value="${p.id}">${esc(p.name)} — ${esc(p.cidr || t('pool_waiting'))}</option>`).join('');
       onPool();
+    };
+    let chosenIface = '';
+    const drawProxySource = () => {
+      const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
+      const pool = (node.pools || []).find((p) => String(p.id) === form.pool_id.value);
+      const box = $('[data-srcbox]', m);
+      box.innerHTML = proxySourcePicker(node, pool, chosenIface);
+      for (const b of $$('[data-psrc]', box)) b.onclick = (e) => { e.preventDefault(); chosenIface = b.dataset.psrc; drawProxySource(); };
     };
     const onPool = () => {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
       const pool = (node.pools || []).find((p) => String(p.id) === form.pool_id.value);
+      drawProxySource();
       $('#poolHint', m).textContent = pool ? poolInfo(pool) : '';
       $('[data-relay]', m).innerHTML = relaySelect('relay_node_id', 0, node.id);
       $('#relayWrap', m).hidden = !relayNodes(node.id).length;
@@ -1093,7 +1101,7 @@ function openCreate() {
         user: form.user.value, pass: form.pass.value, tag: form.tag.value, label_prefix: form.label_prefix.value, note: form.note.value,
         expires_days: Number(form.expires_days.value), spread: form.spread.checked, ipv4_fallback: form.ipv4_fallback.checked,
         scope: form.scope.value, max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
-        relay_node_id: form.relay_node_id ? Number(form.relay_node_id.value) || 0 : 0,
+        relay_node_id: form.relay_node_id ? Number(form.relay_node_id.value) || 0 : 0, iface: chosenIface,
       };
       try {
         const r = await api('POST', '/api/proxies/bulk', body);
@@ -1721,6 +1729,29 @@ function sourcePicker(n, compact) {
       ${on ? `<span class="src-on">${icon('check', 'sm')}</span>` : ''}</button>`;
   }).join('')}</div>${n.iface ? '' : `<div class="hint">${t('src_auto_hint')}</div>`}`;
 }
+// cards that can carry a proxy of this pool (same IPv6 prefix)
+function cardsForPool(n, pool) {
+  return (n.net.interfaces || []).filter((i) => (i.prefixes || []).length && (!pool || !pool.cidr || i.prefixes.includes(pool.cidr)));
+}
+function proxySourcePicker(n, pool, chosen) {
+  const def = n.iface || n.net.primary_iface || '';
+  const cards = cardsForPool(n, pool).filter((i) => i.name !== def);
+  const opt = (val, title, sub, kind) => `<button type="button" class="src ${chosen === val ? 'on' : ''}" data-psrc="${esc(val)}">
+    <span class="src-ico">${icon(kind === 'wifi' ? 'wifi' : kind === 'lan' ? 'ethernet' : 'globe', 'sm')}</span>
+    <span class="src-txt"><b>${esc(title)}</b><span class="small muted">${esc(sub)}</span></span>${chosen === val ? `<span class="src-on">${icon('check', 'sm')}</span>` : ''}</button>`;
+  return `<div class="source compact">${opt('', t('src_default', { name: ifaceLabel(def) }), t('src_default_hint'), ifaceKind(def))}
+    ${cards.map((i) => opt(i.name, ifaceLabel(i.name) + (isPro() ? '' : ' · Pro'), i.prefixes[0], ifaceKind(i.name))).join('')}</div>
+    ${cards.length ? `<div class="hint">${t('src_per_proxy_hint')}</div>` : ''}`;
+}
+function ifaceSelect(name, p) {
+  const n = (state.nodes || []).find((x) => x.id === p.node_id);
+  const pool = n && (n.pools || []).find((x) => x.id === p.pool_id);
+  const def = n ? (n.iface || n.net.primary_iface || '') : '';
+  const cards = n ? cardsForPool(n, pool).filter((i) => i.name !== def) : [];
+  if (p.iface && !cards.some((i) => i.name === p.iface)) cards.push({ name: p.iface });
+  return `<select name="${name}"><option value="">${esc(t('src_default', { name: ifaceLabel(def) }))}</option>${cards.map((i) => `<option value="${esc(i.name)}" ${i.name === p.iface ? 'selected' : ''}>${esc(ifaceLabel(i.name))} (${esc(i.name)})</option>`).join('')}</select>`;
+}
+
 function bindSourcePicker(root, n, after) {
   if (!root) return;
   for (const b of $$('[data-src]', root)) b.onclick = async (e) => {
@@ -1797,6 +1828,7 @@ function collectIssues(nodes, proxies) {
     const names = list.slice(0, 4).map((p) => p.label || ':' + p.port).join(', ') + (list.length > 4 ? '…' : '');
     const fixes = [];
     if (code === 'port_in_use') fixes.push({ label: t('fix_port'), auto: true, run: () => api('POST', '/api/proxies/action', { ids, action: 'fix_port' }) });
+    else if (code === 'iface_missing') fixes.push({ label: t('fix_iface_default'), auto: false, run: () => Promise.all(ids.map((id) => api('PUT', '/api/proxies/' + id, { iface: '' }))) });
     else if (['addr_add_failed', 'addr_not_available', 'no_prefix', 'permission'].includes(code)) {
       for (const nid of [...new Set(list.map((p) => p.node_id))]) {
         const n = nodes.find((x) => x.id === nid);

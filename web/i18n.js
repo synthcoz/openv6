@@ -2,6 +2,9 @@
 /* Translations. Add a language by adding a new top-level key with the same entries. */
 const I18N = {
   vi: {
+    src_default: 'Theo máy: {name}', src_default_hint: 'Dùng card mạng mặc định của máy (đổi trên thẻ Máy chủ).',
+    src_per_proxy_hint: 'Chọn card khác để proxy mới đi ra qua card đó (ví dụ một nhóm tài khoản qua Wi-Fi, nhóm khác qua mạng dây).',
+    fix_iface_default: 'Dùng card mặc định', err_iface_missing: 'Card mạng của proxy này đang ngắt hoặc không có IPv6',
     customer_account: 'Tài khoản khách hàng', act_set_owner: 'Giao cho khách hàng', no_customers: 'Chưa có tài khoản khách. Tạo trong Cài đặt → Tài khoản.',
     owner_none: 'Không giao cho ai', owner_none_hint: 'Chỉ admin thấy proxy này.', owner_count: '{n} proxy',
     accounts: 'Tài khoản', accounts_hint: 'Admin quản lý mọi thứ. Tài khoản khách hàng chỉ thấy proxy được giao, chỉ được sao chép, xuất, kiểm tra, đổi IPv6 và đổi mật khẩu proxy (chế độ bán lại).',
@@ -215,6 +218,9 @@ const I18N = {
     language: 'Ngôn ngữ', about: 'Giới thiệu', about_text: 'openv6 tạo proxy IPv6 tĩnh (HTTP + SOCKS5) từ dải IPv6 của mạng nhà, VPS hoặc homelab. Mỗi proxy có port, tài khoản và IPv6 riêng, cố định cho tới khi bạn đổi.',
   },
   en: {
+    src_default: 'Machine default: {name}', src_default_hint: "Use the machine's default network card (set on the Nodes page).",
+    src_per_proxy_hint: 'Pick another card to send the new proxies out through it (e.g. one group of accounts over Wi-Fi, another over the cable).',
+    fix_iface_default: 'Use the default card', err_iface_missing: "This proxy's network card is disconnected or has no IPv6",
     customer_account: 'Customer account', act_set_owner: 'Assign to a customer', no_customers: 'No customer accounts yet. Create one in Settings → Accounts.',
     owner_none: 'Nobody', owner_none_hint: 'Only admins see this proxy.', owner_count: '{n} proxies',
     accounts: 'Accounts', accounts_hint: 'Admins manage everything. Customer accounts only see proxies assigned to them and can copy, export, test, change IPv6 and reset the proxy password (reseller mode).',

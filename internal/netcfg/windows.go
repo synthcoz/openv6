@@ -125,7 +125,7 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 	idxOf := func(name string) string { return strconv.Itoa(IfIndex(name)) }
 	for a, ifc := range m.st.Addrs {
 		ip, _ := netip.ParseAddr(a)
-		if !d.Addrs[ip] || ifc != d.Iface {
+		if !d.Addrs[ip] || ifc != d.IfaceOf(ip) {
 			_ = m.Run("interface", "ipv6", "delete", "address", "interface="+idxOf(ifc), "address="+a, "store=active")
 			delete(m.st.Addrs, a)
 		}
@@ -133,28 +133,25 @@ func (m *Manager) Apply(d Desired) (map[netip.Addr]error, []error) {
 	if len(d.Addrs) > 0 && d.Iface == "" {
 		errs = append(errs, fmt.Errorf("no IPv6 interface found"))
 	} else if len(d.Addrs) > 0 {
-		present := map[netip.Addr]bool{}
+		present := map[string]bool{}
 		for _, a := range netAddrs() {
-			if a.Iface == d.Iface {
-				present[a.Addr] = true
-			}
+			present[a.Iface+"|"+a.Addr.String()] = true
 		}
-		idx := idxOf(d.Iface)
 		added := 0
 		for ip := range d.Addrs {
-			s := ip.String()
-			if _, ok := m.st.Addrs[s]; ok && (present[ip] || m.DryRun) {
+			s, ifc := ip.String(), d.IfaceOf(ip)
+			if _, ok := m.st.Addrs[s]; ok && (present[ifc+"|"+s] || m.DryRun) {
 				continue
 			}
-			if present[ip] { // added earlier (e.g. by a previous run): adopt it
-				m.st.Addrs[s] = d.Iface
+			if present[ifc+"|"+s] { // added earlier (e.g. by a previous run): adopt it
+				m.st.Addrs[s] = ifc
 				continue
 			}
-			if err := m.Run("interface", "ipv6", "add", "address", "interface="+idx, "address="+s+"/128", "store=active", "skipassource=true"); err != nil {
+			if err := m.Run("interface", "ipv6", "add", "address", "interface="+idxOf(ifc), "address="+s+"/128", "store=active", "skipassource=true"); err != nil {
 				addrErrs[ip] = err
 				continue
 			}
-			m.st.Addrs[s] = d.Iface
+			m.st.Addrs[s] = ifc
 			added++
 		}
 		// new addresses run duplicate address detection (~1s) before use
