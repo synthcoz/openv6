@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.1
+
+**Windows: chạy chắc chắn, không hiện cửa sổ terminal**
+- `openv6.exe` giờ là một file chạy dạng giao diện duy nhất, không bao giờ mở cửa sổ console. Lệnh gõ trong terminal vẫn hiện kết quả.
+- Mở `openv6.exe` khi máy chưa cài: openv6 hỏi có muốn cài không, xin quyền Administrator, cài dịch vụ, rồi hiện icon khay và mở dashboard. Đã cài rồi thì mở dashboard.
+- **Port 8080 bị chương trình khác chiếm:** dịch vụ tự chuyển sang port trống trong khoảng 8081–8099 thay vì dừng hẳn. Icon khay và lối tắt dashboard tự dùng đúng port.
+- Icon khay **nói rõ vì sao không kết nối được dịch vụ**: chưa cài, dịch vụ đang dừng, đang khởi động, không đọc được thông tin kết nối, hoặc dịch vụ không phản hồi (kèm thông báo lỗi). Từ đó có nút *Cài đặt* hoặc *Khởi động dịch vụ*.
+- Thêm **Xem nhật ký** và **Tạo báo cáo lỗi**: tạo file `openv6-report.txt` trên Desktop, chứa trạng thái dịch vụ, port, kết quả gọi API và 300 dòng log cuối, để gửi khi cần hỗ trợ.
+- File thông tin kết nối của icon khay được cấp quyền đọc cho mọi người dùng trên máy.
+- Lối tắt dashboard đăng nhập tự động; thêm lối tắt ngoài Desktop (tuỳ chọn khi cài).
+- CI Windows: cài bằng bản giao diện giống bộ cài; kiểm tra API icon khay; giữ port 8080 bận rồi kiểm tra dashboard tự chuyển sang 8081.
+
 ## v0.4.0
 
 **Chạy trên Windows, macOS và Linux như một ứng dụng hoàn chỉnh**

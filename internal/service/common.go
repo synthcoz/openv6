@@ -25,6 +25,7 @@ func WriteTrayInfo(ti TrayInfo) error {
 		return err
 	}
 	_ = os.Chmod(filepath.Dir(p), 0o755)
+	shareTrayDir(filepath.Dir(p))
 	b, _ := json.MarshalIndent(ti, "", "  ")
 	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {

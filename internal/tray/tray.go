@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -28,7 +27,7 @@ import (
 // Run shows the tray icon until the user quits it. Only one tray runs per
 // user session (a loopback port acts as the lock).
 func Run() error {
-	lock, err := net.Listen("tcp", "127.0.0.1:47836")
+	lock, err := net.Listen("tcp", lockAddr)
 	if err != nil {
 		return nil // already running
 	}
@@ -113,6 +112,10 @@ func onReady() {
 	mReapply := systray.AddMenuItem("", "")
 	mStart := systray.AddMenuItem("", "")
 	mStart.Hide()
+	mInstall := systray.AddMenuItem("", "")
+	mInstall.Hide()
+	mLog := systray.AddMenuItem("", "")
+	mReport := systray.AddMenuItem("", "")
 	systray.AddSeparator()
 	mAuto := systray.AddMenuItemCheckbox("", "", service.TrayAutostart())
 	mLang := systray.AddMenuItem("", "")
@@ -130,6 +133,9 @@ func onReady() {
 		mCheck.SetTitle(tr("check"))
 		mReapply.SetTitle(tr("reapply"))
 		mStart.SetTitle(tr("start_service"))
+		mInstall.SetTitle(tr("install"))
+		mLog.SetTitle(tr("view_log"))
+		mReport.SetTitle(tr("report"))
 		mAuto.SetTitle(tr("autostart"))
 		mLang.SetTitle(tr("language"))
 		mQuit.SetTitle(tr("quit"))
@@ -142,6 +148,10 @@ func onReady() {
 	refresh := func() {
 		var s status
 		err := c.call("GET", "/api/tray/status", &s)
+		var diagKey, diagDetail string
+		if err != nil {
+			diagKey, diagDetail = diagnose(err)
+		}
 		curOK = err == nil
 		if err == nil {
 			cur = s
@@ -161,8 +171,15 @@ func onReady() {
 		var line string
 		switch {
 		case !curOK:
-			st, line = icon.StateError, tr("service_down")
-			mStart.Show()
+			st, line = icon.StateError, tr(diagKey)
+			mStart.Hide()
+			mInstall.Hide()
+			switch diagKey {
+			case "diag_not_installed":
+				mInstall.Show()
+			case "diag_stopped", "diag_no_answer", "diag_no_info", "diag_unknown":
+				mStart.Show()
+			}
 		case cur.Paused:
 			st, line = icon.StatePaused, tr("paused", cur.Total)
 			mStart.Hide()
@@ -185,10 +202,18 @@ func onReady() {
 		} else {
 			mPrefix.Hide()
 		}
-		if curOK && cur.Problem != "" {
+		switch {
+		case curOK && cur.Problem != "":
 			mProblem.SetTitle("⚠ " + tr("see_dashboard"))
 			mProblem.Show()
-		} else {
+		case !curOK && diagDetail != "":
+			d := diagDetail
+			if len(d) > 70 {
+				d = d[:70] + "…"
+			}
+			mProblem.SetTitle(d)
+			mProblem.Show()
+		default:
 			mProblem.Hide()
 		}
 		for _, m := range []*systray.MenuItem{mPause, mCheck, mReapply} {
@@ -212,24 +237,7 @@ func onReady() {
 		}
 	}()
 
-	openDashboard := func(page string) {
-		var r struct {
-			URL string `json:"url"`
-		}
-		if err := c.call("POST", "/api/tray/login", &r); err == nil && r.URL != "" {
-			u := r.URL
-			if page != "" {
-				if strings.Contains(u, "?") {
-					u += "&next=" + page
-				} else {
-					u += "#" + page
-				}
-			}
-			openURL(u)
-			return
-		}
-		openURL("http://127.0.0.1:8080/")
-	}
+	openDashboard := func(page string) { _ = OpenDashboard(page) }
 	action := func(name string) {
 		if err := c.call("POST", "/api/tray/"+name, nil); err != nil {
 			systray.SetTooltip("openv6 — " + err.Error())
@@ -245,7 +253,17 @@ func onReady() {
 			case <-mStatus.ClickedCh:
 				openDashboard("")
 			case <-mProblem.ClickedCh:
-				openDashboard("nodes")
+				if curOK {
+					openDashboard("nodes")
+				} else {
+					go report()
+				}
+			case <-mLog.ClickedCh:
+				go openLog()
+			case <-mReport.ClickedCh:
+				go report()
+			case <-mInstall.ClickedCh:
+				go func() { _ = installElevated(); time.Sleep(5 * time.Second); refresh() }()
 			case <-mPause.ClickedCh:
 				if cur.Paused {
 					action("resume")
@@ -287,19 +305,6 @@ func onReady() {
 	}()
 }
 
-func openURL(u string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
-	case "darwin":
-		cmd = exec.Command("open", u)
-	default:
-		cmd = exec.Command("xdg-open", u)
-	}
-	_ = cmd.Start()
-}
-
 func detectLang() string {
 	for _, k := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
 		if v := os.Getenv(k); v != "" {
@@ -318,6 +323,10 @@ var texts = map[string]map[string]string{
 		"check": "Kiểm tra tất cả proxy", "reapply": "Áp dụng lại mạng", "start_service": "Khởi động dịch vụ openv6",
 		"autostart": "Tự chạy khi đăng nhập", "language": "Ngôn ngữ", "quit": "Thoát biểu tượng (proxy vẫn chạy)",
 		"service_down": "Dịch vụ openv6 chưa chạy", "paused": "Đã tạm dừng %d proxy",
+		"diag_not_installed": "openv6 chưa được cài đặt", "diag_stopped": "Dịch vụ openv6 đang dừng",
+		"diag_starting": "Dịch vụ openv6 đang khởi động…", "diag_no_info": "Không đọc được thông tin kết nối của dịch vụ",
+		"diag_no_answer": "Dịch vụ chạy nhưng không phản hồi", "diag_unknown": "Không kết nối được dịch vụ openv6",
+		"install": "Cài đặt openv6…", "view_log": "Xem nhật ký (log)", "report": "Tạo báo cáo lỗi",
 		"problem": "Có sự cố — %d/%d proxy hoạt động", "some_failing": "%d/%d proxy hoạt động",
 		"all_ok": "%d/%d proxy hoạt động", "see_dashboard": "Có sự cố, bấm để xem cách sửa", "update": "Có bản mới %s — cập nhật",
 	},
@@ -326,6 +335,10 @@ var texts = map[string]map[string]string{
 		"check": "Check all proxies", "reapply": "Re-apply network", "start_service": "Start the openv6 service",
 		"autostart": "Start at login", "language": "Language", "quit": "Quit icon (proxies keep running)",
 		"service_down": "openv6 service is not running", "paused": "%d proxies paused",
+		"diag_not_installed": "openv6 is not installed", "diag_stopped": "openv6 service is stopped",
+		"diag_starting": "openv6 service is starting…", "diag_no_info": "Cannot read the service connection info",
+		"diag_no_answer": "Service running but not answering", "diag_unknown": "Cannot reach the openv6 service",
+		"install": "Install openv6…", "view_log": "View log", "report": "Create error report",
 		"problem": "Problem — %d/%d proxies working", "some_failing": "%d/%d proxies working",
 		"all_ok": "%d/%d proxies working", "see_dashboard": "Problem detected, click for the fix", "update": "New version %s — update",
 	},

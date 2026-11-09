@@ -72,12 +72,11 @@ jobs:
         run: |
           go run ./tools/mkicons -png openv6.png -ico packaging/windows/openv6.ico
           # embed the icon into the executables (best effort)
-          go run github.com/tc-hib/go-winres@v0.3.3 simply --icon openv6.png --manifest cli || echo "icon embedding skipped"
-          CGO_ENABLED=0 go build -ldflags "-s -w" -o packaging/windows/openv6.exe .
-          CGO_ENABLED=0 go build -ldflags "-s -w -H windowsgui" -o packaging/windows/openv6-tray.exe .
+          go run github.com/tc-hib/go-winres@v0.3.3 simply --icon openv6.png --manifest gui || echo "icon embedding skipped"
+          # GUI build: never opens a console window (CLI output attaches to the terminal)
+          CGO_ENABLED=0 go build -ldflags "-s -w -H windowsgui" -o packaging/windows/openv6.exe .
           mkdir -p dist
           cp packaging/windows/openv6.exe dist/openv6-windows-amd64.exe
-          cp packaging/windows/openv6-tray.exe dist/openv6-tray-windows-amd64.exe
       - name: Installer (Inno Setup)
         shell: pwsh
         env:

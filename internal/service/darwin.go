@@ -165,3 +165,21 @@ func StartServiceElevated() error {
 	return exec.Command("osascript", "-e",
 		`do shell script "launchctl kickstart -k system/com.openv6.server" with administrator privileges`).Run()
 }
+
+func Status() string {
+	if _, err := os.Stat("/Library/LaunchDaemons/com.openv6.server.plist"); err != nil {
+		return "not_installed"
+	}
+	out, err := exec.Command("launchctl", "print", "system/com.openv6.server").Output()
+	if err != nil {
+		return "stopped"
+	}
+	if strings.Contains(string(out), "state = running") {
+		return "running"
+	}
+	return "stopped"
+}
+
+func LogPath() string { return "/Library/Logs/openv6.log" }
+
+func shareTrayDir(dir string) {}

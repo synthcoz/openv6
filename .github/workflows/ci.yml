@@ -33,18 +33,32 @@ jobs:
         env:
           OPENV6_SYSTEM_TEST: "1"
         run: go test -v ./internal/netcfg ./internal/proxy ./internal/update ./internal/panel ./internal/icon
-      - name: Service install / uninstall
+      - name: Service install / uninstall (GUI build, like the installer)
         shell: pwsh
         run: |
-          go build -o openv6.exe .
-          .\openv6.exe install server
+          go build -ldflags "-H windowsgui" -o openv6.exe .
+          $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'install','server'
+          if ($p.ExitCode -ne 0) { exit 1 }
           Start-Sleep -Seconds 5
           Get-Service openv6 | Format-List Name,Status,StartType
           if ((Get-Service openv6).Status -ne 'Running') { Get-Content "$env:ProgramData\openv6\openv6.log" -ErrorAction SilentlyContinue; exit 1 }
           $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/api/status
           Write-Host $r.Content
-          Get-Content "$env:ProgramData\openv6\tray.json"
-          .\openv6.exe uninstall
+          $info = Get-Content "$env:ProgramData\openv6\tray.json" | ConvertFrom-Json
+          $h = @{ 'X-Tray-Token' = $info.token }
+          (Invoke-WebRequest -UseBasicParsing -Headers $h "$($info.url)/api/tray/status").Content
+          icacls "$env:ProgramData\openv6"
+          # port fallback: occupy 8080, restart, the dashboard must move to 8081
+          $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'uninstall'
+          $busy = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 8080); $busy.Start()
+          $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'install','server'
+          Start-Sleep -Seconds 6
+          $info = Get-Content "$env:ProgramData\openv6\tray.json" | ConvertFrom-Json
+          Write-Host "dashboard url with 8080 busy: $($info.url)"
+          if ($info.url -notlike '*:8081') { Get-Content "$env:ProgramData\openv6\openv6.log"; exit 1 }
+          (Invoke-WebRequest -UseBasicParsing "$($info.url)/api/status").Content
+          $busy.Stop()
+          $p = Start-Process -Wait -PassThru -FilePath .\openv6.exe -ArgumentList 'uninstall'
           if (Get-Service openv6 -ErrorAction SilentlyContinue) { exit 1 }
 
   macos:
