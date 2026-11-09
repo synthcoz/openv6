@@ -1,5 +1,63 @@
 # Changelog
 
+## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
+
+- **Relay qua VPS:** máy ở nhà (kể cả sau CGNAT của FPT) tự kết nối ra một VPS; proxy được dùng qua `IP-VPS:port` từ bất kỳ đâu, IP đi ra vẫn là IPv6 nhà. Kết nối mã hoá TLS và kiểm tra vân tay chứng chỉ; tự kết nối lại khi rớt mạng.
+  - Bật ở **Máy chủ → node VPS → Chia sẻ ra Internet → Làm relay cho node khác**.
+  - Gán proxy vào relay khi tạo, khi sửa, hoặc hàng loạt (**Thêm → Chia sẻ qua relay**). Port trên VPS được tự chọn để không trùng.
+  - Proxy qua relay bắt buộc có mật khẩu.
+- **UPnP:** tự mở port trên router cho proxy phạm vi "Internet", gia hạn định kỳ; báo rõ khi không có router UPnP hoặc khi nhà mạng dùng CGNAT.
+- **Tailscale:** tự nhận diện IP Tailscale của node và đưa vào danh sách cách kết nối.
+- **Xuất danh sách theo đường kết nối:** LAN, qua relay, IP WAN (UPnP) hoặc Tailscale. Bảng chi tiết proxy có mục "Dùng từ ngoài mạng nhà" để sao chép từng đường.
+- **Giới hạn cho từng proxy:** số kết nối đồng thời và tốc độ tối đa (KB/s, mỗi chiều).
+- **API token:** tạo trong Cài đặt, gọi API bằng `Authorization: Bearer ov6_…` (xem `docs/API.md`). Chỉ lưu bản băm của token.
+- Bản sao lưu có thêm API token và các thiết lập mới.
+- **Giao diện tinh gọn hơn:** tông trung tính (đen/trắng/xám), nút chính màu đen, viền mảnh, nhãn màu nhạt. Chọn **màu nhấn** Trung tính / Tím / Xanh lá trong Cài đặt → Ngôn ngữ & giao diện. Tắt hiệu ứng khi hệ điều hành bật giảm chuyển động.
+- **Gọn hơn:** bỏ khung "Đăng nhập / phiên bản" ở thanh bên. Ngôn ngữ, sáng/tối, cài đặt và đăng xuất gom vào nút tài khoản ở góc phải.
+- **Mượt hơn:**
+  - chuyển trang không dựng lại toàn bộ khung;
+  - dữ liệu tự làm mới chỉ cập nhật khi thật sự có thay đổi, nên không còn nháy và không mất vị trí cuộn;
+  - giao diện web được nén gzip (app.js từ 99 KB còn 26 KB) và lưu cache, mở lại gần như tức thì.
+- **Điện thoại:**
+  - thanh điều hướng dưới có nhãn ngắn;
+  - hộp thoại trượt lên từ cạnh dưới, nút bấm to;
+  - bảng chi tiết proxy vừa màn hình;
+  - ô nhập không làm iPhone tự phóng to;
+  - chừa chỗ cho tai thỏ và thanh home.
+- Các mẹo trên trang Tổng quan có nút **×** để ẩn hẳn.
+
+## v0.5.0 — giao diện mới
+
+- **Bố cục mới:**
+  - thanh bên có icon và số đếm;
+  - thanh trên cùng có **ô trạng thái hệ thống**, nút chuyển **VI/EN** và nút **Sáng / Theo hệ thống / Tối**;
+  - trên điện thoại, thanh bên chuyển thành thanh điều hướng ở cuối màn hình.
+- **Tổng quan:** một thẻ lớn tóm tắt tình trạng bằng một câu, kèm việc cần làm; 4 thẻ số liệu; danh sách dải IPv6; dòng thời gian sự kiện.
+- **Trình hướng dẫn lần đầu** 4 bước: kiểm tra mạng → chọn ai được dùng (LAN / chỉ máy này / Internet) → tạo proxy → xuất đúng định dạng anti-detect.
+- **Trang Proxy:**
+  - bộ lọc trạng thái dạng chip có số đếm;
+  - bấm một lần để sao chép theo định dạng anti-detect dùng gần nhất;
+  - hiện cờ quốc gia, độ trễ và nhà mạng;
+  - **bảng chi tiết** trượt ra từ bên phải, có 3 tab: Tổng quan (sao chép theo nhiều định dạng), Kiểm tra (biểu đồ độ trễ và lịch sử), Sửa;
+  - **thanh thao tác hàng loạt** nổi ở cuối màn hình;
+  - xoá có **Hoàn tác**;
+  - trên điện thoại, mỗi proxy hiện thành một thẻ.
+- **Trang Máy chủ:** 3 nút chính, các thao tác khác gom trong menu "⋯"; thông tin và tự chẩn đoán chia hai cột; cài đặt và dải IPv6 thu gọn được.
+- Phím tắt: `/` tìm, `N` tạo proxy, `Esc` đóng, `G` rồi `D/P/N/S/E` để chuyển trang.
+- Bộ icon thống nhất; khung tải trước khi có dữ liệu; hiệu ứng mở/đóng nhẹ; màn hình trống có hướng dẫn; hộp xác nhận cho thao tác nguy hiểm.
+
+## v0.4.1
+
+**Windows: chạy chắc chắn, không hiện cửa sổ terminal**
+- `openv6.exe` giờ là một file chạy dạng giao diện duy nhất, không bao giờ mở cửa sổ console. Lệnh gõ trong terminal vẫn hiện kết quả.
+- Mở `openv6.exe` khi máy chưa cài: openv6 hỏi có muốn cài không, xin quyền Administrator, cài dịch vụ, rồi hiện icon khay và mở dashboard. Đã cài rồi thì mở dashboard.
+- **Port 8080 bị chương trình khác chiếm:** dịch vụ tự chuyển sang port trống trong khoảng 8081–8099 thay vì dừng hẳn. Icon khay và lối tắt dashboard tự dùng đúng port.
+- Icon khay **nói rõ vì sao không kết nối được dịch vụ**: chưa cài, dịch vụ đang dừng, đang khởi động, không đọc được thông tin kết nối, hoặc dịch vụ không phản hồi (kèm thông báo lỗi). Từ đó có nút *Cài đặt* hoặc *Khởi động dịch vụ*.
+- Thêm **Xem nhật ký** và **Tạo báo cáo lỗi**: tạo file `openv6-report.txt` trên Desktop, chứa trạng thái dịch vụ, port, kết quả gọi API và 300 dòng log cuối, để gửi khi cần hỗ trợ.
+- File thông tin kết nối của icon khay được cấp quyền đọc cho mọi người dùng trên máy.
+- Lối tắt dashboard đăng nhập tự động; thêm lối tắt ngoài Desktop (tuỳ chọn khi cài).
+- CI Windows: cài bằng bản giao diện giống bộ cài; kiểm tra API icon khay; giữ port 8080 bận rồi kiểm tra dashboard tự chuyển sang 8081.
+
 ## v0.4.0
 
 **Chạy trên Windows, macOS và Linux như một ứng dụng hoàn chỉnh**

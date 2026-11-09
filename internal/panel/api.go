@@ -40,6 +40,9 @@ type nodeView struct {
 	Uptime   int64               `json:"uptime"` // seconds since the agent started
 	Outdated bool                `json:"outdated"`
 	Extra    map[string]string   `json:"extra,omitempty"`
+	Relays   []proto.RelayState  `json:"relays"`
+	UPnPSt   *proto.UPnPState    `json:"upnp_state,omitempty"`
+	RelayFP  string              `json:"relay_fp,omitempty"`
 }
 
 func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
@@ -48,6 +51,10 @@ func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
 	_ = json.Unmarshal([]byte(n.StateJSON), &req)
 	v.Hostname, v.OS, v.Version, v.Net = req.Hostname, req.OS, req.AgentVersion, req.Net
 	v.Checks = req.Checks
+	v.Relays, v.UPnPSt, v.RelayFP = req.Relays, req.UPnP, req.RelayFP
+	if v.Relays == nil {
+		v.Relays = []proto.RelayState{}
+	}
 	if req.StartedAt > 0 && v.Online {
 		v.Uptime = time.Now().Unix() - req.StartedAt
 	}
@@ -150,6 +157,8 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		AllowCIDRs *string `json:"allow_cidrs"`
 		Bypass     *bool   `json:"bypass"`
 		DNS        *string `json:"dns"`
+		RelayPort  *int    `json:"relay_port"`
+		UPnP       *bool   `json:"upnp"`
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -166,6 +175,24 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Bypass != nil {
 		n.Bypass = *b.Bypass
+	}
+	if b.UPnP != nil {
+		n.UPnP = *b.UPnP
+	}
+	if b.RelayPort != nil && *b.RelayPort != n.RelayPort {
+		rp := *b.RelayPort
+		if rp != 0 {
+			used, err := s.usedPorts(n.ID, 0)
+			if err != nil {
+				logErr(w, err)
+				return
+			}
+			if s.reservedPort(rp) || used[rp] {
+				fail(w, 400, fmt.Sprintf("relay port %d is not allowed or already used on this node", rp))
+				return
+			}
+		}
+		n.RelayPort = rp
 	}
 	if b.DNS != nil {
 		v := strings.TrimSpace(*b.DNS)
@@ -213,6 +240,7 @@ func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		logErr(w, err)
 		return
 	}
+	_, _ = s.Store.DB.Exec(`UPDATE proxies SET relay_node_id=0, relay_port=0 WHERE relay_node_id=?`, n.ID)
 	s.Store.AddEvent(0, "info", fmt.Sprintf("node %q deleted", n.Name))
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
@@ -386,6 +414,12 @@ type proxyView struct {
 	Code     string `json:"code,omitempty"`
 	Active   int64  `json:"active"`
 	Subnet64 string `json:"subnet64"`
+	// other ways to reach the proxy
+	RelayName string `json:"relay_name,omitempty"`
+	RelayHost string `json:"relay_host,omitempty"`
+	RelayUp   bool   `json:"relay_up,omitempty"`
+	TSHost    string `json:"ts_host,omitempty"`
+	WANHost   string `json:"wan_host,omitempty"`
 }
 
 func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
@@ -396,10 +430,11 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 	nodes, _ := s.Store.ListNodes()
 	nm := map[int64]*store.Node{}
 	hosts := map[int64]string{}
+	reqs := map[int64]proto.SyncRequest{}
 	for _, n := range nodes {
 		nm[n.ID] = n
-		var req proto.SyncRequest
-		_ = json.Unmarshal([]byte(n.StateJSON), &req)
+		req := nodeReq(n)
+		reqs[n.ID] = req
 		hosts[n.ID] = entryHost(n, req.Net)
 	}
 	pools, _ := s.Store.ListPools(0)
@@ -418,6 +453,21 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 		}
 		if n := nm[p.NodeID]; n != nil {
 			v.NodeName = n.Name
+			st := reqs[n.ID]
+			if p.Scope != "local" {
+				v.TSHost = st.Net.TailscaleIP
+			}
+			if p.Scope == "any" && n.UPnP && st.UPnP != nil && st.UPnP.State == "ok" && st.UPnP.ExternalIP != "" {
+				v.WANHost = st.UPnP.ExternalIP
+			}
+			if rn := nm[p.RelayNodeID]; rn != nil && p.RelayNodeID != p.NodeID {
+				v.RelayName, v.RelayHost = rn.Name, relayHost(rn, reqs[rn.ID].Net)
+				for _, r := range st.Relays {
+					if r.Role == "client" && r.PeerNodeID == rn.ID && r.Connected {
+						v.RelayUp = true
+					}
+				}
+			}
 		}
 		if pl := pm[p.PoolID]; pl != nil {
 			v.PoolName = pl.Name
@@ -493,6 +543,19 @@ type bulkReq struct {
 	ExpiresDays  int    `json:"expires_days"`
 	LabelPrefix  string `json:"label_prefix"` // "FB" -> "FB 01", "FB 02"…
 	Scope        string `json:"scope"`        // local | lan | any
+	MaxConns     int    `json:"max_conns"`
+	RateKBps     int    `json:"rate_kbps"`
+	RelayNodeID  int64  `json:"relay_node_id"`
+}
+
+func validLimits(maxConns, rate int) error {
+	if maxConns < 0 || maxConns > 100000 {
+		return errors.New("max connections must be 0 (unlimited) to 100000")
+	}
+	if rate < 0 || rate > 10_000_000 {
+		return errors.New("speed limit must be 0 (unlimited) to 10000000 KB/s")
+	}
+	return nil
 }
 
 func (s *Server) reservedPort(p int) bool {
@@ -532,10 +595,26 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "user and password required")
 		return
 	}
+	if err := validLimits(b.MaxConns, b.RateKBps); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if b.RelayNodeID != 0 && b.Auth == "none" {
+		fail(w, 400, "proxies shared through a relay must have a username and password")
+		return
+	}
+	var relayUsed map[int]bool
+	if b.RelayNodeID != 0 {
+		var err error
+		if relayUsed, err = s.usedPorts(b.RelayNodeID, 0); err != nil {
+			logErr(w, err)
+			return
+		}
+	}
 	if b.StartPort == 0 {
 		b.StartPort = 10001
 	}
-	used, err := s.Store.UsedPorts(b.NodeID)
+	used, err := s.usedPorts(b.NodeID, 0)
 	if err != nil {
 		logErr(w, err)
 		return
@@ -578,7 +657,7 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 		used[port] = true
 		p := &store.Proxy{NodeID: b.NodeID, PoolID: pool.ID, Port: port, Protocol: b.Protocol, Enabled: true,
 			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires,
-			Scope: b.Scope}
+			Scope: b.Scope, MaxConns: b.MaxConns, RateKBps: b.RateKBps}
 		if b.Spread && subnetCount > 1 {
 			for {
 				sn := v6.RandomSubnet(subnetCount)
@@ -597,6 +676,12 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 			p.AuthUser, p.AuthPass = "u"+randString(7), randString(12)
 		case "fixed":
 			p.AuthUser, p.AuthPass = b.User, b.Pass
+		}
+		if b.RelayNodeID != 0 {
+			if err := s.setRelay(p, b.RelayNodeID, 0, relayUsed); err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
 		}
 		ps = append(ps, p)
 	}
@@ -627,6 +712,10 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		Tag          *string `json:"tag"`
 		ExpiresAt    *int64  `json:"expires_at"`
 		IP           *string `json:"ip"` // set a specific address inside the pool
+		MaxConns     *int    `json:"max_conns"`
+		RateKBps     *int    `json:"rate_kbps"`
+		RelayNodeID  *int64  `json:"relay_node_id"`
+		RelayPort    *int    `json:"relay_port"`
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -637,7 +726,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "port not allowed")
 			return
 		}
-		used, _ := s.Store.UsedPorts(p.NodeID)
+		used, _ := s.usedPorts(p.NodeID, p.ID)
 		if used[*b.Port] {
 			fail(w, 400, "port already used on this node")
 			return
@@ -689,6 +778,29 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.ExpiresAt != nil {
 		p.ExpiresAt = *b.ExpiresAt
+	}
+	if b.MaxConns != nil {
+		p.MaxConns = *b.MaxConns
+	}
+	if b.RateKBps != nil {
+		p.RateKBps = *b.RateKBps
+	}
+	if err := validLimits(p.MaxConns, p.RateKBps); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if b.RelayNodeID != nil || b.RelayPort != nil || p.RelayNodeID != 0 {
+		rid, pub := p.RelayNodeID, 0
+		if b.RelayNodeID != nil {
+			rid = *b.RelayNodeID
+		}
+		if b.RelayPort != nil {
+			pub = *b.RelayPort
+		}
+		if err := s.setRelay(p, rid, pub, nil); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
 	}
 	if b.IP != nil && strings.TrimSpace(*b.IP) != "" {
 		pool, err := s.Store.GetPool(p.PoolID)
@@ -772,6 +884,7 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 	for _, p := range pools {
 		pm[p.ID] = p
 	}
+	var relayUsed map[int]bool
 	for _, p := range ps {
 		switch b.Action {
 		case "enable":
@@ -791,6 +904,10 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 			}
 			p.AuthPass = randString(12)
 		case "remove_auth":
+			if p.RelayNodeID != 0 {
+				fail(w, 400, fmt.Sprintf("proxy :%d is shared through a relay and must keep a password", p.Port))
+				return
+			}
 			if p.Scope == "any" {
 				fail(w, 400, fmt.Sprintf("proxy :%d is shared to the Internet and must keep a password; change its sharing scope first", p.Port))
 				return
@@ -804,6 +921,38 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 			p.Scope = b.Value
 		case "set_tag":
 			p.Tag = strings.TrimSpace(b.Value)
+		case "set_limits": // "maxConns,rateKBps"
+			var mc, rk int
+			if _, err := fmt.Sscanf(b.Value, "%d,%d", &mc, &rk); err != nil {
+				fail(w, 400, "limits must be \"max_conns,rate_kbps\"")
+				return
+			}
+			if err := validLimits(mc, rk); err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
+			p.MaxConns, p.RateKBps = mc, rk
+		case "set_relay":
+			rid, _ := strconv.ParseInt(b.Value, 10, 64)
+			if relayUsed == nil && rid != 0 {
+				var err error
+				if relayUsed, err = s.usedPorts(rid, 0); err != nil {
+					logErr(w, err)
+					return
+				}
+				for _, q := range ps { // ports of the selection are being reassigned
+					if q.RelayNodeID == rid && q.NodeID != rid {
+						delete(relayUsed, relayPub(q))
+					}
+				}
+			}
+			if p.RelayNodeID == rid {
+				continue
+			}
+			if err := s.setRelay(p, rid, 0, relayUsed); err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
 		case "set_protocol":
 			if b.Value != "both" && b.Value != "http" && b.Value != "socks5" {
 				fail(w, 400, "bad protocol")
@@ -847,6 +996,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		Format string  `json:"format"`
 		Scheme string  `json:"scheme"` // http | socks5 (for URL formats)
 		Host   string  `json:"host"`   // override entry host
+		Via    string  `json:"via"`    // "" (LAN/entry) | relay | tailscale | wan
 	}
 	if err := readJSON(r, &b); err != nil {
 		fail(w, 400, err.Error())
@@ -860,12 +1010,47 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if len(b.IDs) == 0 {
 		vs = nil
 	}
+	vs, skipped := viaEndpoint(vs, b.Via)
 	text, err := exportProxies(vs, b.Format, b.Scheme, strings.TrimSpace(b.Host))
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]string{"text": text})
+	writeJSON(w, 200, map[string]any{"text": text, "skipped": skipped})
+}
+
+// viaEndpoint rewrites host/port for the chosen way of reaching the proxies
+// and drops proxies that cannot be reached that way.
+func viaEndpoint(vs []proxyView, via string) ([]proxyView, int) {
+	if via == "" || via == "lan" {
+		return vs, 0
+	}
+	out := make([]proxyView, 0, len(vs))
+	for _, v := range vs {
+		cp := *v.Proxy
+		v.Proxy = &cp
+		switch via {
+		case "relay":
+			if v.RelayHost == "" {
+				continue
+			}
+			v.Host, v.Port = v.RelayHost, relayPub(&cp)
+		case "tailscale":
+			if v.TSHost == "" {
+				continue
+			}
+			v.Host = v.TSHost
+		case "wan":
+			if v.WANHost == "" {
+				continue
+			}
+			v.Host = v.WANHost
+		default:
+			continue
+		}
+		out = append(out, v)
+	}
+	return out, len(vs) - len(out)
 }
 
 func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string, error) {

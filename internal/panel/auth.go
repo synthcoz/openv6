@@ -16,9 +16,28 @@ const sessionTTL = 7 * 24 * 3600
 type ctxKey int
 
 const userKey ctxKey = 1
+const apiKey ctxKey = 2
+
+func isAPIRequest(r *http.Request) bool { v, _ := r.Context().Value(apiKey).(bool); return v }
 
 func (s *Server) auth(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// API tokens (scripts, integrations): Authorization: Bearer ov6_…
+		if tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok && strings.HasPrefix(tok, "ov6_") {
+			ip := clientIP(r)
+			if s.tooManyFailures(ip) {
+				fail(w, http.StatusTooManyRequests, "too many failed attempts, wait 5 minutes")
+				return
+			}
+			if !s.Store.CheckAPIToken(strings.TrimSpace(tok)) {
+				s.recordFailure(ip)
+				fail(w, http.StatusUnauthorized, "invalid API token")
+				return
+			}
+			ctx := context.WithValue(r.Context(), userKey, &store.User{Username: "api", Role: "admin"})
+			h(w, r.WithContext(context.WithValue(ctx, apiKey, true)))
+			return
+		}
 		c, err := r.Cookie(sessionCookie)
 		if err != nil {
 			fail(w, http.StatusUnauthorized, "login required")

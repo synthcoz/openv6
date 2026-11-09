@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -39,13 +40,7 @@ func BinPath() string {
 
 // TrayExe is the GUI build (no console window) used for the tray icon;
 // falls back to the main binary.
-func TrayExe() string {
-	p := filepath.Join(filepath.Dir(BinPath()), "openv6-tray.exe")
-	if _, err := os.Stat(p); err == nil {
-		return p
-	}
-	return BinPath()
-}
+func TrayExe() string { return BinPath() } // openv6.exe is a GUI build
 
 // Managed reports whether we run as a Windows service.
 func Managed() bool {
@@ -64,9 +59,7 @@ func Install(args []string) error {
 	if err := copyFile(exe, dst, 0o755); err != nil {
 		return fmt.Errorf("copy to %s: %w", dst, err)
 	}
-	if t := filepath.Join(filepath.Dir(exe), "openv6-tray.exe"); fileExists(t) {
-		_ = copyFile(t, filepath.Join(filepath.Dir(dst), "openv6-tray.exe"), 0o755)
-	}
+	_ = os.Remove(filepath.Join(filepath.Dir(dst), "openv6-tray.exe")) // from v0.4.0
 	m, err := mgr.Connect()
 	if err != nil {
 		return fmt.Errorf("service manager (run as Administrator): %w", err)
@@ -131,6 +124,7 @@ func Uninstall() error {
 	_ = exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name=openv6").Run()
 	_ = SetTrayAutostart(false)
 	_ = exec.Command("taskkill", "/F", "/IM", "openv6-tray.exe").Run()
+	_ = exec.Command("taskkill", "/F", "/IM", "openv6.exe", "/FI", "SESSION ne 0").Run()
 	return nil
 }
 
@@ -214,3 +208,44 @@ func StartServiceElevated() error {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// Status reports the service state without admin rights:
+// running | stopped | starting | not_installed | unknown.
+func Status() string {
+	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return "unknown"
+	}
+	defer windows.CloseServiceHandle(h)
+	name, _ := windows.UTF16PtrFromString(svcName)
+	s, err := windows.OpenService(h, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		if err == windows.ERROR_SERVICE_DOES_NOT_EXIST {
+			return "not_installed"
+		}
+		return "unknown"
+	}
+	defer windows.CloseServiceHandle(s)
+	var st windows.SERVICE_STATUS
+	if err := windows.QueryServiceStatus(s, &st); err != nil {
+		return "unknown"
+	}
+	switch st.CurrentState {
+	case windows.SERVICE_RUNNING:
+		return "running"
+	case windows.SERVICE_START_PENDING:
+		return "starting"
+	case windows.SERVICE_STOPPED:
+		return "stopped"
+	}
+	return "unknown"
+}
+
+func LogPath() string { return filepath.Join(DataDir(), "openv6.log") }
+
+// shareTrayDir lets every local user read the tray connection file.
+func shareTrayDir(dir string) {
+	cmd := exec.Command("icacls", dir, "/grant", "*S-1-5-32-545:(OI)(CI)RX", "/Q")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	_ = cmd.Run()
+}

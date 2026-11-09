@@ -63,9 +63,9 @@ Data directory: %s
 func main() {
 	log.SetFlags(log.LstdFlags)
 	if len(os.Args) < 2 {
-		// double-clicking openv6.exe on Windows opens the tray
+		// double-clicking openv6.exe on Windows: install if needed, then tray
 		if runtime.GOOS == "windows" {
-			if err := tray.Run(); err != nil {
+			if err := guiStart(); err != nil {
 				fmt.Fprintln(os.Stderr, "error:", err)
 				os.Exit(1)
 			}
@@ -98,6 +98,8 @@ func main() {
 		err = runUninstall()
 	case "tray":
 		err = tray.Run()
+	case "open": // open the dashboard, signed in (used by shortcuts)
+		err = tray.OpenDashboard("")
 	case "reset-password":
 		err = runResetPassword(os.Args[2:])
 	case "selftest":
@@ -155,11 +157,10 @@ func runServer(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, portStr, err := net.SplitHostPort(*listen)
+	ln, port, err := listenWithFallback(*listen, explicitFlag(fs, "listen"))
 	if err != nil {
-		return fmt.Errorf("bad -listen: %w", err)
+		return err
 	}
-	port, _ := strconv.Atoi(portStr)
 
 	web, _ := fsSub(webFS, "web")
 	exe, _ := os.Executable()
@@ -195,18 +196,18 @@ func runServer(ctx context.Context, args []string) error {
 		go ag.Run(ctx)
 	}
 
-	hs := &http.Server{Addr: *listen, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	hs := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, c := context.WithTimeout(context.Background(), 3*time.Second)
 		defer c()
 		_ = hs.Shutdown(sctx)
 	}()
-	log.Printf("openv6 %s dashboard on %s (data %s)", proto.Version, *listen, *data)
+	log.Printf("openv6 %s dashboard on %s (data %s)", proto.Version, ln.Addr(), *data)
 	if *cert != "" {
-		err = hs.ListenAndServeTLS(*cert, *key)
+		err = hs.ServeTLS(ln, *cert, *key)
 	} else {
-		err = hs.ListenAndServe()
+		err = hs.Serve(ln)
 	}
 	if err == http.ErrServerClosed {
 		time.Sleep(300 * time.Millisecond) // let the local agent close listeners
@@ -282,4 +283,75 @@ func runResetPassword(args []string) error {
 	}
 	fmt.Printf("user: %s\nnew password: %s\n", *user, pw)
 	return nil
+}
+
+func explicitFlag(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
+// listenWithFallback opens the dashboard port. When the default port is
+// taken by another program (common on Windows), the next free port in
+// 8081-8099 is used; the tray learns the real port from tray.json.
+func listenWithFallback(addr string, explicit bool) (net.Listener, int, error) {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, 0, fmt.Errorf("bad -listen: %w", err)
+	}
+	port, _ := strconv.Atoi(portStr)
+	var lastErr error
+	for attempt := 0; attempt < 30; attempt++ {
+		ln, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+		if err == nil {
+			if loopbackReachesUs(ln, port) {
+				return ln, port, nil
+			}
+			ln.Close()
+			err = fmt.Errorf("127.0.0.1:%d is answered by another program", port)
+		}
+		lastErr = err
+		if explicit || attempt >= 19 {
+			// explicit port: wait for it to free up (service restarts, upgrades)
+			time.Sleep(time.Second)
+			continue
+		}
+		log.Printf("port %d is in use (%v), trying %d", port, err, port+1)
+		port++
+	}
+	return nil, 0, fmt.Errorf("cannot open the dashboard port: %w", lastErr)
+}
+
+// loopbackReachesUs checks that 127.0.0.1:port really arrives at our
+// listener. On Windows another program bound to 127.0.0.1:port takes those
+// connections even though our wildcard bind succeeded, and the tray (which
+// uses 127.0.0.1) would talk to the wrong program.
+func loopbackReachesUs(ln net.Listener, port int) bool {
+	tl, ok := ln.(*net.TCPListener)
+	if !ok {
+		return true
+	}
+	c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+	if err != nil {
+		return false
+	}
+	defer c.Close()
+	local := c.LocalAddr().String()
+	_ = tl.SetDeadline(time.Now().Add(time.Second))
+	defer tl.SetDeadline(time.Time{})
+	for {
+		in, err := tl.Accept()
+		if err != nil {
+			return false
+		}
+		from := in.RemoteAddr().String()
+		in.Close()
+		if from == local {
+			return true
+		}
+	}
 }

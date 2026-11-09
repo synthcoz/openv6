@@ -92,6 +92,16 @@ var migrations = []string{
 	 ALTER TABLE nodes ADD COLUMN dns TEXT NOT NULL DEFAULT '';`,
 	// 4: pause all proxies of a node (tray / dashboard)
 	`ALTER TABLE nodes ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
+	// 5: per-proxy limits, sharing over the Internet (relay, UPnP), API tokens
+	`ALTER TABLE proxies ADD COLUMN max_conns INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE proxies ADD COLUMN rate_kbps INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE proxies ADD COLUMN relay_node_id INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE proxies ADD COLUMN relay_port INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE nodes ADD COLUMN relay_port INTEGER NOT NULL DEFAULT 0;
+	 ALTER TABLE nodes ADD COLUMN upnp INTEGER NOT NULL DEFAULT 0;
+	 CREATE TABLE IF NOT EXISTS api_tokens (
+	   id INTEGER PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, prefix TEXT NOT NULL,
+	   created_at INTEGER NOT NULL, last_used INTEGER NOT NULL DEFAULT 0);`,
 }
 
 func (s *Store) migrate() error {

@@ -205,6 +205,37 @@ Máy dùng proxy kết nối tới IP LAN của node (ví dụ `192.168.1.10`). 
 
 Đổi phạm vi cho nhiều proxy cùng lúc: chọn proxy rồi vào **Thao tác hàng loạt → Đổi phạm vi chia sẻ**.
 
+### Dùng proxy từ ngoài mạng nhà (4G, quán cà phê, máy ở nơi khác)
+
+Mạng FPT thường dùng CGNAT nên không mở port từ Internet về nhà được. openv6 có 3 cách, xem trong **Máy chủ → node → Chia sẻ ra Internet**:
+
+| Cách | Khi nào dùng | Cần gì |
+|---|---|---|
+| **Relay qua VPS** (khuyên dùng) | Dùng được mọi lúc, kể cả sau CGNAT | Một VPS Linux rẻ có IPv4 public (VPS không cần IPv6) |
+| **UPnP** | Modem có IPv4 public và bật UPnP | Không cần thêm gì; openv6 tự mở port. Nếu thấy "nhà mạng dùng CGNAT" thì cách này không dùng được |
+| **Tailscale** | Chỉ máy của bạn dùng | Cài Tailscale trên máy chạy proxy và máy dùng proxy, cùng tài khoản |
+
+**Relay qua VPS, từng bước:**
+1. Trên dashboard: **Máy chủ → Thêm node**, đặt tên ví dụ "VPS", chạy lệnh cài hiện ra trên VPS.
+2. Ở node VPS: **Chia sẻ ra Internet → bật "Làm relay cho node khác"** (port mặc định 7443) → Lưu.
+   Nếu nhà cung cấp VPS có tường lửa riêng (Security Group…), mở port 7443 và các port proxy (ví dụ 10001–10100).
+3. Trang **Proxy**: chọn proxy → **Thêm → Chia sẻ qua relay** → chọn VPS. Proxy phải có user/mật khẩu.
+4. Huy hiệu 🌐 `IP-VPS:port` xuất hiện bên cạnh proxy. Khi **Xuất danh sách**, chọn **Kết nối qua: Qua relay (VPS)**.
+
+Máy ở nhà tự kết nối ra VPS (mã hoá TLS, kiểm tra vân tay chứng chỉ), nên không cần mở port trên modem. Lưu lượng đi qua VPS, còn IP mà website nhìn thấy vẫn là IPv6 nhà bạn.
+
+### Giới hạn cho từng proxy
+
+Trong **Sửa** proxy hoặc **Thêm → Đặt giới hạn** cho nhiều proxy:
+- **Kết nối tối đa:** số kết nối đồng thời; vượt quá thì kết nối mới bị từ chối.
+- **Tốc độ tối đa (KB/s):** áp dụng riêng cho chiều tải lên và tải xuống. 1024 KB/s ≈ 8 Mbps.
+
+Để 0 là không giới hạn.
+
+### API cho phần mềm khác
+
+**Cài đặt → API token → Tạo token.** Xem cách gọi trong [API.md](API.md).
+
 ## 9. Câu hỏi thường gặp và xử lý lỗi
 
 | Hiện tượng | Nguyên nhân và cách xử lý |

@@ -9,13 +9,14 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/netip"
 	"sync"
 	"sync/atomic"
 	"syscall"
+
+	"golang.org/x/time/rate"
 	"time"
 )
 
@@ -33,6 +34,10 @@ type Config struct {
 	Scope string
 	// Resolver used for target hostnames; nil = system resolver.
 	Resolver *net.Resolver
+	// MaxConns limits simultaneous client connections (0 = unlimited).
+	MaxConns int
+	// RateKBps limits throughput per direction in KiB/s (0 = unlimited).
+	RateKBps int
 	// BindIf, when > 0, pins outgoing sockets to this interface index
 	// (Windows/macOS VPN bypass; ignored on Linux).
 	BindIf int
@@ -96,6 +101,17 @@ type listener struct {
 	counters *Counters
 	closed   atomic.Bool
 	conns    sync.Map // net.Conn -> struct{}
+	upLim    atomic.Pointer[rate.Limiter]
+	downLim  atomic.Pointer[rate.Limiter]
+}
+
+func (l *listener) setLimits(c *Config) {
+	old := l.cfg.Load()
+	if old != nil && old.RateKBps == c.RateKBps && l.upLim.Load() != nil == (c.RateKBps > 0) {
+		return
+	}
+	l.upLim.Store(limiterFor(c.RateKBps))
+	l.downLim.Store(limiterFor(c.RateKBps))
 }
 
 // SetAllow sets the client source whitelist used by proxies without auth.
@@ -147,6 +163,7 @@ func (m *Manager) Apply(cfgs []Config) map[int64]error {
 		c := c
 		if l, ok := m.listeners[port]; ok {
 			old := l.cfg.Load()
+			l.setLimits(&c)
 			l.cfg.Store(&c)
 			if old.OutIP != c.OutIP || old.User != c.User || old.Pass != c.Pass {
 				l.dropConns() // force clients onto the new identity
@@ -159,6 +176,7 @@ func (m *Manager) Apply(cfgs []Config) map[int64]error {
 			continue
 		}
 		l := &listener{m: m, ln: ln, counters: &Counters{}}
+		l.setLimits(&c)
 		l.cfg.Store(&c)
 		m.listeners[port] = l
 		go l.serve()
@@ -223,6 +241,9 @@ func (l *listener) handle(c net.Conn) {
 	cfg := l.cfg.Load()
 	if !l.m.clientAllowed(cfg, c.RemoteAddr()) {
 		return // silently drop: outside the proxy's sharing scope
+	}
+	if cfg.MaxConns > 0 && l.counters.Active.Load() > int64(cfg.MaxConns) {
+		return // over the connection limit
 	}
 	_ = c.SetReadDeadline(time.Now().Add(30 * time.Second))
 	br := bufio.NewReader(c)
@@ -317,13 +338,13 @@ func (l *listener) pipe(client, target net.Conn) {
 	defer l.conns.Delete(target)
 	done := make(chan struct{}, 2)
 	go func() {
-		n, _ := io.Copy(target, client)
+		n, _ := copyLimited(target, client, l.upLim.Load())
 		l.counters.Up.Add(n)
 		closeWrite(target)
 		done <- struct{}{}
 	}()
 	go func() {
-		n, _ := io.Copy(client, target)
+		n, _ := copyLimited(client, target, l.downLim.Load())
 		l.counters.Down.Add(n)
 		closeWrite(client)
 		done <- struct{}{}

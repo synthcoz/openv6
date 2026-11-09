@@ -266,6 +266,7 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		Firewall: s.Store.GetSetting("auto_firewall", "1") == "1",
 		Bypass:   node.Bypass,
 		DNS:      dnsServers(node.DNS),
+		UPnP:     node.UPnP,
 		Pools:    []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
 	for _, p := range pools {
 		pm[p.ID] = p
@@ -286,11 +287,14 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 			continue
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
-			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope}
+			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope, MaxConns: p.MaxConns, RateKBps: p.RateKBps}
 		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
 			spec.IP = ip.String()
 		}
 		resp.Proxies = append(resp.Proxies, spec)
+	}
+	if err := s.addRelaySpecs(node, resp, proxies); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }

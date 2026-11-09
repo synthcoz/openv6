@@ -306,3 +306,117 @@ func TestMigrationScopeForExistingProxies(t *testing.T) {
 		t.Fatalf("password proxies must stay reachable from the Internet after upgrade, got %q", ps[0].Scope)
 	}
 }
+
+func TestRelayLimitsAndAPIToken(t *testing.T) {
+	e := newEnv(t)
+	mk := func(name string) (int64, string) {
+		var n struct{ ID int64 }
+		e.call("POST", "/api/nodes", map[string]string{"name": name}, &n, 200)
+		var inst struct{ Token string }
+		e.call("GET", fmt.Sprintf("/api/nodes/%d/install", n.ID), nil, &inst, 200)
+		return n.ID, inst.Token
+	}
+	homeID, homeTok := mk("home")
+	vpsID, vpsTok := mk("vps")
+	e.sync(homeTok, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	vpsNet := homeNet("2001:db8:5::/64")
+	vpsNet.PublicV4 = "203.0.113.7"
+	e.sync(vpsTok, proto.SyncRequest{AgentVersion: proto.Version, Net: vpsNet})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", homeID), nil, &pools, 200)
+
+	// relay requires the VPS to be a relay first
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": homeID, "pool_id": pools[0].ID, "count": 2,
+		"auth": "random", "relay_node_id": vpsID}, nil, 400)
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", vpsID), map[string]any{"relay_port": 7443, "upnp": false}, nil, 200)
+	// without a password: refused
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": homeID, "pool_id": pools[0].ID, "count": 2,
+		"auth": "none", "relay_node_id": vpsID}, nil, 400)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": homeID, "pool_id": pools[0].ID, "count": 2,
+		"auth": "random", "relay_node_id": vpsID, "max_conns": 50, "rate_kbps": 2048}, nil, 200)
+
+	// the VPS gets the relay server spec, the home node waits for its fingerprint
+	vr := e.sync(vpsTok, proto.SyncRequest{AgentVersion: proto.Version, Net: vpsNet, RelayFP: strings.Repeat("ab", 32)})
+	if vr.RelayServer == nil || vr.RelayServer.Port != 7443 || len(vr.RelayServer.Clients) != 1 || len(vr.RelayServer.Clients[0].Maps) != 2 {
+		t.Fatalf("relay server spec %+v", vr.RelayServer)
+	}
+	hr := e.sync(homeTok, proto.SyncRequest{AgentVersion: proto.Version, Net: homeNet("2405:4802:1:2::/64")})
+	if len(hr.RelayClients) != 1 || hr.RelayClients[0].Addr != "203.0.113.7:7443" || hr.RelayClients[0].Token != vr.RelayServer.Clients[0].Token ||
+		len(hr.RelayClients[0].Ports) != 2 || hr.RelayClients[0].Fingerprint != strings.Repeat("ab", 32) {
+		t.Fatalf("relay client spec %+v", hr.RelayClients)
+	}
+	if hr.Proxies[0].MaxConns != 50 || hr.Proxies[0].RateKBps != 2048 {
+		t.Fatalf("limits %+v", hr.Proxies[0])
+	}
+	// export through the relay
+	var list []struct {
+		ID        int64
+		Port      int
+		RelayPort int `json:"relay_port"`
+	}
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	var x struct{ Text string }
+	e.call("POST", "/api/proxies/export", map[string]any{"ids": []int64{list[0].ID}, "via": "relay"}, &x, 200)
+	if !strings.HasPrefix(x.Text, fmt.Sprintf("203.0.113.7:%d:", list[0].RelayPort)) {
+		t.Fatalf("relay export %q", x.Text)
+	}
+	// relay port of the VPS cannot collide with relayed ports
+	e.call("PUT", fmt.Sprintf("/api/nodes/%d", vpsID), map[string]any{"relay_port": list[0].RelayPort}, nil, 400)
+	// turning relay off for the selection
+	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID, list[1].ID}, "action": "set_relay", "value": "0"}, nil, 200)
+	vr = e.sync(vpsTok, proto.SyncRequest{AgentVersion: proto.Version, Net: vpsNet, RelayFP: strings.Repeat("ab", 32)})
+	if len(vr.RelayServer.Clients) != 0 {
+		t.Fatalf("relay clients left %+v", vr.RelayServer)
+	}
+
+	// API tokens
+	var tok struct{ Token string }
+	e.call("POST", "/api/tokens", map[string]string{"name": "script"}, &tok, 200)
+	req, _ := http.NewRequest("GET", e.ts.URL+"/api/proxies", nil)
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil || res.StatusCode != 200 {
+		t.Fatalf("api token: %v %v", err, res.StatusCode)
+	}
+	req, _ = http.NewRequest("POST", e.ts.URL+"/api/tokens", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	req.Header.Set("Content-Type", "application/json")
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 403 {
+		t.Fatalf("token creating tokens: %d", res.StatusCode)
+	}
+	req, _ = http.NewRequest("GET", e.ts.URL+"/api/proxies", nil)
+	req.Header.Set("Authorization", "Bearer ov6_wrong")
+	if res, _ := http.DefaultClient.Do(req); res.StatusCode != 401 {
+		t.Fatalf("bad token: %d", res.StatusCode)
+	}
+}
+
+func TestStaticGzipETag(t *testing.T) {
+	big := strings.Repeat("openv6 dashboard ", 200)
+	h := &staticHandler{fsys: fstest.MapFS{"index.html": {Data: []byte(big)}, "app.js": {Data: []byte("x")}}}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip, br")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Header().Get("Content-Encoding") != "gzip" || rec.Body.Len() >= len(big) {
+		t.Fatalf("gzip: %d %q %d", rec.Code, rec.Header().Get("Content-Encoding"), rec.Body.Len())
+	}
+	etag := rec.Header().Get("ETag")
+	req = httptest.NewRequest("GET", "/index.html", nil)
+	req.Header.Set("If-None-Match", etag)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 304 {
+		t.Fatalf("etag: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/app.js", nil))
+	if !strings.Contains(rec.Header().Get("Content-Type"), "javascript") || rec.Body.String() != "x" {
+		t.Fatalf("app.js %q %q", rec.Header().Get("Content-Type"), rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/../secret", nil))
+	if rec.Code != 404 {
+		t.Fatalf("traversal %d", rec.Code)
+	}
+}

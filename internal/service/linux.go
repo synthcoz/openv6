@@ -220,3 +220,24 @@ func shellQuote(s string) string {
 
 // RunService runs fn directly (systemd supervises the process).
 func RunService(fn func(ctx context.Context) error) error { return fn(context.Background()) }
+
+func Status() string {
+	out, _ := exec.Command("systemctl", "show", "-p", "LoadState,ActiveState", "openv6-server").Output()
+	s := string(out)
+	switch {
+	case strings.Contains(s, "LoadState=not-found"):
+		return "not_installed"
+	case strings.Contains(s, "ActiveState=active"):
+		return "running"
+	case strings.Contains(s, "ActiveState=activating"):
+		return "starting"
+	case strings.Contains(s, "ActiveState="):
+		return "stopped"
+	}
+	return "unknown"
+}
+
+// LogPath is empty: logs go to the systemd journal.
+func LogPath() string { return "" }
+
+func shareTrayDir(dir string) {}

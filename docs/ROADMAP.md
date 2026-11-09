@@ -15,13 +15,21 @@ Phiên bản 0.2 đã có kiểm tra định kỳ, cảnh báo Telegram, tự ch
 | ✅ Sao lưu và khôi phục | Xuất/nhập toàn bộ DB (JSON) trong giao diện. |
 | Kiểm tra IPv6 của website đích | Nút “website này có IPv6 không?” để biết trước proxy có dùng được hay không. |
 | ✅ Cập nhật agent từ panel | Panel giữ binary mới, agent tự tải về và khởi động lại. |
-| Giới hạn tốc độ / dung lượng theo proxy | Token bucket trong `pipe()`, chặn khi vượt quota tháng. |
+| ✅ Giới hạn tốc độ / số kết nối theo proxy (v0.6) | Còn thiếu: quota dung lượng theo tháng. |
 
 ## Đã xong ở v0.3
 - Chạy ổn định khi có VPN, WARP hoặc Tailscale (định tuyến proxy vòng qua VPN, DNS riêng, tự chẩn đoán, `openv6 selftest`).
 - Phạm vi chia sẻ Chỉ máy này / LAN / Internet; Khởi động lại; Áp dụng lại mạng; mã lỗi kèm hướng dẫn sửa.
 
-## Kế hoạch tiếp theo (tính năng trước, giao diện sau)
+## Đã xong ở v0.4–v0.5
+- Windows và macOS (dịch vụ nền, icon khay, bộ cài), một file `.exe` dạng giao diện, tự đổi port khi 8080 bị chiếm, icon khay tự chẩn đoán và tạo báo cáo lỗi.
+- Giao diện mới (v0.5): trình hướng dẫn lần đầu, bảng chi tiết proxy, thao tác hàng loạt, hoàn tác, giao diện sáng/tối/theo hệ thống, VI/EN, dùng tốt trên điện thoại.
+
+## Đã xong ở v0.6
+- Chia sẻ ra Internet: relay qua VPS (TLS + ghim vân tay chứng chỉ, multiplex yamux), UPnP (tự phát hiện CGNAT), nhận diện Tailscale.
+- Giới hạn số kết nối và tốc độ theo proxy; API token (xem `docs/API.md`).
+
+## Kế hoạch tiếp theo (cũ, giữ để tham khảo)
 - **v0.4: node chạy trên Windows.** Gán IPv6 bằng `New-NetIPAddress -SkipAsSource $true`, chạy như Windows Service, bộ cài `.exe`. Trên Windows, mô hình "strong host" giữ gói tin đi đúng card mạng của IP nguồn, cần kiểm chứng khi bật WARP hoặc VPN.
 - **v0.5: chia sẻ ra Internet từ mạng nhà:** qua Tailscale (hướng dẫn và tự nhận diện), UPnP (khi modem có IPv4 public), hoặc chuyển tiếp qua VPS (máy nhà tự kết nối lên VPS, dùng được cả khi nằm sau CGNAT).
 - **v0.6: làm lại giao diện** dựa trên các tính năng đã ổn định.
@@ -39,7 +47,7 @@ Phiên bản 0.2 đã có kiểm tra định kỳ, cảnh báo Telegram, tự ch
 |---|---|
 | **Nhiều người dùng và phân quyền** | Bảng `users` đã có cột `role`. Thêm vai trò `admin / operator / viewer`, gán proxy theo user (`proxies.owner_id`). |
 | **Chế độ khách hàng (reseller)** | Khách hàng đăng nhập chỉ thấy proxy của mình, tự đổi IP hoặc mật khẩu trong giới hạn cho phép. |
-| API token + tài liệu OpenAPI | Cho phép tool khác (anti-detect, script nuôi tài khoản) tự tạo/xoá/lấy proxy. Viết `openapi.yaml` từ bảng API trong ARCHITECTURE.md. |
+| Tài liệu OpenAPI | API token đã có (v0.6, `docs/API.md`); còn thiếu `openapi.yaml` và token giới hạn quyền (chỉ đọc). |
 | Tích hợp trực tiếp anti-detect | Gọi API của GoLogin, GenLogin, MoreLogin, Hidemyacc… để gán proxy thẳng vào profile, không cần copy/paste. |
 | Nhật ký kiểm toán (audit log) | Ai đã làm gì, lúc nào. Bảng `events` hiện chỉ ghi sự kiện hệ thống. |
 | Thanh toán và hạn dùng | Đã có `expires_at`. Thêm gói, gia hạn, cổng thanh toán (VNPay/MoMo/Stripe). |

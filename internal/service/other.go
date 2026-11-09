@@ -22,3 +22,7 @@ func RunService(fn func(ctx context.Context) error) error { return fn(context.Ba
 func TrayAutostart() bool                                 { return false }
 func SetTrayAutostart(on bool) error                      { return errUnsupported }
 func StartServiceElevated() error                         { return errUnsupported }
+
+func Status() string      { return "unknown" }
+func LogPath() string     { return "" }
+func shareTrayDir(string) {}
