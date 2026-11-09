@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.0 — dùng proxy từ ngoài mạng nhà, giới hạn, API
+
+- **Relay qua VPS:** máy ở nhà (kể cả sau CGNAT của FPT) tự kết nối ra một VPS; proxy được dùng qua `IP-VPS:port` từ bất kỳ đâu, IP đi ra vẫn là IPv6 nhà. Kết nối mã hoá TLS và kiểm tra vân tay chứng chỉ; tự kết nối lại khi rớt mạng.
+  - Bật ở **Máy chủ → node VPS → Chia sẻ ra Internet → Làm relay cho node khác**.
+  - Gán proxy vào relay khi tạo, khi sửa, hoặc hàng loạt (**Thêm → Chia sẻ qua relay**). Port trên VPS được tự chọn để không trùng.
+  - Proxy qua relay bắt buộc có mật khẩu.
+- **UPnP:** tự mở port trên router cho proxy phạm vi "Internet", gia hạn định kỳ; báo rõ khi không có router UPnP hoặc khi nhà mạng dùng CGNAT.
+- **Tailscale:** tự nhận diện IP Tailscale của node và đưa vào danh sách cách kết nối.
+- **Xuất danh sách theo đường kết nối:** LAN, qua relay, IP WAN (UPnP) hoặc Tailscale. Bảng chi tiết proxy có mục "Dùng từ ngoài mạng nhà" để sao chép từng đường.
+- **Giới hạn cho từng proxy:** số kết nối đồng thời và tốc độ tối đa (KB/s, mỗi chiều).
+- **API token:** tạo trong Cài đặt, gọi API bằng `Authorization: Bearer ov6_…` (xem `docs/API.md`). Chỉ lưu bản băm của token.
+- Bản sao lưu có thêm API token và các thiết lập mới.
+
 ## v0.5.0 — giao diện mới
 
 - **Bố cục mới:**

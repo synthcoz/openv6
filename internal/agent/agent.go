@@ -23,7 +23,9 @@ import (
 	"openv6/internal/netcfg"
 	"openv6/internal/proto"
 	"openv6/internal/proxy"
+	"openv6/internal/relay"
 	"openv6/internal/update"
+	"openv6/internal/upnp"
 )
 
 type Config struct {
@@ -44,10 +46,13 @@ type Config struct {
 }
 
 type Agent struct {
-	cfg     Config
-	client  *http.Client
-	net     *netcfg.Manager
-	proxies *proxy.Manager
+	cfg      Config
+	client   *http.Client
+	net      *netcfg.Manager
+	proxies  *proxy.Manager
+	relaySrv *relay.Server
+	relayCl  *relay.Client
+	upnp     *upnp.Mapper
 
 	mu       sync.Mutex
 	lastSent map[int64]proto.ProxyStats
@@ -85,6 +90,9 @@ func New(cfg Config) *Agent {
 		client:    &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS}}},
 		net:       n,
 		proxies:   proxy.NewManager(),
+		relaySrv:  relay.NewServer(cfg.DataDir),
+		relayCl:   relay.NewClient(),
+		upnp:      upnp.New(),
 		lastSent:  map[int64]proto.ProxyStats{},
 		applied:   map[int64]proto.Applied{},
 		running:   map[string]bool{},
@@ -134,6 +142,8 @@ func (a *Agent) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			a.proxies.Close()
+			a.relaySrv.Close()
+			a.relayCl.Close()
 			return
 		case <-time.After(interval):
 		}
@@ -148,6 +158,7 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	st := a.net.Detect(cfgIface)
 	st.LANv4 = lanIPv4()
 	st.PublicV4 = a.publicV4()
+	st.TailscaleIP = tailscaleIP()
 
 	counters := a.proxies.Counters()
 	a.mu.Lock()
@@ -183,6 +194,10 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 		AgentVersion: proto.Version, Hostname: host, OS: runtime.GOOS + "/" + runtime.GOARCH, Arch: runtime.GOARCH,
 		Net: st, Stats: stats, Applied: applied, Results: results, Errors: errs, Checks: checks, Logs: logs,
 		StartedAt: a.startedAt.Unix(),
+		RelayFP:   a.relaySrv.Fingerprint(), Relays: a.relayCl.Status(), UPnP: a.upnp.Status(),
+	}
+	for _, id := range a.relaySrv.Connected() {
+		req.Relays = append(req.Relays, proto.RelayState{Role: "server", PeerNodeID: id, Connected: true})
 	}
 	var out proto.SyncResponse
 	if a.cfg.Direct != nil {
@@ -272,7 +287,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			bypass.Sources = append(bypass.Sources, ip.String()+"/128")
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: bindIf}
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: bindIf, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
 		if len(r.DNS) > 0 {
 			c.Resolver = proxy.NewResolver(r.DNS, ip, bindIf)
 		}
@@ -320,11 +335,33 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	}
 	a.proxies.SetAllow(allow)
 	listenErrs := a.proxies.Apply(ok)
+	// sharing over the Internet: relay (public node <-> NAT'ed node) and UPnP
+	for _, e := range a.relaySrv.Apply(r.RelayServer) {
+		errs = append(errs, fmt.Errorf("%s", e))
+	}
+	a.relayCl.Apply(r.RelayClients)
+	var anyPorts []int
+	for _, c := range ok {
+		if c.Scope == "any" {
+			anyPorts = append(anyPorts, c.Port)
+		}
+	}
+	if !a.cfg.DryRun {
+		a.upnp.Apply(r.UPnP, anyPorts)
+	}
 	if r.Firewall {
 		var ports []int
 		for _, c := range ok {
 			if c.Scope != "local" {
 				ports = append(ports, c.Port)
+			}
+		}
+		if rs := r.RelayServer; rs != nil && rs.Port > 0 {
+			ports = append(ports, rs.Port)
+			for _, cl := range rs.Clients {
+				for _, m := range cl.Maps {
+					ports = append(ports, m.Public)
+				}
 			}
 		}
 		if err := a.net.SyncFirewall(ports); err != nil {
@@ -515,6 +552,37 @@ func (a *Agent) publicV4() string {
 		a.pubV4 = ip.String()
 	}
 	return a.pubV4
+}
+
+// tailscaleIP returns this machine's Tailscale IPv4 (100.64.0.0/10), if any.
+func tailscaleIP() string {
+	cg := netip.MustParsePrefix("100.64.0.0/10")
+	ifs, _ := net.Interfaces()
+	fallback := ""
+	for _, it := range ifs {
+		if it.Flags&net.FlagUp == 0 {
+			continue
+		}
+		name := strings.ToLower(it.Name)
+		addrs, _ := it.Addrs()
+		for _, ad := range addrs {
+			ipn, ok := ad.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			a, ok := netip.AddrFromSlice(ipn.IP)
+			if !ok || !a.Unmap().Is4() || !cg.Contains(a.Unmap()) {
+				continue
+			}
+			if strings.Contains(name, "tailscale") {
+				return a.Unmap().String()
+			}
+			if strings.HasPrefix(name, "utun") || strings.HasPrefix(name, "tun") {
+				fallback = a.Unmap().String()
+			}
+		}
+	}
+	return fallback
 }
 
 func lanIPv4() []string {

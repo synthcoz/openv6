@@ -503,6 +503,18 @@ function errInfo(code, raw) {
 }
 
 const SCOPES = ['lan', 'local', 'any'];
+function relayNodes(exceptId) { return (state.nodes || []).filter((n) => n.relay_port > 0 && n.id !== exceptId); }
+function relaySelect(name, value, exceptId) {
+  const ns = relayNodes(exceptId);
+  return `<select name="${name}"><option value="0">${t('relay_off')}</option>${ns.map((n) => `<option value="${n.id}" ${n.id === value ? 'selected' : ''}>${esc(n.name)} (${esc(n.entry_host || n.net.public_v4 || n.entry)})</option>`).join('')}</select>`;
+}
+function fmtRate(kbps) { return kbps >= 1024 ? (kbps / 1024).toFixed(kbps % 1024 ? 1 : 0) + ' MB/s' : kbps + ' KB/s'; }
+function limitsText(p) {
+  const a = [];
+  if (p.max_conns) a.push(t('max_conns_n', { n: p.max_conns }));
+  if (p.rate_kbps) a.push(fmtRate(p.rate_kbps));
+  return a.join(' · ');
+}
 function scopeSelect(name, value) {
   return `<select name="${name}">${SCOPES.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${t('scope_' + v)}</option>`).join('')}</select>`;
 }
@@ -579,7 +591,7 @@ function drawProxyRows() {
       <th class="hide-sm">${t('health')}</th><th class="hide-sm hide-md">${t('traffic')}</th><th></th></tr></thead>
     <tbody>${list.map((p) => `<tr class="clickable ${state.selected.has(p.id) ? 'selected' : ''}" data-id="${p.id}">
       <td class="ck"><input type="checkbox" class="sel" ${state.selected.has(p.id) ? 'checked' : ''}></td>
-      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}</div></td>
+      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
       <td class="cn"><span class="copyable mono" data-copy="${esc(proxyLine(p))}" title="${t('click_copy_line')}">${esc(hostPort(p))}${icon('copy', 'sm')}</span>
         <div class="sub">${p.auth_user ? `${icon('key', 'sm')} ${esc(p.auth_user)}` : t('no_auth')} · ${esc(t('scope_short_' + p.scope))}</div></td>
       <td class="hide-sm hide-lg mono small"><span class="copyable" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}${p.ip ? icon('copy', 'sm') : ''}</span></td>
@@ -628,7 +640,7 @@ function drawBulkBar() {
 }
 
 function openMoreActions() {
-  const acts = ['regen_pass', 'remove_auth', 'set_scope', 'set_tag', 'set_protocol', 'fallback_on', 'fallback_off', 'reset_stats'];
+  const acts = ['regen_pass', 'remove_auth', 'set_scope', 'set_limits', 'set_relay', 'set_tag', 'set_protocol', 'fallback_on', 'fallback_off', 'reset_stats'];
   modal(`<h2>${t('more_actions', { n: state.selected.size })}</h2>
     <div class="choice">${acts.map((a) => `<label data-act="${a}" style="align-items:center"><span><b>${t('act_' + a)}</b></span></label>`).join('')}</div>
     <div class="actions"><button id="cl">${t('close')}</button></div>`, (m) => {
@@ -710,6 +722,8 @@ async function bulkAction(action, idsIn) {
   if (action === 'set_tag') { value = await promptBox(t('act_set_tag'), t('tag')); if (value === null) return; }
   if (action === 'set_protocol') { value = await chooseProtocol(); if (!value) return; }
   if (action === 'set_scope') { value = await chooseScope(); if (!value) return; }
+  if (action === 'set_limits') { value = await chooseLimits(); if (value === null) return; }
+  if (action === 'set_relay') { value = await chooseRelay(); if (value === null) return; }
   if (action === 'regen_ip' && !(await confirmBox(t('confirm_regen_ip', { n: ids.length }), { ok: t('act_regen_ip') }))) return;
   if (action === 'regen_pass' && !(await confirmBox(t('confirm_regen_pass', { n: ids.length }), { ok: t('act_regen_pass') }))) return;
   try {
@@ -717,6 +731,34 @@ async function bulkAction(action, idsIn) {
     toast(t('done_n', { n: r.affected }));
     await loadProxies(); drawProxyRows();
   } catch (e) { toast(e.message, true); }
+}
+
+function chooseLimits() {
+  return new Promise((resolve) => {
+    modal(`<h2>${t('act_set_limits')}</h2>
+      <div class="form-grid"><label class="field">${t('max_conns')}<input id="lc" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}<input id="lr" type="number" min="0" value="0"></label></div>
+      <p class="hint">${t('limits_hint')}</p>
+      <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
+      $('#no', m).onclick = () => { closeModal(); resolve(null); };
+      $('#yes', m).onclick = () => { const v = `${Number($('#lc', m).value) || 0},${Number($('#lr', m).value) || 0}`; closeModal(); resolve(v); };
+    });
+  });
+}
+
+function chooseRelay() {
+  return new Promise((resolve) => {
+    const ns = relayNodes(0);
+    modal(`<h2>${t('act_set_relay')}</h2>
+      ${ns.length ? '' : alertBox('warn', esc(t('relay_none_yet')))}
+      <div class="choice"><label><input type="radio" name="rl" value="0" checked><span><b>${t('relay_off')}</b><span class="small muted">${t('relay_off_hint')}</span></span></label>
+      ${ns.map((n) => `<label><input type="radio" name="rl" value="${n.id}"><span><b>${esc(n.name)}</b><span class="small muted">${esc(n.entry_host || n.net.public_v4 || n.entry)} · ${t('relay_port')} ${n.relay_port}</span></span></label>`).join('')}</div>
+      <p class="hint">${t('relay_need_auth')}</p>
+      <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
+      $('#no', m).onclick = () => { closeModal(); resolve(null); };
+      $('#yes', m).onclick = () => { const v = $('input[name=rl]:checked', m).value; closeModal(); resolve(v); };
+    });
+  });
 }
 
 function chooseProtocol() {
@@ -748,6 +790,7 @@ async function openProxyDrawer(id, tab = 'info') {
         <h3 style="margin-top:0">${t('copy_for_antidetect')}</h3>
         ${lines.map(([lbl, k]) => `<div class="copy-line"><span class="lbl">${esc(lbl.split('://')[0] === lbl ? lbl : lbl.split('://')[0].toUpperCase())}</span><code>${esc(lineFor(k))}</code>
           <button class="small" data-copyline="${esc(lineFor(k))}">${icon('copy', 'sm')}</button></div>`).join('')}
+        ${otherEndpoints(p)}
         <h3>${t('details')}</h3>
         <div class="kv">
           <div>${t('ipv6_out')}</div><div class="mono small">${esc(p.ip || '—')}</div>
@@ -755,6 +798,7 @@ async function openProxyDrawer(id, tab = 'info') {
           <div>${t('auth')}</div><div class="mono small">${p.auth_user ? esc(p.auth_user) + ' / ' + esc(p.auth_pass) : t('no_auth')}</div>
           <div>${t('scope')}</div><div>${esc(t('scope_' + p.scope))}</div>
           <div>${t('protocol')}</div><div>${p.protocol === 'both' ? 'HTTP + SOCKS5' : esc(p.protocol.toUpperCase())}</div>
+          <div>${t('limits')}</div><div>${esc(limitsText(p)) || `<span class="muted">${t('unlimited')}</span>`}</div>
           <div>${t('traffic')}</div><div>↑ ${fmtBytes(p.bytes_up)} · ↓ ${fmtBytes(p.bytes_down)} · ${p.active}/${p.conns_total} ${t('conns_short')}</div>
           <div>${t('tag_note')}</div><div>${p.tag ? `<span class="badge neutral">${esc(p.tag)}</span> ` : ''}${esc(p.note || '—')}</div>
           ${p.expires_at ? `<div>${t('expires')}</div><div>${fmtTime(p.expires_at)}</div>` : ''}
@@ -777,7 +821,12 @@ async function openProxyDrawer(id, tab = 'info') {
           <label class="field">${t('scope')}${scopeSelect('scope', p.scope)}</label>
           <label class="field">${t('tag')}<input name="tag" value="${esc(p.tag)}"></label>
           <label class="field">${t('expires')}<input name="expires" type="date" value="${p.expires_at ? new Date(p.expires_at * 1000).toISOString().slice(0, 10) : ''}"></label>
+          <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
+          <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
+          <label class="field">${t('relay')}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
+          <label class="field">${t('relay_public_port')}<input name="relay_port" type="number" min="0" max="65535" value="${p.relay_port || 0}"></label>
         </div>
+        <p class="hint">${t('limits_hint')} ${t('relay_edit_hint')}</p>
         <label class="field">${t('ipv6_out')}<input name="ip" class="mono" value="${esc(p.ip)}"><span class="hint">${t('ip_edit_hint')}</span></label>
         <label class="field">${t('note')}<textarea name="note" rows="2">${esc(p.note)}</textarea></label>
         <label class="check"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> ${t('enabled')}</label>
@@ -822,6 +871,8 @@ async function openProxyDrawer(id, tab = 'info') {
       const body = {
         label: form.label.value, port: Number(form.port.value), protocol: form.protocol.value, auth_user: form.auth_user.value, auth_pass: form.auth_pass.value,
         tag: form.tag.value, note: form.note.value, enabled: form.enabled.checked, ipv4_fallback: form.ipv4_fallback.checked, scope: form.scope.value,
+        max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
+        relay_node_id: Number(form.relay_node_id.value) || 0, relay_port: Number(form.relay_port.value) || 0,
         expires_at: form.expires.value ? Math.floor(new Date(form.expires.value + 'T23:59:59').getTime() / 1000) : 0,
       };
       if (form.ip.value.trim() && form.ip.value.trim() !== p.ip) body.ip = form.ip.value.trim();
@@ -835,6 +886,18 @@ async function openProxyDrawer(id, tab = 'info') {
 }
 
 function openEdit(p) { openProxyDrawer(p.id, 'edit'); }
+
+// otherEndpoints lists the ways to reach a proxy from outside the LAN.
+function otherEndpoints(p) {
+  const rows = [];
+  const auth = p.auth_user ? ':' + p.auth_user + ':' + p.auth_pass : '';
+  if (p.relay_host) rows.push([t('via_relay') + (p.relay_up ? '' : ' ⚠'), `${p.relay_host}:${p.relay_port}${auth}`, p.relay_up ? '' : t('relay_down_hint')]);
+  if (p.wan_host) rows.push([t('via_wan'), `${p.wan_host}:${p.port}${auth}`, t('via_wan_hint')]);
+  if (p.ts_host) rows.push([t('via_tailscale'), `${p.ts_host}:${p.port}${auth}`, t('via_tailscale_hint')]);
+  if (!rows.length) return '';
+  return `<h3>${t('other_endpoints')}</h3>${rows.map(([l, v, h]) => `<div class="copy-line"><span class="lbl">${esc(l)}</span><code>${esc(v)}</code>
+    <button class="small" data-copyline="${esc(v)}">${icon('copy', 'sm')}</button></div>${h ? `<p class="hint" style="margin:-4px 0 8px">${esc(h)}</p>` : ''}`).join('')}`;
+}
 
 function poolInfo(pool) {
   if (!pool.cidr) return t('pool_waiting');
@@ -860,7 +923,11 @@ function openCreate() {
       <label class="field">${t('tag')}<input name="tag" placeholder="facebook, tiktok…"></label>
       <label class="field">${t('note')}<input name="note"></label>
       <label class="field">${t('expires_days')}<input name="expires_days" type="number" min="0" value="0"></label>
+      <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="0"></label>
+      <label class="field" id="relayWrap">${t('relay')}<span data-relay></span></label>
     </div>
+    <p class="hint">${t('limits_hint')}</p>
     <p class="hint" id="poolHint"></p>
     <div id="spreadWrap"><label class="check"><input type="checkbox" name="spread" checked> ${t('spread')}</label>
     <p class="hint">${t('spread_hint')}</p></div>
@@ -881,6 +948,8 @@ function openCreate() {
       const node = state.nodes.find((n) => String(n.id) === form.node_id.value);
       const pool = (node.pools || []).find((p) => String(p.id) === form.pool_id.value);
       $('#poolHint', m).textContent = pool ? poolInfo(pool) : '';
+      $('[data-relay]', m).innerHTML = relaySelect('relay_node_id', 0, node.id);
+      $('#relayWrap', m).hidden = !relayNodes(node.id).length;
       const many = pool && pool.cidr && Number(pool.cidr.split('/')[1]) < 64;
       $('#spreadWrap', m).style.display = many ? '' : 'none';
       form.spread.checked = !!many;
@@ -902,7 +971,8 @@ function openCreate() {
         start_port: Number(form.start_port.value), protocol: form.protocol.value, auth: form.auth.value,
         user: form.user.value, pass: form.pass.value, tag: form.tag.value, label_prefix: form.label_prefix.value, note: form.note.value,
         expires_days: Number(form.expires_days.value), spread: form.spread.checked, ipv4_fallback: form.ipv4_fallback.checked,
-        scope: form.scope.value,
+        scope: form.scope.value, max_conns: Number(form.max_conns.value) || 0, rate_kbps: Number(form.rate_kbps.value) || 0,
+        relay_node_id: form.relay_node_id ? Number(form.relay_node_id.value) || 0 : 0,
       };
       try {
         const r = await api('POST', '/api/proxies/bulk', body);
@@ -939,6 +1009,9 @@ function openExport() {
         <option value="host:port@user:pass">host:port@user:pass</option>
         <option value="csv">CSV</option><option value="json">JSON</option></select></label>
       <label class="field">${t('scheme')}<select id="xs"><option value="http">http</option><option value="socks5">socks5</option></select></label>
+      <label class="field">${t('connect_via')}<select id="xv">
+        <option value="">${t('via_lan')}</option><option value="relay">${t('via_relay')}</option>
+        <option value="wan">${t('via_wan')}</option><option value="tailscale">${t('via_tailscale')}</option></select></label>
       <label class="field">${t('host_override')}<input id="xh" placeholder="${t('auto')}"></label>
     </div>
     <p class="hint">${t('export_hint')}</p>
@@ -961,11 +1034,12 @@ function openExport() {
       store('v6p_export_preset', $('#xp', m).value);
       store('v6p_export_fmt', $('#xf', m).value);
       try {
-        const r = await api('POST', '/api/proxies/export', { ids, format: $('#xf', m).value, scheme: $('#xs', m).value, host: $('#xh', m).value });
+        const r = await api('POST', '/api/proxies/export', { ids, format: $('#xf', m).value, scheme: $('#xs', m).value, host: $('#xh', m).value, via: $('#xv', m).value });
         $('#xt', m).value = r.text;
+        $('#xnote', m).textContent = (EXPORT_PRESETS[$('#xp', m).value].format ? t('preset_note') + ' ' : '') + (r.skipped ? t('via_skipped', { n: r.skipped }) : '');
       } catch (e) { $('#xt', m).value = e.message; }
     };
-    $('#xf', m).onchange = load; $('#xs', m).onchange = load; $('#xh', m).oninput = load;
+    $('#xf', m).onchange = load; $('#xs', m).onchange = load; $('#xh', m).oninput = load; $('#xv', m).onchange = load;
     $('#xc', m).onclick = () => copyText($('#xt', m).value);
     $('#xd', m).onclick = () => {
       const f = $('#xf', m).value; const ext = f === 'csv' ? 'csv' : f === 'json' ? 'json' : 'txt';
@@ -1017,6 +1091,26 @@ function vpnSummary(n) {
   return `${names} ${state}`;
 }
 
+function sharingSummary(n) {
+  const out = [];
+  const u = n.upnp_state;
+  if (n.upnp) {
+    const cls = !u || u.state === 'pending' ? 'neutral' : u.state === 'ok' ? 'ok' : u.state === 'cgnat' ? 'warn' : 'error';
+    const txt = !u || u.state === 'pending' ? t('upnp_pending') : u.state === 'ok' ? t('upnp_ok', { n: u.mapped, ip: u.external_ip || '?' }) : t('upnp_' + u.state);
+    out.push(`<span class="badge ${cls}" title="${esc((u && u.error) || '')}">UPnP: ${esc(txt)}</span>`);
+  }
+  if (n.relay_port) {
+    const c = (n.relays || []).filter((r) => r.role === 'server' && r.connected).length;
+    out.push(`<span class="badge accent">${t('relay_server_on', { p: n.relay_port, n: c })}</span>`);
+  }
+  for (const r of (n.relays || []).filter((x) => x.role === 'client')) {
+    const rn = (state.nodes || []).find((x) => x.id === r.peer_node_id);
+    out.push(`<span class="badge ${r.connected ? 'ok' : 'error'}" title="${esc(r.error || '')}">${t('relay_to', { n: esc(rn ? rn.name : r.peer) })}: ${r.connected ? t('connected') : t('disconnected')}</span>`);
+  }
+  if (n.net.tailscale_ip) out.push(`<span class="badge neutral">Tailscale ${esc(n.net.tailscale_ip)}</span>`);
+  return out.join(' ') || `<span class="muted">${t('sharing_lan_only')}</span>`;
+}
+
 function nodeCard(n) {
   const ifaces = (n.net.interfaces || []);
   const pools = (n.pools || []).map((p) => `<tr data-pool="${p.id}"><td>${esc(p.name)}${p.auto ? ` <span class="badge offline">auto</span>` : ''}</td>
@@ -1049,6 +1143,7 @@ function nodeCard(n) {
         <div>${t('ipv6_iface')}</div><div>${esc(n.net.primary_iface || '—')}${n.net.gateway ? ` <span class="muted small">${t('router')} ${esc(n.net.gateway)}</span>` : ''} ${ifaces.map((i) => `<div class="mono small">${esc(i.name)}: ${esc((i.prefixes || []).join(', ') || '—')}</div>`).join('')}</div>
         <div>${t('ipv4')}</div><div class="mono small">LAN ${esc((n.net.lan_v4 || []).join(', ') || '—')} · WAN ${esc(n.net.public_v4 || '—')}</div>
         <div>${t('vpn')}</div><div>${vpnSummary(n)}</div>
+        <div>${t('sharing')}</div><div>${sharingSummary(n)}</div>
         <div>${t('proxies')}</div><div>${n.proxies}</div>
       </div>
       <div>
@@ -1071,6 +1166,19 @@ function nodeCard(n) {
         <div class="hint">${t('bypass_hint')}</div><div class="hint">${t('dns_hint')}</div></div>
       <label class="field" style="grid-column:1/-1">${t('allow_cidrs')}<textarea name="allow_cidrs" rows="3">${esc(n.allow_cidrs)}</textarea>
         <span class="hint">${t('allow_hint')}</span></label>
+      <div><button class="primary" type="submit">${icon('check', 'sm')} ${t('save')}</button></div>
+    </form></div></details>
+    <details class="section" data-keep="share-${n.id}"><summary><b>${icon('globe', 'sm')} ${t('sharing_internet')}</b> <span class="muted small">— ${t('sharing_sub')}</span></summary>
+    <div style="margin-top:14px">
+    <form class="stack" data-form="share">
+      <div class="choice">
+        <label><input type="checkbox" name="upnp" ${n.upnp ? 'checked' : ''}><span><b>${t('upnp')}</b><span class="small muted">${t('upnp_hint')}</span></span></label>
+        <label><input type="checkbox" name="relay_on" ${n.relay_port ? 'checked' : ''}><span><b>${t('relay_server')}</b><span class="small muted">${t('relay_server_hint')}</span></span></label>
+      </div>
+      <label class="field" data-relayport ${n.relay_port ? '' : 'hidden'}>${t('relay_port')}<input name="relay_port" type="number" min="1024" max="65535" value="${n.relay_port || 7443}">
+        <span class="hint">${t('relay_port_hint')}</span></label>
+      ${n.relay_fp ? `<div class="small muted">${t('relay_fp')}: <span class="mono">${esc(n.relay_fp.slice(0, 16))}…</span></div>` : ''}
+      <div class="hint">${t('sharing_howto')}</div>
       <div><button class="primary" type="submit">${icon('check', 'sm')} ${t('save')}</button></div>
     </form></div></details>
     <details class="section" data-keep="pool-${n.id}"><summary><b>${icon('globe', 'sm')} ${t('pools')}</b> <span class="muted small">— ${(n.pools || []).map((p) => esc(p.cidr || t('pool_waiting'))).join(', ')}</span></summary>
@@ -1136,6 +1244,15 @@ function bindNodeCard(card, n) {
       toast(t('saved')); renderPage();
     }
     catch (err) { toast(err.message, true); }
+  };
+  const fs = $('[data-form=share]', card);
+  fs.relay_on.onchange = () => { $('[data-relayport]', card).hidden = !fs.relay_on.checked; };
+  fs.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('PUT', '/api/nodes/' + n.id, { upnp: fs.upnp.checked, relay_port: fs.relay_on.checked ? Number(fs.relay_port.value) || 7443 : 0 });
+      toast(t('saved')); renderPage();
+    } catch (err) { toast(err.message, true); }
   };
   $('[data-form=pool]', card).onsubmit = async (e) => {
     e.preventDefault(); const f = e.target;
@@ -1272,6 +1389,12 @@ async function pageSettings() {
       <div class="row"><a class="btn primary" href="/api/backup" download>${t('download_backup')}</a>
         <label class="btn">${t('restore')}<input type="file" id="restoreFile" accept=".json,application/json" hidden></label></div></div>
 
+    <div class="card"><h2>${t('api_tokens')}</h2>
+      <p class="small muted" style="margin-top:0">${t('api_tokens_hint')}</p>
+      <div id="tokList"><div class="skel"></div></div>
+      <form class="row" id="tokf" style="margin-top:10px"><input name="name" placeholder="${t('token_name_ph')}" style="flex:1;min-width:160px">
+        <button type="submit">${icon('plus', 'sm')} ${t('create_token')}</button></form></div>
+
     <form class="card" id="pf"><h2>${t('change_password')}</h2>
       <label class="field">${t('current_password')}<input name="current" type="password" autocomplete="current-password" required></label>
       <label class="field" style="margin-top:8px">${t('new_password')}<input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
@@ -1327,6 +1450,31 @@ async function pageSettings() {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || r.statusText);
       toast(t('restored')); setTimeout(() => location.reload(), 1200);
+    } catch (err) { toast(err.message, true); }
+  };
+  const loadTokens = async () => {
+    const ts = await api('GET', '/api/tokens').catch(() => []);
+    $('#tokList').innerHTML = ts.length ? ts.map((x) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:nowrap">
+      <div style="flex:1;min-width:0"><b>${esc(x.name)}</b><div class="small muted"><span class="mono">${esc(x.prefix)}…</span> · ${t('token_used')} ${x.last_used ? ago(x.last_used) : t('never')}</div></div>
+      <button class="small danger icon-btn" data-deltok="${x.id}" title="${t('act_delete')}">${icon('trash', 'sm')}</button></div>`).join('') : `<p class="small muted">${t('no_tokens')}</p>`;
+    for (const b of $$('[data-deltok]')) b.onclick = async () => {
+      if (!(await confirmBox(t('confirm_delete_token'), { danger: true, ok: t('act_delete') }))) return;
+      try { await api('DELETE', '/api/tokens/' + b.dataset.deltok); loadTokens(); } catch (err) { toast(err.message, true); }
+    };
+  };
+  loadTokens();
+  $('#tokf').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api('POST', '/api/tokens', { name: e.target.name.value });
+      e.target.reset(); loadTokens();
+      modal(`<h2>${t('token_created')}</h2><p class="small">${t('token_once')}</p>
+        <div class="copy-line"><code>${esc(r.token)}</code><button class="small" id="tc">${icon('copy', 'sm')}</button></div>
+        <p class="hint">${t('token_usage')}</p><pre class="mono small" style="white-space:pre-wrap">curl -H "Authorization: Bearer ${esc(r.token)}" ${esc(location.origin)}/api/proxies</pre>
+        <div class="actions"><button class="primary" id="cl">${t('close')}</button></div>`, (m) => {
+        $('#tc', m).onclick = () => copyText(r.token);
+        $('#cl', m).onclick = closeModal;
+      });
     } catch (err) { toast(err.message, true); }
   };
   $('#pf').onsubmit = async (e) => {

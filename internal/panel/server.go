@@ -103,6 +103,9 @@ func (s *Server) Handler() http.Handler {
 	a("GET /api/nodes/{id}/logs", s.handleNodeLogs)
 	a("GET /api/proxies/{id}/checks", s.handleProxyChecks)
 	a("POST /api/checks/run", s.handleCheckNow)
+	a("GET /api/tokens", s.handleListTokens)
+	a("POST /api/tokens", s.handleCreateToken)
+	a("DELETE /api/tokens/{id}", s.handleDeleteToken)
 
 	// static UI
 	mux.Handle("GET /", http.FileServerFS(s.WebFS))

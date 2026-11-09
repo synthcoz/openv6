@@ -3,7 +3,7 @@
 // works as long as it can reach the panel.
 package proto
 
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 // SyncRequest is sent by an agent every few seconds.
 type SyncRequest struct {
@@ -17,6 +17,9 @@ type SyncRequest struct {
 	Errors       []string             `json:"errors"`
 	Checks       []SystemCheck        `json:"checks"` // preflight / health of the machine
 	StartedAt    int64                `json:"started_at"`
+	RelayFP      string               `json:"relay_fp,omitempty"` // relay server certificate fingerprint
+	Relays       []RelayState         `json:"relays,omitempty"`
+	UPnP         *UPnPState           `json:"upnp,omitempty"`
 	Logs         []string             `json:"logs"` // new log lines since the last successful sync
 	Arch         string               `json:"arch"`
 }
@@ -46,6 +49,7 @@ type NetState struct {
 	BypassError  string   `json:"bypass_error,omitempty"`
 	PublicV4     string   `json:"public_v4,omitempty"`
 	LANv4        []string `json:"lan_v4"`
+	TailscaleIP  string   `json:"tailscale_ip,omitempty"`
 }
 
 // VPN is a tunnel interface detected on the node.
@@ -99,6 +103,11 @@ type SyncResponse struct {
 	Firewall   bool        `json:"firewall"` // manage ufw rules for proxy ports
 	Bypass     bool        `json:"bypass"`   // keep proxy traffic on the physical NIC when a VPN is active
 	DNS        []string    `json:"dns"`      // resolvers used by proxies; empty = system resolver
+	UPnP       bool        `json:"upnp"`     // map Internet-scoped proxy ports on the router
+	// RelayServer is set on a public node that relays proxies of NAT'ed nodes.
+	RelayServer *RelayServerSpec `json:"relay_server,omitempty"`
+	// RelayClients are public nodes this node publishes proxies through.
+	RelayClients []RelayClientSpec `json:"relay_clients,omitempty"`
 }
 
 type PoolSpec struct {
@@ -118,6 +127,47 @@ type ProxySpec struct {
 	PoolID       int64  `json:"pool_id"`
 	IPv4Fallback bool   `json:"ipv4_fallback"`
 	Scope        string `json:"scope"` // local | lan | any
+	MaxConns     int    `json:"max_conns,omitempty"`
+	RateKBps     int    `json:"rate_kbps,omitempty"`
+}
+
+type RelayServerSpec struct {
+	Port    int         `json:"port"`
+	Clients []RelayAuth `json:"clients"`
+}
+
+type RelayAuth struct {
+	NodeID int64      `json:"node_id"`
+	Token  string     `json:"token"`
+	Maps   []RelayMap `json:"maps"`
+}
+
+type RelayMap struct {
+	Public int `json:"public"` // port opened on the relay node
+	Target int `json:"target"` // proxy port on the client node
+}
+
+type RelayClientSpec struct {
+	ServerNodeID int64  `json:"server_node_id"`
+	Addr         string `json:"addr"` // host:port of the relay control listener
+	Token        string `json:"token"`
+	Fingerprint  string `json:"fingerprint"`
+	Ports        []int  `json:"ports"` // proxy ports the relay may reach
+}
+
+type RelayState struct {
+	Role       string `json:"role"` // client | server
+	PeerNodeID int64  `json:"peer_node_id"`
+	Peer       string `json:"peer"`
+	Connected  bool   `json:"connected"`
+	Error      string `json:"error,omitempty"`
+}
+
+type UPnPState struct {
+	State      string `json:"state"` // ok | none | cgnat | error
+	ExternalIP string `json:"external_ip,omitempty"`
+	Mapped     int    `json:"mapped"`
+	Error      string `json:"error,omitempty"`
 }
 
 type Command struct {

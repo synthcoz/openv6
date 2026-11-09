@@ -241,3 +241,39 @@ func TestClassify(t *testing.T) {
 		t.Fatalf("listen on privileged port: %s", c)
 	}
 }
+
+func TestLimits(t *testing.T) {
+	// 64 KiB/s cap: 256 KiB must take roughly 3s (burst 64 KiB)
+	big := strings.Repeat("x", 256*1024)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, big) }))
+	defer ts.Close()
+	_, addr := setup(t, Config{ID: 20, Protocol: "both", User: "a", Pass: "b", RateKBps: 64, MaxConns: 1})
+	host := strings.TrimPrefix(ts.URL, "http://")
+	start := time.Now()
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(c, "CONNECT %s HTTP/1.1\r\nHost: %s\r\nProxy-Authorization: Basic %s\r\n\r\n", host, host, base64.StdEncoding.EncodeToString([]byte("a:b")))
+	br := bufio.NewReader(c)
+	br.ReadString('\n')
+	br.ReadString('\n')
+	// a second connection while the first is open exceeds MaxConns=1
+	c2, _ := net.Dial("tcp", addr)
+	c2.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c2.Read(make([]byte, 1)); err == nil {
+		t.Fatal("second connection should be closed")
+	}
+	c2.Close()
+	fmt.Fprintf(c, "GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", host)
+	b, _ := io.ReadAll(br)
+	el := time.Since(start)
+	c.Close()
+	if len(b) < 256*1024 {
+		t.Fatalf("short body %d", len(b))
+	}
+	if el < 2500*time.Millisecond {
+		t.Fatalf("rate limit not applied: %v", el)
+	}
+	t.Logf("256 KiB at 64 KiB/s took %v", el)
+}

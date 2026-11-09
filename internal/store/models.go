@@ -106,6 +106,8 @@ type Node struct {
 	Bypass     bool   `json:"bypass"`
 	DNS        string `json:"dns"` // "" system | comma separated resolver IPs
 	Paused     bool   `json:"paused"`
+	RelayPort  int    `json:"relay_port"` // >0: this public node relays proxies of other nodes
+	UPnP       bool   `json:"upnp"`
 	LastSeen   int64  `json:"last_seen"`
 	StateJSON  string `json:"-"`
 	CreatedAt  int64  `json:"created_at"`
@@ -113,15 +115,15 @@ type Node struct {
 
 const DefaultAllowCIDRs = "127.0.0.0/8\n10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16\n100.64.0.0/10\n::1/128\nfc00::/7\nfe80::/10"
 
-const nodeCols = `id,name,token,entry_host,iface,allow_cidrs,is_local,last_seen,state_json,created_at,bypass,dns,paused`
+const nodeCols = `id,name,token,entry_host,iface,allow_cidrs,is_local,last_seen,state_json,created_at,bypass,dns,paused,relay_port,upnp`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	var n Node
-	var local, bypass, paused int
-	if err := r.Scan(&n.ID, &n.Name, &n.Token, &n.EntryHost, &n.Iface, &n.AllowCIDRs, &local, &n.LastSeen, &n.StateJSON, &n.CreatedAt, &bypass, &n.DNS, &paused); err != nil {
+	var local, bypass, paused, upnp int
+	if err := r.Scan(&n.ID, &n.Name, &n.Token, &n.EntryHost, &n.Iface, &n.AllowCIDRs, &local, &n.LastSeen, &n.StateJSON, &n.CreatedAt, &bypass, &n.DNS, &paused, &n.RelayPort, &upnp); err != nil {
 		return nil, err
 	}
-	n.IsLocal, n.Bypass, n.Paused = local == 1, bypass == 1, paused == 1
+	n.IsLocal, n.Bypass, n.Paused, n.UPnP = local == 1, bypass == 1, paused == 1, upnp == 1
 	return &n, nil
 }
 
@@ -189,7 +191,7 @@ func (s *Store) ListNodes() ([]*Node, error) {
 }
 
 func (s *Store) UpdateNode(n *Node) error {
-	_, err := s.DB.Exec(`UPDATE nodes SET name=?,entry_host=?,iface=?,allow_cidrs=?,bypass=?,dns=? WHERE id=?`, n.Name, n.EntryHost, n.Iface, n.AllowCIDRs, b2i(n.Bypass), n.DNS, n.ID)
+	_, err := s.DB.Exec(`UPDATE nodes SET name=?,entry_host=?,iface=?,allow_cidrs=?,bypass=?,dns=?,relay_port=?,upnp=? WHERE id=?`, n.Name, n.EntryHost, n.Iface, n.AllowCIDRs, b2i(n.Bypass), n.DNS, n.RelayPort, b2i(n.UPnP), n.ID)
 	return err
 }
 
@@ -319,9 +321,13 @@ type Proxy struct {
 	Label        string `json:"label"`
 	Scope        string `json:"scope"` // local | lan | any
 	CheckCode    string `json:"check_code"`
+	MaxConns     int    `json:"max_conns"`     // 0 = unlimited
+	RateKBps     int    `json:"rate_kbps"`     // per direction, 0 = unlimited
+	RelayNodeID  int64  `json:"relay_node_id"` // publish through this public node (0 = off)
+	RelayPort    int    `json:"relay_port"`    // port opened on the relay node
 }
 
-const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code`
+const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port`
 
 func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var p Proxy
@@ -329,7 +335,7 @@ func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var subnet int64
 	if err := r.Scan(&p.ID, &p.NodeID, &p.PoolID, &p.Port, &p.Protocol, &p.AuthUser, &p.AuthPass, &subnet, &p.Suffix, &fb, &en,
 		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult,
-		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode); err != nil {
+		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort); err != nil {
 		return nil, err
 	}
 	p.Subnet = uint64(subnet)
@@ -345,8 +351,9 @@ func b2i(b bool) int {
 }
 
 type ProxyFilter struct {
-	NodeID int64
-	IDs    []int64
+	NodeID      int64
+	IDs         []int64
+	RelayNodeID int64
 }
 
 func (s *Store) ListProxies(f ProxyFilter) ([]*Proxy, error) {
@@ -356,6 +363,10 @@ func (s *Store) ListProxies(f ProxyFilter) ([]*Proxy, error) {
 	if f.NodeID > 0 {
 		where = append(where, "node_id=?")
 		args = append(args, f.NodeID)
+	}
+	if f.RelayNodeID > 0 {
+		where = append(where, "relay_node_id=?")
+		args = append(args, f.RelayNodeID)
 	}
 	if len(f.IDs) > 0 {
 		ph := strings.TrimSuffix(strings.Repeat("?,", len(f.IDs)), ",")
@@ -417,9 +428,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 		if p.Scope == "" {
 			p.Scope = "lan"
 		}
-		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope)
-			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
-			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope)
+		res, err := tx.Exec(`INSERT INTO proxies(node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,label,scope,max_conns,rate_kbps,relay_node_id,relay_port)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, p.NodeID, p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix,
+			b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.CreatedAt, p.Label, p.Scope, p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort)
 		if err != nil {
 			return err
 		}
@@ -429,8 +440,9 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 }
 
 func (s *Store) UpdateProxy(p *Proxy) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=? WHERE id=?`,
-		p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.Scope, p.ID)
+	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=? WHERE id=?`,
+		p.PoolID, p.Port, p.Protocol, p.AuthUser, p.AuthPass, int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.Scope,
+		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.ID)
 	return err
 }
 
@@ -538,4 +550,64 @@ func (s *Store) ResetStats(ids []int64) error {
 		}
 	}
 	return nil
+}
+
+// ---- API tokens ----
+
+type APIToken struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Prefix    string `json:"prefix"`
+	CreatedAt int64  `json:"created_at"`
+	LastUsed  int64  `json:"last_used"`
+}
+
+// CreateAPIToken returns the plain token; only its hash is stored.
+func (s *Store) CreateAPIToken(name string) (string, *APIToken, error) {
+	tok := "ov6_" + RandomToken(24)
+	t := &APIToken{Name: name, Prefix: tok[:10], CreatedAt: Now()}
+	res, err := s.DB.Exec(`INSERT INTO api_tokens(name,token_hash,prefix,created_at) VALUES(?,?,?,?)`, name, hashToken(tok), t.Prefix, t.CreatedAt)
+	if err != nil {
+		return "", nil, err
+	}
+	t.ID, _ = res.LastInsertId()
+	return tok, t, nil
+}
+
+func (s *Store) ListAPITokens() ([]*APIToken, error) {
+	rows, err := s.DB.Query(`SELECT id,name,prefix,created_at,last_used FROM api_tokens ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*APIToken{}
+	for rows.Next() {
+		var t APIToken
+		if err := rows.Scan(&t.ID, &t.Name, &t.Prefix, &t.CreatedAt, &t.LastUsed); err != nil {
+			return nil, err
+		}
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteAPIToken(id int64) error {
+	_, err := s.DB.Exec(`DELETE FROM api_tokens WHERE id=?`, id)
+	return err
+}
+
+// CheckAPIToken reports whether tok is a valid API token and marks it used.
+func (s *Store) CheckAPIToken(tok string) bool {
+	if !strings.HasPrefix(tok, "ov6_") {
+		return false
+	}
+	h := hashToken(tok)
+	var id, last int64
+	if err := s.DB.QueryRow(`SELECT id,last_used FROM api_tokens WHERE token_hash=?`, h).Scan(&id, &last); err != nil {
+		return false
+	}
+	if Now()-last > 60 {
+		_, _ = s.DB.Exec(`UPDATE api_tokens SET last_used=? WHERE id=?`, Now(), id)
+	}
+	return true
 }

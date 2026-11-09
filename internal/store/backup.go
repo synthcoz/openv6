@@ -7,7 +7,7 @@ import (
 )
 
 // Tables included in a backup, in insert order (foreign keys).
-var backupTables = []string{"settings", "users", "nodes", "pools", "proxies"}
+var backupTables = []string{"settings", "users", "nodes", "pools", "proxies", "api_tokens"}
 
 type Backup struct {
 	Format     int                         `json:"format"`
