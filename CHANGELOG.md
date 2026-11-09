@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.0 — giao diện mới
+
+- **Bố cục mới:**
+  - thanh bên có icon và số đếm;
+  - thanh trên cùng có **ô trạng thái hệ thống**, nút chuyển **VI/EN** và nút **Sáng / Theo hệ thống / Tối**;
+  - trên điện thoại, thanh bên chuyển thành thanh điều hướng ở cuối màn hình.
+- **Tổng quan:** một thẻ lớn tóm tắt tình trạng bằng một câu, kèm việc cần làm; 4 thẻ số liệu; danh sách dải IPv6; dòng thời gian sự kiện.
+- **Trình hướng dẫn lần đầu** 4 bước: kiểm tra mạng → chọn ai được dùng (LAN / chỉ máy này / Internet) → tạo proxy → xuất đúng định dạng anti-detect.
+- **Trang Proxy:**
+  - bộ lọc trạng thái dạng chip có số đếm;
+  - bấm một lần để sao chép theo định dạng anti-detect dùng gần nhất;
+  - hiện cờ quốc gia, độ trễ và nhà mạng;
+  - **bảng chi tiết** trượt ra từ bên phải, có 3 tab: Tổng quan (sao chép theo nhiều định dạng), Kiểm tra (biểu đồ độ trễ và lịch sử), Sửa;
+  - **thanh thao tác hàng loạt** nổi ở cuối màn hình;
+  - xoá có **Hoàn tác**;
+  - trên điện thoại, mỗi proxy hiện thành một thẻ.
+- **Trang Máy chủ:** 3 nút chính, các thao tác khác gom trong menu "⋯"; thông tin và tự chẩn đoán chia hai cột; cài đặt và dải IPv6 thu gọn được.
+- Phím tắt: `/` tìm, `N` tạo proxy, `Esc` đóng, `G` rồi `D/P/N/S/E` để chuyển trang.
+- Bộ icon thống nhất; khung tải trước khi có dữ liệu; hiệu ứng mở/đóng nhẹ; màn hình trống có hướng dẫn; hộp xác nhận cho thao tác nguy hiểm.
+
 ## v0.4.1
 
 **Windows: chạy chắc chắn, không hiện cửa sổ terminal**
