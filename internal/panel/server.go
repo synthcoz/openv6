@@ -39,7 +39,9 @@ type Server struct {
 	OnShutdown func()
 	// TrayToken authorizes the local tray app (see tray.go).
 	TrayToken string
-	magic     map[string]time.Time // one-time login links from the tray
+	// ForcePro unlocks Pro features without a license (tests, development).
+	ForcePro bool
+	magic    map[string]time.Time // one-time login links from the tray
 }
 
 func New(st *store.Store, web fs.FS, dataDir string, port int, exe string) *Server {
@@ -106,6 +108,9 @@ func (s *Server) Handler() http.Handler {
 	a("GET /api/nodes/{id}/logs", s.handleNodeLogs)
 	a("GET /api/proxies/{id}/checks", s.handleProxyChecks)
 	a("POST /api/checks/run", s.handleCheckNow)
+	a("GET /api/license", s.handleGetLicense)
+	a("POST /api/license", s.handleActivateLicense)
+	a("DELETE /api/license", s.handleDeactivateLicense)
 	a("GET /api/tokens", s.handleListTokens)
 	a("POST /api/tokens", s.handleCreateToken)
 	a("DELETE /api/tokens/{id}", s.handleDeleteToken)

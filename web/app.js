@@ -29,12 +29,21 @@ async function api(method, path, body) {
   let data = null;
   try { data = await r.json(); } catch (e) { /* empty */ }
   if (r.status === 401 && path !== '/api/login') { state.user = null; renderLogin(false); throw new Error(t('login_required')); }
-  if (!r.ok) throw new Error((data && data.error) || r.statusText);
+  if (!r.ok) {
+    const err = new Error((data && data.error) || r.statusText);
+    err.code = data && data.code;
+    if (err.code === 'license_required') {
+      toast(t('pro_needed'), { err: true, ms: 7000, action: { label: t('upgrade'), fn: () => { location.hash = 'settings'; setTimeout(() => { const c = $('#licCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 400); } } });
+      err.message = t('pro_needed_detail'); err.shown = true; state.licMsg = err.message; // toast() skips repeating it
+    }
+    throw err;
+  }
   return data;
 }
 
 // toast(msg) · toast(msg, true) for errors · toast(msg, {action: {label, fn}, ms})
 function toast(msg, opt) {
+  if (!msg || (msg === state.licMsg && opt === true)) return;
   if (opt === true) opt = { err: true };
   opt = opt || {};
   let box = $('#toasts');
@@ -85,7 +94,7 @@ function flag(cc) {
   if (!cc || cc.length !== 2) return '';
   return String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
 }
-const DOT = { ok: 'ok', error: 'error', expired: 'error', pending: 'pending', warn: 'warn' };
+const DOT = { ok: 'ok', error: 'error', expired: 'error', pending: 'pending', warn: 'warn', license: 'warn' };
 const badge = (st) => `<span class="badge ${esc(st)}">${esc(t('st_' + st))}</span>`;
 const statusDot = (st) => `<span class="status"><span class="dot ${DOT[st] || ''}"></span>${esc(t('st_' + st))}</span>`;
 
@@ -162,6 +171,9 @@ function confirmBox(msg, opt = {}) {
 }
 
 // ---------- login / setup ----------
+function isPro() { return !!(state.summary && state.summary.pro); }
+function proTag() { return isPro() ? '' : ' · Pro'; }
+
 function setHTML(el, html) {
   if (!el || el._h === html) return false;
   el._h = html; el.innerHTML = html; return true;
@@ -227,7 +239,8 @@ function renderShell() {
         <div class="acct">
           <button class="avatar" id="acctBtn" aria-haspopup="true" aria-expanded="false" title="${esc(state.user ? state.user.username : '')}">${esc((state.user ? state.user.username : '?').slice(0, 1).toUpperCase())}</button>
           <div class="menu" id="acctMenu" hidden>
-            <div class="menu-head"><b>${esc(state.user ? state.user.username : '')}</b><span class="muted small" id="verFoot">openv6</span></div>
+            <div class="menu-head"><b>${esc(state.user ? state.user.username : '')}</b><span class="muted small" id="verFoot">openv6</span>
+              <a href="#settings" class="plan" id="planBadge"></a></div>
             <div class="menu-row"><span>${t('language')}</span>${langSeg('topLang')}</div>
             <div class="menu-row"><span>${t('appearance')}</span><div class="seg" id="themeSeg">
               <button data-th="light" class="${th === 'light' ? 'on' : ''}" title="${t('theme_light')}">${icon('sun', 'sm')}</button>
@@ -277,6 +290,7 @@ async function refreshSummary() {
     const c1 = $('[data-count=proxies]'); if (c1) c1.textContent = d.proxies || '';
     const c2 = $('[data-count=nodes]'); if (c2) c2.textContent = d.nodes || '';
     const v = $('#verFoot'); if (v) v.textContent = 'openv6 v' + d.version;
+    const pb = $('#planBadge'); if (pb) { pb.className = 'plan ' + (d.pro ? 'pro' : 'free'); pb.textContent = d.pro ? 'Pro' : t('plan_free_upgrade'); }
   } catch (e) { /* ignore */ }
 }
 setInterval(() => { if (state.user && !document.hidden) refreshSummary(); }, 10000);
@@ -509,7 +523,7 @@ function filteredProxies() {
 }
 
 // ---------- proxies ----------
-const STATUS_FILTERS = ['', 'ok', 'error', 'pending', 'offline', 'paused', 'disabled', 'expired'];
+const STATUS_FILTERS = ['', 'ok', 'error', 'pending', 'offline', 'paused', 'disabled', 'expired', 'license'];
 
 async function pageProxies() {
   await loadProxies();
@@ -785,8 +799,8 @@ async function bulkAction(action, idsIn) {
 function chooseLimits() {
   return new Promise((resolve) => {
     modal(`<h2>${t('act_set_limits')}</h2>
-      <div class="form-grid"><label class="field">${t('max_conns')}<input id="lc" type="number" min="0" value="0"></label>
-      <label class="field">${t('rate_kbps')}<input id="lr" type="number" min="0" value="0"></label></div>
+      <div class="form-grid"><label class="field">${t('max_conns')}${proTag()}<input id="lc" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}${proTag()}<input id="lr" type="number" min="0" value="0"></label></div>
       <p class="hint">${t('limits_hint')}</p>
       <div class="actions"><button id="no">${t('cancel')}</button><button class="primary" id="yes">${t('ok')}</button></div>`, (m) => {
       $('#no', m).onclick = () => { closeModal(); resolve(null); };
@@ -870,9 +884,9 @@ async function openProxyDrawer(id, tab = 'info') {
           <label class="field">${t('scope')}${scopeSelect('scope', p.scope)}</label>
           <label class="field">${t('tag')}<input name="tag" value="${esc(p.tag)}"></label>
           <label class="field">${t('expires')}<input name="expires" type="date" value="${p.expires_at ? new Date(p.expires_at * 1000).toISOString().slice(0, 10) : ''}"></label>
-          <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
-          <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
-          <label class="field">${t('relay')}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
+          <label class="field">${t('max_conns')}${proTag()}<input name="max_conns" type="number" min="0" value="${p.max_conns || 0}"></label>
+          <label class="field">${t('rate_kbps')}${proTag()}<input name="rate_kbps" type="number" min="0" value="${p.rate_kbps || 0}"></label>
+          <label class="field">${t('relay')}${proTag()}${relaySelect('relay_node_id', p.relay_node_id, p.node_id)}</label>
           <label class="field">${t('relay_public_port')}<input name="relay_port" type="number" min="0" max="65535" value="${p.relay_port || 0}"></label>
         </div>
         <p class="hint">${t('limits_hint')} ${t('relay_edit_hint')}</p>
@@ -963,7 +977,7 @@ function openCreate() {
 
       <label class="field">${t('pool')}<select name="pool_id"></select></label>
       <div class="field" style="grid-column:1/-1">${t('net_source')}<div data-srcbox></div></div>
-      <label class="field">${t('count')}<input name="count" type="number" min="1" max="5000" value="10" required></label>
+      <label class="field">${t('count')}<input name="count" type="number" min="1" max="5000" value="${isPro() ? 10 : Math.max(1, 3 - ((state.summary && state.summary.proxies) || 0))}" required></label>
       <label class="field">${t('start_port')}<input name="start_port" type="number" min="1024" max="65535" value="10001"></label>
       <label class="field">${t('protocol')}<select name="protocol"><option value="both">HTTP + SOCKS5</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
       <label class="field">${t('auth')}<select name="auth"><option value="random">${t('authopt_random')}</option><option value="none">${t('authopt_none')}</option><option value="fixed">${t('authopt_fixed')}</option></select></label>
@@ -974,8 +988,8 @@ function openCreate() {
       <label class="field">${t('tag')}<input name="tag" placeholder="facebook, tiktok…"></label>
       <label class="field">${t('note')}<input name="note"></label>
       <label class="field">${t('expires_days')}<input name="expires_days" type="number" min="0" value="0"></label>
-      <label class="field">${t('max_conns')}<input name="max_conns" type="number" min="0" value="0"></label>
-      <label class="field">${t('rate_kbps')}<input name="rate_kbps" type="number" min="0" value="0"></label>
+      <label class="field">${t('max_conns')}${proTag()}<input name="max_conns" type="number" min="0" value="0"></label>
+      <label class="field">${t('rate_kbps')}${proTag()}<input name="rate_kbps" type="number" min="0" value="0"></label>
       <label class="field" id="relayWrap">${t('relay')}<span data-relay></span></label>
     </div>
     <p class="hint">${t('limits_hint')}</p>
@@ -1409,6 +1423,8 @@ async function pageSettings() {
   $('#page').innerHTML = `<h1>${t('nav_settings')}</h1>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
 
+    <div class="card" id="licCard"><h2>${t('license')}</h2><div id="licBox"><div class="skel"></div></div></div>
+
     <div class="card" id="upd"><h2>${t('updates')}</h2>
       <div class="kv"><div>${t('current_version')}</div><div>v${esc(u.current || '')}</div>
         <div>${t('latest_version')}</div><div>${u.latest ? esc(u.latest) : (u.error ? `<span class="muted">${esc(u.error)}</span>` : '—')}</div></div>
@@ -1511,6 +1527,41 @@ async function pageSettings() {
       toast(t('restored')); setTimeout(() => location.reload(), 1200);
     } catch (err) { toast(err.message, true); }
   };
+  const loadLicense = async () => {
+    const l = await api('GET', '/api/license').catch(() => null);
+    if (!l) return;
+    const box = $('#licBox');
+    if (l.pro) {
+      box.innerHTML = `<div class="row" style="gap:10px"><span class="plan pro">Pro</span><b>${t('lic_active', { n: l.machines || 1 })}</b></div>
+        <div class="kv small" style="margin-top:12px">
+          <div>${t('lic_key')}</div><div class="mono">${esc(l.display_key || '—')}</div>
+          ${l.email ? `<div>Email</div><div>${esc(l.email)}</div>` : ''}
+          <div>${t('lic_machine')}</div><div>${esc(l.machine)}</div>
+          <div>${t('lic_checked')}</div><div>${l.validated_at ? fmtTime(l.validated_at) : '—'}</div></div>
+        ${l.error ? alertBox('warn', esc(t('lic_offline', { d: l.grace_days })) + ` <span class="muted">(${esc(l.error)})</span>`) : ''}
+        <p class="hint">${t('lic_move_hint')}</p>
+        <div class="row"><button class="danger" id="licOff">${t('lic_deactivate')}</button></div>`;
+      $('#licOff').onclick = async (e) => {
+        if (!(await confirmBox(t('lic_deactivate_confirm'), { danger: true, ok: t('lic_deactivate') }))) return;
+        e.target.disabled = true;
+        try { await api('DELETE', '/api/license'); toast(t('lic_deactivated')); loadLicense(); refreshSummary(); } catch (err) { toast(err.message, true); e.target.disabled = false; }
+      };
+    } else {
+      box.innerHTML = `<div class="row" style="gap:10px"><span class="plan free">Free</span><span class="small muted">${t('lic_free_desc', { p: l.free_proxies })}</span></div>
+        ${l.status === 'invalid' ? alertBox('err', esc(t('lic_invalid')) + (l.error ? ` <span class="muted">(${esc(l.error)})</span>` : '')) : ''}
+        <ul class="pro-list small">${['pro_f_unlimited', 'pro_f_nodes', 'pro_f_share', 'pro_f_limits', 'pro_f_api', 'pro_f_alerts'].map((k) => `<li>${icon('check', 'sm')} ${t(k)}</li>`).join('')}</ul>
+        <form class="row" id="licForm" style="margin-top:12px"><input name="key" placeholder="OV6-XXXX-XXXX-XXXX" class="mono" style="flex:1;min-width:200px" autocomplete="off" required>
+          <button class="primary" type="submit">${icon('key', 'sm')} ${t('lic_activate')}</button></form>
+        <p class="hint">${t('lic_buy_hint')} <a href="${esc(l.buy_url)}" target="_blank" rel="noopener">${t('lic_buy')} →</a></p>`;
+      $('#licForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const b = $('button', e.target); b.disabled = true;
+        try { await api('POST', '/api/license', { key: e.target.key.value }); toast(t('lic_activated')); loadLicense(); refreshSummary(); }
+        catch (err) { toast(err.message, true); b.disabled = false; }
+      };
+    }
+  };
+  loadLicense();
   const loadTokens = async () => {
     const ts = await api('GET', '/api/tokens').catch(() => []);
     $('#tokList').innerHTML = ts.length ? ts.map((x) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:nowrap">

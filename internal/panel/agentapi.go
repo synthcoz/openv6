@@ -282,9 +282,21 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		return nil, err
 	}
 	now := time.Now().Unix()
+	pro := s.pro()
+	var freeIDs map[int64]bool
+	if !pro {
+		_, freeIDs = s.freeAllowed()
+		resp.UPnP = false
+	}
 	for _, p := range proxies {
 		if node.Paused || !p.Enabled || (p.ExpiresAt > 0 && p.ExpiresAt < now) {
 			continue
+		}
+		if !pro {
+			if !freeIDs[p.ID] {
+				continue
+			}
+			p.MaxConns, p.RateKBps, p.RelayNodeID = 0, 0, 0
 		}
 		spec := proto.ProxySpec{ID: p.ID, Port: p.Port, Protocol: p.Protocol, User: p.AuthUser, Pass: p.AuthPass,
 			PoolID: p.PoolID, IPv4Fallback: p.IPv4Fallback, Scope: p.Scope, MaxConns: p.MaxConns, RateKBps: p.RateKBps}
@@ -293,8 +305,10 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		}
 		resp.Proxies = append(resp.Proxies, spec)
 	}
-	if err := s.addRelaySpecs(node, resp, proxies); err != nil {
-		return nil, err
+	if pro {
+		if err := s.addRelaySpecs(node, resp, proxies); err != nil {
+			return nil, err
+		}
 	}
 	return resp, nil
 }

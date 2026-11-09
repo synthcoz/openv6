@@ -201,6 +201,9 @@ func (s *Server) handleListTokens(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
+	if s.needPro(w, "API tokens") {
+		return
+	}
 	if isAPIRequest(r) {
 		fail(w, 403, "API tokens cannot create API tokens")
 		return

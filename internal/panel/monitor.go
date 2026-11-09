@@ -40,6 +40,7 @@ func (s *Server) RunBackground(ctx context.Context) {
 		case <-t.C:
 		}
 		s.watchNodes()
+		go s.checkLicense(ctx)
 		s.scheduleHealthChecks()
 		s.autoBackup()
 		s.mon.mu.Lock()

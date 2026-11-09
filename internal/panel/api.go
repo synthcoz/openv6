@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"openv6/internal/license"
 	"openv6/internal/proto"
 	"openv6/internal/store"
 	"openv6/internal/v6"
@@ -135,6 +136,9 @@ func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "name required")
 		return
 	}
+	if nodes, _ := s.Store.ListNodes(); len(nodes) >= 1 && s.needPro(w, "More than one machine (node)") {
+		return
+	}
 	n, err := s.Store.CreateNode(strings.TrimSpace(b.Name), strings.TrimSpace(b.EntryHost), false)
 	if err != nil {
 		logErr(w, err)
@@ -175,6 +179,9 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Bypass != nil {
 		n.Bypass = *b.Bypass
+	}
+	if ((b.UPnP != nil && *b.UPnP) || (b.RelayPort != nil && *b.RelayPort > 0)) && s.needPro(w, "Sharing to the Internet (UPnP, relay)") {
+		return
 	}
 	if b.UPnP != nil {
 		n.UPnP = *b.UPnP
@@ -442,6 +449,10 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 	for _, p := range pools {
 		pm[p.ID] = p
 	}
+	var freeIDs map[int64]bool
+	if !s.pro() {
+		_, freeIDs = s.freeAllowed()
+	}
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
 	now := time.Now().Unix()
@@ -479,6 +490,8 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 		live := s.live[p.NodeID]
 		online := nm[p.NodeID] != nil && now-nm[p.NodeID].LastSeen <= onlineWindow
 		switch {
+		case freeIDs != nil && !freeIDs[p.ID]:
+			v.Status, v.Code = "license", "license_required"
 		case !p.Enabled:
 			v.Status = "disabled"
 		case nm[p.NodeID] != nil && nm[p.NodeID].Paused:
@@ -598,6 +611,18 @@ func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
 	if err := validLimits(b.MaxConns, b.RateKBps); err != nil {
 		fail(w, 400, err.Error())
 		return
+	}
+	if !s.pro() {
+		all, _ := s.Store.ListProxies(store.ProxyFilter{})
+		if len(all)+b.Count > license.FreeProxies && s.needPro(w, "More than "+itoa(license.FreeProxies)+" proxies") {
+			return
+		}
+		if (b.MaxConns > 0 || b.RateKBps > 0) && s.needPro(w, "Per-proxy limits") {
+			return
+		}
+		if b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
+			return
+		}
 	}
 	if b.RelayNodeID != 0 && b.Auth == "none" {
 		fail(w, 400, "proxies shared through a relay must have a username and password")
@@ -779,6 +804,12 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	if b.ExpiresAt != nil {
 		p.ExpiresAt = *b.ExpiresAt
 	}
+	if ((b.MaxConns != nil && *b.MaxConns > 0) || (b.RateKBps != nil && *b.RateKBps > 0)) && s.needPro(w, "Per-proxy limits") {
+		return
+	}
+	if b.RelayNodeID != nil && *b.RelayNodeID != 0 && s.needPro(w, "Sharing through a relay") {
+		return
+	}
 	if b.MaxConns != nil {
 		p.MaxConns = *b.MaxConns
 	}
@@ -883,6 +914,11 @@ func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
 	pm := map[int64]*store.Pool{}
 	for _, p := range pools {
 		pm[p.ID] = p
+	}
+	if (b.Action == "set_limits" && b.Value != "0,0") || (b.Action == "set_relay" && b.Value != "0") {
+		if s.needPro(w, "This action") {
+			return
+		}
 	}
 	var relayUsed map[int]bool
 	usedBy := map[int64]map[int]bool{}
@@ -1187,7 +1223,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"nodes": len(nodes), "nodes_online": online, "proxies": len(vs), "status": status,
 		"bytes_up": up, "bytes_down": down, "active": active, "subnets": len(subnets), "events": events,
-		"version": proto.Version, "failing": failing,
+		"version": proto.Version, "failing": failing, "pro": s.pro(),
 	})
 }
 
@@ -1233,6 +1269,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		if v, ok := b[k]; ok {
 			_ = s.Store.SetSetting(k, strings.TrimSpace(v))
 		}
+	}
+	if v, ok := b["telegram_token"]; ok && strings.TrimSpace(v) != "" && s.needPro(w, "Telegram alerts") {
+		return
 	}
 	if v, ok := b["telegram_token"]; ok && (strings.TrimSpace(v) != "" || b["telegram_token_clear"] == "1") {
 		_ = s.Store.SetSetting("telegram_token", strings.TrimSpace(v))

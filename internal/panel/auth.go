@@ -35,6 +35,10 @@ func (s *Server) auth(h http.HandlerFunc) http.Handler {
 				fail(w, http.StatusTooManyRequests, "too many failed attempts, wait 5 minutes")
 				return
 			}
+			if !s.pro() {
+				fail(w, http.StatusPaymentRequired, "API tokens need openv6 Pro")
+				return
+			}
 			if !s.Store.CheckAPIToken(strings.TrimSpace(tok)) {
 				s.recordFailure(ip)
 				fail(w, http.StatusUnauthorized, "invalid API token")

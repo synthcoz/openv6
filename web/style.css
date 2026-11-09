@@ -598,3 +598,12 @@ select { -webkit-appearance: none; appearance: none; padding-right: 32px; text-o
   background-repeat: no-repeat; background-position: right 10px center; background-size: 12px; cursor: pointer; }
 .form-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 label.field > select, label.field > input { width: 100%; min-width: 0; }
+
+/* ---------- plan badge / license ---------- */
+.plan { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 6px; letter-spacing: .02em; width: fit-content; margin-top: 6px; text-decoration: none !important; }
+.plan.pro { background: var(--primary); color: var(--primary-text); }
+.plan.free { background: var(--accent-soft); color: var(--accent-ink); }
+.menu-head .plan { margin-top: 8px; }
+.pro-list { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.pro-list li { display: flex; gap: 8px; align-items: center; color: var(--text-2); }
+.pro-list .ic { color: var(--ok); }
