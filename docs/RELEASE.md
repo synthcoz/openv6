@@ -2,8 +2,8 @@
 
 GitHub Actions (`.github/workflows/release.yml`) tự build file chạy cho Linux amd64, arm64 và arm, rồi tạo Release mỗi khi bạn đẩy một tag dạng `v*`.
 
-1. Sửa số phiên bản trong `internal/proto/proto.go` (`const Version = "0.1.1"`) rồi commit.
-2. Gắn tag và đẩy tag lên:
+1. Sửa số phiên bản trong `internal/proto/proto.go` (`const Version = "0.1.1"`), rồi commit và đưa vào nhánh `main`. Workflow tự thấy phiên bản mới và tạo Release `v0.1.1`.
+2. (Tuỳ chọn) Hoặc gắn tag và đẩy tag lên:
 
 ```bash
 git tag v0.1.1
