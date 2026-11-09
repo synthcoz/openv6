@@ -1,7 +1,11 @@
 name: release
+# Publishes a GitHub Release with Linux binaries whenever main contains a
+# version (internal/proto/proto.go) that has no release yet, or a v* tag is pushed.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -12,9 +16,40 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go vet ./... && go test ./...
-      - run: make dist
-      - name: Publish release
+      - name: Determine version
+        id: ver
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/openv6-linux-* --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' internal/proto/proto.go | tr -d '"')"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "release $TAG already exists, nothing to do"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.ver.outputs.exists == 'false'
+        run: go vet ./... && go test ./...
+      - if: steps.ver.outputs.exists == 'false'
+        run: make dist
+      - name: Publish release
+        if: steps.ver.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          cat > notes.md <<'EOF'
+          Cài trên Zorin / Ubuntu / Debian:
+
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
+          ```
+
+          Hướng dẫn từng bước: docs/ZORIN.md
+          EOF
+          gh release create "$TAG" dist/openv6-linux-* --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
