@@ -1,0 +1,927 @@
+package panel
+
+import (
+	"crypto/rand"
+	"encoding/csv"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math/big"
+	"net/http"
+	"net/netip"
+	"strconv"
+	"strings"
+	"time"
+
+	"openv6/internal/proto"
+	"openv6/internal/store"
+	"openv6/internal/v6"
+)
+
+func pathID(r *http.Request) int64 {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	return id
+}
+
+// ---- nodes ----
+
+type nodeView struct {
+	*store.Node
+	Online   bool              `json:"online"`
+	Hostname string            `json:"hostname"`
+	OS       string            `json:"os"`
+	Version  string            `json:"agent_version"`
+	Net      proto.NetState    `json:"net"`
+	Errors   []string          `json:"errors"`
+	Proxies  int               `json:"proxies"`
+	Pools    []*store.Pool     `json:"pools"`
+	Entry    string            `json:"entry"` // effective entry host
+	Extra    map[string]string `json:"extra,omitempty"`
+}
+
+func (s *Server) nodeView(n *store.Node, proxyCounts map[int64]int) nodeView {
+	v := nodeView{Node: n, Online: time.Now().Unix()-n.LastSeen <= onlineWindow, Proxies: proxyCounts[n.ID], Errors: []string{}}
+	var req proto.SyncRequest
+	_ = json.Unmarshal([]byte(n.StateJSON), &req)
+	v.Hostname, v.OS, v.Version, v.Net = req.Hostname, req.OS, req.AgentVersion, req.Net
+	if req.Errors != nil {
+		v.Errors = req.Errors
+	}
+	v.Pools, _ = s.Store.ListPools(n.ID)
+	v.Entry = entryHost(n, req.Net)
+	v.Token = "" // never list tokens; fetched through /install
+	return v
+}
+
+// entryHost is the address clients use to reach the node's proxies.
+func entryHost(n *store.Node, st proto.NetState) string {
+	if n.EntryHost != "" {
+		return n.EntryHost
+	}
+	if n.IsLocal {
+		for _, ip := range st.LANv4 {
+			if a, err := netip.ParseAddr(ip); err == nil && a.IsPrivate() {
+				return ip
+			}
+		}
+	}
+	if st.PublicV4 != "" {
+		return st.PublicV4
+	}
+	if len(st.LANv4) > 0 {
+		return st.LANv4[0]
+	}
+	return "127.0.0.1"
+}
+
+func (s *Server) proxyCounts() map[int64]int {
+	m := map[int64]int{}
+	rows, err := s.Store.DB.Query(`SELECT node_id, COUNT(*) FROM proxies GROUP BY node_id`)
+	if err != nil {
+		return m
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var c int
+		_ = rows.Scan(&id, &c)
+		m[id] = c
+	}
+	return m
+}
+
+func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
+	nodes, err := s.Store.ListNodes()
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	pc := s.proxyCounts()
+	out := []nodeView{}
+	for _, n := range nodes {
+		out = append(out, s.nodeView(n, pc))
+	}
+	writeJSON(w, 200, out)
+}
+
+func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Name      string `json:"name"`
+		EntryHost string `json:"entry_host"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if strings.TrimSpace(b.Name) == "" {
+		fail(w, 400, "name required")
+		return
+	}
+	n, err := s.Store.CreateNode(strings.TrimSpace(b.Name), strings.TrimSpace(b.EntryHost), false)
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	s.Store.AddEvent(n.ID, "info", fmt.Sprintf("node %q created", n.Name))
+	writeJSON(w, 200, s.nodeView(n, nil))
+}
+
+func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	var b struct {
+		Name       *string `json:"name"`
+		EntryHost  *string `json:"entry_host"`
+		Iface      *string `json:"iface"`
+		AllowCIDRs *string `json:"allow_cidrs"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if b.Name != nil && strings.TrimSpace(*b.Name) != "" {
+		n.Name = strings.TrimSpace(*b.Name)
+	}
+	if b.EntryHost != nil {
+		n.EntryHost = strings.TrimSpace(*b.EntryHost)
+	}
+	if b.Iface != nil {
+		n.Iface = strings.TrimSpace(*b.Iface)
+	}
+	if b.AllowCIDRs != nil {
+		var lines []string
+		for _, l := range strings.FieldsFunc(*b.AllowCIDRs, func(r rune) bool { return r == '\n' || r == ',' || r == ' ' }) {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
+			}
+			if _, err := netip.ParsePrefix(l); err != nil {
+				if _, err2 := netip.ParseAddr(l); err2 != nil {
+					fail(w, 400, "invalid CIDR/IP: "+l)
+					return
+				}
+			}
+			lines = append(lines, l)
+		}
+		n.AllowCIDRs = strings.Join(lines, "\n")
+	}
+	if err := s.Store.UpdateNode(n); err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, s.nodeView(n, s.proxyCounts()))
+}
+
+func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	if n.IsLocal {
+		fail(w, 400, "the local node cannot be deleted")
+		return
+	}
+	if err := s.Store.DeleteNode(n.ID); err != nil {
+		logErr(w, err)
+		return
+	}
+	s.Store.AddEvent(0, "info", fmt.Sprintf("node %q deleted", n.Name))
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleRotateToken(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil || n.IsLocal {
+		fail(w, 400, "cannot rotate token of this node")
+		return
+	}
+	if _, err := s.Store.RotateNodeToken(n.ID); err != nil {
+		logErr(w, err)
+		return
+	}
+	s.Store.AddEvent(n.ID, "warn", fmt.Sprintf("node %q token rotated; re-run the install command on that machine", n.Name))
+	s.handleInstallCmd(w, r)
+}
+
+func (s *Server) handleTestNode(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	writeJSON(w, 200, s.queueCommand(n.ID, "test_v6", 0))
+}
+
+func (s *Server) panelURL(r *http.Request) string {
+	if u := s.Store.GetSetting("panel_url", ""); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func (s *Server) handleInstallCmd(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Store.GetNode(pathID(r))
+	if err != nil {
+		fail(w, 404, "node not found")
+		return
+	}
+	if n.IsLocal {
+		writeJSON(w, 200, map[string]string{"command": "", "note": "local node runs inside the panel process"})
+		return
+	}
+	pu := s.panelURL(r)
+	cmd := fmt.Sprintf("curl -fsSL %s/install.sh | sudo bash -s -- agent --panel %s --token %s", pu, pu, n.Token)
+	writeJSON(w, 200, map[string]string{"command": cmd, "panel_url": pu, "token": n.Token})
+}
+
+// ---- pools ----
+
+func (s *Server) handleListPools(w http.ResponseWriter, r *http.Request) {
+	nid, _ := strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
+	ps, err := s.Store.ListPools(nid)
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, ps)
+}
+
+func validatePool(p *store.Pool) error {
+	pfx, err := netip.ParsePrefix(strings.TrimSpace(p.CIDR))
+	if err != nil || !pfx.Addr().Is6() {
+		return errors.New("CIDR must be an IPv6 prefix like 2a01:4f8:1:2::/64")
+	}
+	if pfx.Bits() > 64 || pfx.Bits() < 32 {
+		return errors.New("prefix length must be between /32 and /64")
+	}
+	p.CIDR = pfx.Masked().String()
+	if p.Mode != "addr" && p.Mode != "anyip" {
+		return errors.New("mode must be addr or anyip")
+	}
+	if p.Mode == "addr" && pfx.Bits() != 64 {
+		return errors.New("addr mode only supports a /64 on-link prefix; use anyip for routed /48 or /56")
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		p.Name = p.CIDR
+	}
+	return nil
+}
+
+func (s *Server) handleCreatePool(w http.ResponseWriter, r *http.Request) {
+	var p store.Pool
+	if err := readJSON(r, &p); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if _, err := s.Store.GetNode(p.NodeID); err != nil {
+		fail(w, 400, "node not found")
+		return
+	}
+	if err := validatePool(&p); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if err := s.Store.CreatePool(&p); err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, p)
+}
+
+func (s *Server) handleUpdatePool(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Store.GetPool(pathID(r))
+	if err != nil {
+		fail(w, 404, "pool not found")
+		return
+	}
+	var b store.Pool
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if p.Auto {
+		p.Name = b.Name
+	} else {
+		oldBits := netip.MustParsePrefix(p.CIDR).Bits()
+		p.Name, p.CIDR, p.Mode = b.Name, b.CIDR, b.Mode
+		if err := validatePool(p); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		if netip.MustParsePrefix(p.CIDR).Bits() != oldBits {
+			fail(w, 400, "prefix length cannot change once proxies may use this pool; create a new pool instead")
+			return
+		}
+	}
+	if err := s.Store.UpdatePool(p); err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, p)
+}
+
+func (s *Server) handleDeletePool(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Store.GetPool(pathID(r))
+	if err != nil || p.Auto {
+		fail(w, 400, "this pool cannot be deleted")
+		return
+	}
+	var n int
+	_ = s.Store.DB.QueryRow(`SELECT COUNT(*) FROM proxies WHERE pool_id=?`, p.ID).Scan(&n)
+	if n > 0 {
+		fail(w, 400, fmt.Sprintf("pool is used by %d proxies; delete or move them first", n))
+		return
+	}
+	if err := s.Store.DeletePool(p.ID); err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// ---- proxies ----
+
+type proxyView struct {
+	*store.Proxy
+	IP       string `json:"ip"`
+	NodeName string `json:"node_name"`
+	PoolName string `json:"pool_name"`
+	Host     string `json:"host"`   // entry host clients connect to
+	Status   string `json:"status"` // ok | error | offline | disabled | expired | pending
+	Error    string `json:"error,omitempty"`
+	Active   int64  `json:"active"`
+	Subnet64 string `json:"subnet64"`
+}
+
+func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
+	ps, err := s.Store.ListProxies(f)
+	if err != nil {
+		return nil, err
+	}
+	nodes, _ := s.Store.ListNodes()
+	nm := map[int64]*store.Node{}
+	hosts := map[int64]string{}
+	for _, n := range nodes {
+		nm[n.ID] = n
+		var req proto.SyncRequest
+		_ = json.Unmarshal([]byte(n.StateJSON), &req)
+		hosts[n.ID] = entryHost(n, req.Net)
+	}
+	pools, _ := s.Store.ListPools(0)
+	pm := map[int64]*store.Pool{}
+	for _, p := range pools {
+		pm[p.ID] = p
+	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	now := time.Now().Unix()
+	out := make([]proxyView, 0, len(ps))
+	for _, p := range ps {
+		v := proxyView{Proxy: p, Host: hosts[p.NodeID]}
+		if n := nm[p.NodeID]; n != nil {
+			v.NodeName = n.Name
+		}
+		if pl := pm[p.PoolID]; pl != nil {
+			v.PoolName = pl.Name
+		}
+		if ip, err := ProxyIP(p, pm[p.PoolID]); err == nil {
+			v.IP = ip.String()
+			v.Subnet64 = v6.Slash64(ip).String()
+		}
+		live := s.live[p.NodeID]
+		online := nm[p.NodeID] != nil && now-nm[p.NodeID].LastSeen <= onlineWindow
+		switch {
+		case !p.Enabled:
+			v.Status = "disabled"
+		case p.ExpiresAt > 0 && p.ExpiresAt < now:
+			v.Status = "expired"
+		case !online || live == nil:
+			v.Status = "offline"
+		default:
+			if a, ok := live.Applied[p.ID]; ok {
+				if a.OK && a.IP == v.IP {
+					v.Status = "ok"
+				} else if a.Error != "" {
+					v.Status, v.Error = "error", a.Error
+				} else {
+					v.Status = "pending"
+				}
+			} else {
+				v.Status = "pending"
+			}
+			v.Active = live.Active[p.ID]
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+func (s *Server) handleListProxies(w http.ResponseWriter, r *http.Request) {
+	nid, _ := strconv.ParseInt(r.URL.Query().Get("node_id"), 10, 64)
+	vs, err := s.proxyViews(store.ProxyFilter{NodeID: nid})
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, vs)
+}
+
+const alnum = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+func randString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		k, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alnum))))
+		b[i] = alnum[k.Int64()]
+	}
+	return string(b)
+}
+
+type bulkReq struct {
+	NodeID       int64  `json:"node_id"`
+	PoolID       int64  `json:"pool_id"`
+	Count        int    `json:"count"`
+	StartPort    int    `json:"start_port"`
+	Protocol     string `json:"protocol"`
+	Auth         string `json:"auth"` // none | random | fixed
+	User         string `json:"user"`
+	Pass         string `json:"pass"`
+	Spread       bool   `json:"spread"` // each proxy in its own /64 (pools larger than /64)
+	IPv4Fallback bool   `json:"ipv4_fallback"`
+	Tag          string `json:"tag"`
+	Note         string `json:"note"`
+	ExpiresDays  int    `json:"expires_days"`
+}
+
+func (s *Server) reservedPort(p int) bool {
+	return p == s.ListenPort || p < 1024 || p > 65535
+}
+
+func (s *Server) handleBulkCreate(w http.ResponseWriter, r *http.Request) {
+	var b bulkReq
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if b.Count < 1 || b.Count > 5000 {
+		fail(w, 400, "count must be 1..5000")
+		return
+	}
+	pool, err := s.Store.GetPool(b.PoolID)
+	if err != nil || pool.NodeID != b.NodeID {
+		fail(w, 400, "pool not found on this node")
+		return
+	}
+	if b.Protocol == "" {
+		b.Protocol = "both"
+	}
+	if b.Protocol != "both" && b.Protocol != "http" && b.Protocol != "socks5" {
+		fail(w, 400, "protocol must be both, http or socks5")
+		return
+	}
+	if b.Auth == "fixed" && (b.User == "" || b.Pass == "") {
+		fail(w, 400, "user and password required")
+		return
+	}
+	if b.StartPort == 0 {
+		b.StartPort = 10001
+	}
+	used, err := s.Store.UsedPorts(b.NodeID)
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	var subnetCount uint64 = 1
+	if pool.CIDR != "" {
+		subnetCount = v6.SubnetCount(netip.MustParsePrefix(pool.CIDR))
+	} else if !pool.Auto {
+		fail(w, 400, "pool has no prefix")
+		return
+	}
+	// subnets already taken in this pool, to spread new proxies over unused /64s
+	takenSubnets := map[uint64]bool{}
+	if b.Spread && subnetCount > 1 {
+		existing, _ := s.Store.ListProxies(store.ProxyFilter{NodeID: b.NodeID})
+		for _, p := range existing {
+			if p.PoolID == pool.ID {
+				takenSubnets[p.Subnet] = true
+			}
+		}
+		if uint64(b.Count)+uint64(len(takenSubnets)) > subnetCount {
+			fail(w, 400, fmt.Sprintf("pool only has %d /64 subnets (%d already used)", subnetCount, len(takenSubnets)))
+			return
+		}
+	}
+	var expires int64
+	if b.ExpiresDays > 0 {
+		expires = time.Now().Add(time.Duration(b.ExpiresDays) * 24 * time.Hour).Unix()
+	}
+	port := b.StartPort
+	var ps []*store.Proxy
+	for i := 0; i < b.Count; i++ {
+		for used[port] || s.reservedPort(port) {
+			port++
+			if port > 65535 {
+				fail(w, 400, "no free ports left")
+				return
+			}
+		}
+		used[port] = true
+		p := &store.Proxy{NodeID: b.NodeID, PoolID: pool.ID, Port: port, Protocol: b.Protocol, Enabled: true,
+			Suffix: v6.FormatSuffix(v6.RandomSuffix()), IPv4Fallback: b.IPv4Fallback, Tag: b.Tag, Note: b.Note, ExpiresAt: expires}
+		if b.Spread && subnetCount > 1 {
+			for {
+				sn := v6.RandomSubnet(subnetCount)
+				if !takenSubnets[sn] {
+					takenSubnets[sn] = true
+					p.Subnet = sn
+					break
+				}
+			}
+		}
+		switch b.Auth {
+		case "random":
+			p.AuthUser, p.AuthPass = "u"+randString(7), randString(12)
+		case "fixed":
+			p.AuthUser, p.AuthPass = b.User, b.Pass
+		}
+		ps = append(ps, p)
+	}
+	if err := s.Store.CreateProxies(ps); err != nil {
+		logErr(w, err)
+		return
+	}
+	s.Store.AddEvent(b.NodeID, "info", fmt.Sprintf("%d proxies created (ports %d-%d)", len(ps), ps[0].Port, ps[len(ps)-1].Port))
+	writeJSON(w, 200, map[string]any{"created": len(ps)})
+}
+
+func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Store.GetProxy(pathID(r))
+	if err != nil {
+		fail(w, 404, "proxy not found")
+		return
+	}
+	var b struct {
+		Port         *int    `json:"port"`
+		Protocol     *string `json:"protocol"`
+		AuthUser     *string `json:"auth_user"`
+		AuthPass     *string `json:"auth_pass"`
+		IPv4Fallback *bool   `json:"ipv4_fallback"`
+		Enabled      *bool   `json:"enabled"`
+		Note         *string `json:"note"`
+		Tag          *string `json:"tag"`
+		ExpiresAt    *int64  `json:"expires_at"`
+		IP           *string `json:"ip"` // set a specific address inside the pool
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if b.Port != nil && *b.Port != p.Port {
+		if s.reservedPort(*b.Port) {
+			fail(w, 400, "port not allowed")
+			return
+		}
+		used, _ := s.Store.UsedPorts(p.NodeID)
+		if used[*b.Port] {
+			fail(w, 400, "port already used on this node")
+			return
+		}
+		p.Port = *b.Port
+	}
+	if b.Protocol != nil {
+		if *b.Protocol != "both" && *b.Protocol != "http" && *b.Protocol != "socks5" {
+			fail(w, 400, "bad protocol")
+			return
+		}
+		p.Protocol = *b.Protocol
+	}
+	if b.AuthUser != nil {
+		p.AuthUser = strings.TrimSpace(*b.AuthUser)
+	}
+	if b.AuthPass != nil {
+		p.AuthPass = *b.AuthPass
+	}
+	if (p.AuthUser == "") != (p.AuthPass == "") {
+		fail(w, 400, "set both user and password, or neither")
+		return
+	}
+	if strings.ContainsAny(p.AuthUser+p.AuthPass, ":@/ ") {
+		fail(w, 400, "user/password must not contain : @ / or spaces")
+		return
+	}
+	if b.IPv4Fallback != nil {
+		p.IPv4Fallback = *b.IPv4Fallback
+	}
+	if b.Enabled != nil {
+		p.Enabled = *b.Enabled
+	}
+	if b.Note != nil {
+		p.Note = *b.Note
+	}
+	if b.Tag != nil {
+		p.Tag = strings.TrimSpace(*b.Tag)
+	}
+	if b.ExpiresAt != nil {
+		p.ExpiresAt = *b.ExpiresAt
+	}
+	if b.IP != nil && strings.TrimSpace(*b.IP) != "" {
+		pool, err := s.Store.GetPool(p.PoolID)
+		if err != nil || pool.CIDR == "" {
+			fail(w, 400, "pool has no prefix yet")
+			return
+		}
+		ip, err := netip.ParseAddr(strings.TrimSpace(*b.IP))
+		pfx := netip.MustParsePrefix(pool.CIDR)
+		if err != nil || !pfx.Contains(ip) {
+			fail(w, 400, "IP must be inside "+pool.CIDR)
+			return
+		}
+		a := ip.As16()
+		hi := uint64(0)
+		for i := 0; i < 8; i++ {
+			hi = hi<<8 | uint64(a[i])
+		}
+		lo := uint64(0)
+		for i := 8; i < 16; i++ {
+			lo = lo<<8 | uint64(a[i])
+		}
+		p.Subnet = hi & (v6.SubnetCount(pfx) - 1)
+		if v6.SubnetCount(pfx) <= 1 {
+			p.Subnet = 0
+		}
+		p.Suffix = v6.FormatSuffix(lo)
+	}
+	if err := s.Store.UpdateProxy(p); err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, p)
+}
+
+func (s *Server) handleProxyAction(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		IDs    []int64 `json:"ids"`
+		Action string  `json:"action"`
+		Value  string  `json:"value"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if len(b.IDs) == 0 {
+		fail(w, 400, "no proxies selected")
+		return
+	}
+	ps, err := s.Store.ListProxies(store.ProxyFilter{IDs: b.IDs})
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	switch b.Action {
+	case "delete":
+		if err := s.Store.DeleteProxies(b.IDs); err != nil {
+			logErr(w, err)
+			return
+		}
+		s.Store.AddEvent(0, "info", fmt.Sprintf("%d proxies deleted", len(b.IDs)))
+		writeJSON(w, 200, map[string]int{"affected": len(b.IDs)})
+		return
+	case "test":
+		var cmds []*commandState
+		for _, p := range ps {
+			cmds = append(cmds, s.queueCommand(p.NodeID, "test_proxy", p.ID))
+		}
+		writeJSON(w, 200, map[string]any{"commands": cmds})
+		return
+	case "reset_stats":
+		if err := s.Store.ResetStats(b.IDs); err != nil {
+			logErr(w, err)
+			return
+		}
+		writeJSON(w, 200, map[string]int{"affected": len(b.IDs)})
+		return
+	}
+	pools, _ := s.Store.ListPools(0)
+	pm := map[int64]*store.Pool{}
+	for _, p := range pools {
+		pm[p.ID] = p
+	}
+	for _, p := range ps {
+		switch b.Action {
+		case "enable":
+			p.Enabled = true
+		case "disable":
+			p.Enabled = false
+		case "regen_ip":
+			p.Suffix = v6.FormatSuffix(v6.RandomSuffix())
+			if pl := pm[p.PoolID]; pl != nil && pl.CIDR != "" {
+				if c := v6.SubnetCount(netip.MustParsePrefix(pl.CIDR)); c > 1 {
+					p.Subnet = v6.RandomSubnet(c)
+				}
+			}
+		case "regen_pass":
+			if p.AuthUser == "" {
+				p.AuthUser = "u" + randString(7)
+			}
+			p.AuthPass = randString(12)
+		case "remove_auth":
+			p.AuthUser, p.AuthPass = "", ""
+		case "set_tag":
+			p.Tag = strings.TrimSpace(b.Value)
+		case "set_protocol":
+			if b.Value != "both" && b.Value != "http" && b.Value != "socks5" {
+				fail(w, 400, "bad protocol")
+				return
+			}
+			p.Protocol = b.Value
+		case "fallback_on":
+			p.IPv4Fallback = true
+		case "fallback_off":
+			p.IPv4Fallback = false
+		default:
+			fail(w, 400, "unknown action")
+			return
+		}
+		if err := s.Store.UpdateProxy(p); err != nil {
+			logErr(w, err)
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]int{"affected": len(ps)})
+}
+
+// ---- export ----
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		IDs    []int64 `json:"ids"`
+		Format string  `json:"format"`
+		Scheme string  `json:"scheme"` // http | socks5 (for URL formats)
+		Host   string  `json:"host"`   // override entry host
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	vs, err := s.proxyViews(store.ProxyFilter{IDs: b.IDs})
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	if len(b.IDs) == 0 {
+		vs = nil
+	}
+	text, err := exportProxies(vs, b.Format, b.Scheme, strings.TrimSpace(b.Host))
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"text": text})
+}
+
+func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string, error) {
+	if scheme == "" {
+		scheme = "http"
+	}
+	var sb strings.Builder
+	switch format {
+	case "csv":
+		cw := csv.NewWriter(&sb)
+		_ = cw.Write([]string{"host", "port", "user", "pass", "protocol", "ipv6", "tag", "note"})
+		for _, v := range vs {
+			_ = cw.Write([]string{hostFor(v, hostOverride), strconv.Itoa(v.Port), v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+		}
+		cw.Flush()
+		return sb.String(), nil
+	case "json":
+		type item struct {
+			Host     string `json:"host"`
+			Port     int    `json:"port"`
+			User     string `json:"user,omitempty"`
+			Pass     string `json:"pass,omitempty"`
+			Protocol string `json:"protocol"`
+			IPv6     string `json:"ipv6"`
+			Tag      string `json:"tag,omitempty"`
+			Note     string `json:"note,omitempty"`
+		}
+		items := []item{}
+		for _, v := range vs {
+			items = append(items, item{hostFor(v, hostOverride), v.Port, v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+		}
+		bs, _ := json.MarshalIndent(items, "", "  ")
+		return string(bs), nil
+	}
+	for _, v := range vs {
+		h := hostFor(v, hostOverride)
+		hp := h + ":" + strconv.Itoa(v.Port)
+		if strings.Contains(h, ":") {
+			hp = "[" + h + "]:" + strconv.Itoa(v.Port)
+		}
+		auth := v.AuthUser != ""
+		var line string
+		switch format {
+		case "", "host:port:user:pass":
+			line = hp
+			if auth {
+				line += ":" + v.AuthUser + ":" + v.AuthPass
+			}
+		case "user:pass@host:port":
+			line = hp
+			if auth {
+				line = v.AuthUser + ":" + v.AuthPass + "@" + hp
+			}
+		case "url":
+			line = scheme + "://"
+			if auth {
+				line += v.AuthUser + ":" + v.AuthPass + "@"
+			}
+			line += hp
+		default:
+			return "", errors.New("unknown format")
+		}
+		sb.WriteString(line + "\n")
+	}
+	return sb.String(), nil
+}
+
+func hostFor(v proxyView, override string) string {
+	if override != "" {
+		return override
+	}
+	return v.Host
+}
+
+// ---- dashboard, events, settings ----
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	vs, err := s.proxyViews(store.ProxyFilter{})
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	nodes, _ := s.Store.ListNodes()
+	online := 0
+	for _, n := range nodes {
+		if time.Now().Unix()-n.LastSeen <= onlineWindow {
+			online++
+		}
+	}
+	status := map[string]int{}
+	var up, down, active int64
+	subnets := map[string]bool{}
+	for _, v := range vs {
+		status[v.Status]++
+		up += v.BytesUp
+		down += v.BytesDown
+		active += v.Active
+		if v.Subnet64 != "" {
+			subnets[v.Subnet64] = true
+		}
+	}
+	events, _ := s.Store.ListEvents(15)
+	writeJSON(w, 200, map[string]any{
+		"nodes": len(nodes), "nodes_online": online, "proxies": len(vs), "status": status,
+		"bytes_up": up, "bytes_down": down, "active": active, "subnets": len(subnets), "events": events,
+		"version": proto.Version,
+	})
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	ev, err := s.Store.ListEvents(200)
+	if err != nil {
+		logErr(w, err)
+		return
+	}
+	writeJSON(w, 200, ev)
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]string{
+		"panel_url":      s.Store.GetSetting("panel_url", ""),
+		"detected_url":   s.panelURL(r),
+		"default_scheme": s.Store.GetSetting("default_scheme", "http"),
+	})
+}
+
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
+	var b map[string]string
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	for _, k := range []string{"panel_url", "default_scheme"} {
+		if v, ok := b[k]; ok {
+			_ = s.Store.SetSetting(k, strings.TrimSpace(v))
+		}
+	}
+	s.handleGetSettings(w, r)
+}
