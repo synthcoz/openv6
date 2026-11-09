@@ -84,7 +84,7 @@ label.check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.error, .badge.expired { background: var(--err-bg); color: var(--err); }
 .badge.pending, .badge.warn { background: var(--warn-bg); color: var(--warn); }
-.badge.offline, .badge.disabled { background: var(--off-bg); color: var(--off); }
+.badge.offline, .badge.disabled, .badge.paused { background: var(--off-bg); color: var(--off); }
 
 .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
 table { width: 100%; border-collapse: collapse; }
@@ -127,3 +127,5 @@ td.wrap { white-space: normal; }
 .errbox div { color: var(--text); opacity: .85; }
 .errbox details { margin-top: 2px; color: var(--muted); }
 .errbox code { word-break: break-all; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }

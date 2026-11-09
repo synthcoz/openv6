@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"openv6/internal/service"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -30,7 +31,7 @@ func (s *Server) handleUpdateInfo(w http.ResponseWriter, r *http.Request) {
 	rel, errStr, updating := s.mon.latest, s.mon.latestErr, s.mon.updating
 	s.mon.mu.Unlock()
 	out := map[string]any{"current": proto.Version, "updating": updating, "error": errStr,
-		"managed": os.Getenv("INVOCATION_ID") != "", "repo": s.updateRepo()}
+		"managed": service.Managed(), "repo": s.updateRepo()}
 	if rel != nil {
 		out["latest"] = rel.Tag
 		out["notes"] = rel.Notes
@@ -54,7 +55,7 @@ func (s *Server) handleUpdateInfo(w http.ResponseWriter, r *http.Request) {
 // exits so systemd starts the new version. Binaries for the other
 // architectures are cached in <data>/bin so nodes can update from the panel.
 func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
-	if os.Getenv("INVOCATION_ID") == "" {
+	if !service.Managed() {
 		fail(w, 400, "the panel is not running as a systemd service; update it by running the install command again")
 		return
 	}
@@ -87,21 +88,21 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 	// other architectures first (best effort), then our own binary
 	binDir := filepath.Join(s.DataDir, "bin")
 	_ = os.MkdirAll(binDir, 0o755)
-	for _, arch := range []string{"amd64", "arm64", "arm"} {
-		if arch == runtime.GOARCH {
+	for _, pl := range update.Platforms {
+		if pl[0] == runtime.GOOS && pl[1] == runtime.GOARCH {
 			continue
 		}
-		if u := rel.Assets[update.AssetName(arch)]; u != "" {
-			dst := filepath.Join(binDir, "openv6-linux-"+arch)
+		if u := rel.Assets[update.AssetName(pl[0], pl[1])]; u != "" {
+			dst := filepath.Join(binDir, update.AssetName(pl[0], pl[1]))
 			if tmp, err := update.Download(ctx, u, dst, false); err == nil {
 				_ = os.Chmod(tmp, 0o755)
 				_ = os.Rename(tmp, dst)
 			}
 		}
 	}
-	u := rel.Assets[update.AssetName(runtime.GOARCH)]
+	u := rel.Assets[update.AssetName(runtime.GOOS, runtime.GOARCH)]
 	if u == "" {
-		fail(w, 502, "release has no binary for linux/"+runtime.GOARCH)
+		fail(w, 502, "release has no binary for "+runtime.GOOS+"/"+runtime.GOARCH)
 		return
 	}
 	tmp, err := update.Download(ctx, u, self, false)
@@ -113,16 +114,24 @@ func (s *Server) handleUpdatePanel(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err.Error())
 		return
 	}
+	// Windows: also refresh the GUI tray build next to the service binary
+	if runtime.GOOS == "windows" {
+		if tu := rel.Assets[update.TrayAssetName(runtime.GOARCH)]; tu != "" {
+			trayPath := filepath.Join(filepath.Dir(self), "openv6-tray.exe")
+			if tt, err := update.Download(ctx, tu, trayPath, false); err == nil {
+				if err := update.Install(tt, trayPath, ""); err != nil {
+					log.Printf("tray update: %v", err)
+				}
+			}
+		}
+	}
 	s.Store.AddEvent(0, "info", fmt.Sprintf("panel updated %s -> %s", proto.Version, rel.Tag))
 	log.Printf("panel updated to %s, restarting", rel.Tag)
 	writeJSON(w, 200, map[string]any{"ok": true, "version": rel.Tag})
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
-	go func() {
-		time.Sleep(time.Second)
-		os.Exit(0) // systemd restarts us with the new binary
-	}()
+	service.Restart() // the service manager starts the new binary
 }
 
 // handleUpdateNodes asks remote nodes running another version to update
@@ -145,7 +154,11 @@ func (s *Server) handleUpdateNodes(w http.ResponseWriter, r *http.Request) {
 		if req.AgentVersion == proto.Version || req.Arch == "" {
 			continue
 		}
-		cmds = append(cmds, s.queueCommand(n.ID, proto.Command{Type: "update", Version: proto.Version, URL: pu + "/download/" + req.Arch}))
+		goos := strings.SplitN(req.OS, "/", 2)[0]
+		if goos == "" {
+			goos = "linux"
+		}
+		cmds = append(cmds, s.queueCommand(n.ID, proto.Command{Type: "update", Version: proto.Version, URL: pu + "/download/" + goos + "/" + req.Arch}))
 	}
 	writeJSON(w, 200, map[string]any{"commands": cmds})
 }
@@ -288,7 +301,7 @@ func (s *Server) handleNodeRestart(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, s.queueCommand(n.ID, proto.Command{Type: "restart"}))
 		return
 	}
-	if os.Getenv("INVOCATION_ID") == "" {
+	if !service.Managed() {
 		fail(w, 400, "the panel is not running as a systemd service; restart it manually")
 		return
 	}
@@ -298,7 +311,7 @@ func (s *Server) handleNodeRestart(w http.ResponseWriter, r *http.Request) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
-	go func() { time.Sleep(time.Second); os.Exit(0) }()
+	service.Restart()
 }
 
 // handleNodeReapply removes and re-installs all addresses and routes on a node.

@@ -38,6 +38,9 @@ type Config struct {
 	Logs *logbuf.Buffer
 	// AllowUpdate lets the panel replace this binary (remote agents only).
 	AllowUpdate bool
+	// Direct, when set, syncs in-process (the agent embedded in the panel)
+	// instead of over HTTP.
+	Direct func(ctx context.Context, req *proto.SyncRequest) (*proto.SyncResponse, error)
 }
 
 type Agent struct {
@@ -66,6 +69,7 @@ type Agent struct {
 	bypassStatus   string
 	bypassErr      string
 	startedAt      time.Time
+	bindIf         int
 	testSem        chan struct{}
 }
 
@@ -180,24 +184,14 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 		Net: st, Stats: stats, Applied: applied, Results: results, Errors: errs, Checks: checks, Logs: logs,
 		StartedAt: a.startedAt.Unix(),
 	}
-	body, _ := json.Marshal(req)
-	hr, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.cfg.PanelURL, "/")+"/api/agent/sync", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	hr.Header.Set("Authorization", "Bearer "+a.cfg.Token)
-	hr.Header.Set("Content-Type", "application/json")
-	res, err := a.client.Do(hr)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
-		return nil, fmt.Errorf("panel returned %s: %s", res.Status, strings.TrimSpace(string(b)))
-	}
 	var out proto.SyncResponse
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+	if a.cfg.Direct != nil {
+		resp, err := a.cfg.Direct(ctx, &req)
+		if err != nil {
+			return nil, err
+		}
+		out = *resp
+	} else if err := a.post(ctx, &req, &out); err != nil {
 		return nil, err
 	}
 	// success: commit stats baseline and drop delivered results
@@ -207,6 +201,26 @@ func (a *Agent) sync(ctx context.Context) (*proto.SyncResponse, error) {
 	a.logSeq = nextSeq
 	a.mu.Unlock()
 	return &out, nil
+}
+
+func (a *Agent) post(ctx context.Context, req *proto.SyncRequest, out *proto.SyncResponse) error {
+	body, _ := json.Marshal(req)
+	hr, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.cfg.PanelURL, "/")+"/api/agent/sync", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	hr.Header.Set("Authorization", "Bearer "+a.cfg.Token)
+	hr.Header.Set("Content-Type", "application/json")
+	res, err := a.client.Do(hr)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		return fmt.Errorf("panel returned %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+	return json.NewDecoder(res.Body).Decode(out)
 }
 
 func (a *Agent) apply(r *proto.SyncResponse) {
@@ -238,6 +252,11 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			bypass.OnLink = append(bypass.OnLink, it.Prefixes...)
 		}
 	}
+	// Windows/macOS: VPN bypass by pinning sockets to the physical interface
+	bindIf := 0
+	if netcfg.SocketBypass && r.Bypass {
+		bindIf = netcfg.IfIndex(iface)
+	}
 	applied := map[int64]proto.Applied{}
 	var cfgs []proxy.Config
 	specs := map[int64]proto.ProxySpec{}
@@ -253,9 +272,9 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			bypass.Sources = append(bypass.Sources, ip.String()+"/128")
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope}
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: bindIf}
 		if len(r.DNS) > 0 {
-			c.Resolver = proxy.NewResolver(r.DNS, ip)
+			c.Resolver = proxy.NewResolver(r.DNS, ip, bindIf)
 		}
 		cfgs = append(cfgs, c)
 	}
@@ -273,7 +292,13 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	}
 	// keep proxy traffic on the physical NIC even if a VPN grabs the default route
 	bypassStatus, bypassErr := "off", ""
-	if !a.cfg.DryRun {
+	if netcfg.SocketBypass && r.Bypass {
+		if bindIf > 0 {
+			bypassStatus = "ok"
+		} else {
+			bypassStatus, bypassErr = "error", "interface "+iface+" not found"
+		}
+	} else if !a.cfg.DryRun && !netcfg.SocketBypass {
 		if r.Bypass {
 			if err := a.net.ApplyBypass(bypass); err != nil {
 				bypassStatus, bypassErr = "error", err.Error()
@@ -323,6 +348,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	a.applied = applied
 	a.errors = errStrs
 	a.specs = specs
+	a.bindIf = bindIf
 	for _, c := range r.Commands {
 		if a.running[c.ID] {
 			continue
@@ -346,7 +372,10 @@ func (a *Agent) runCommand(c proto.Command) {
 		} else if ip, err := netip.ParseAddr(spec.IP); err != nil {
 			res.Output = "proxy has no IPv6 address yet"
 		} else {
-			info, err := CheckIP(ip, 12*time.Second)
+			a.mu.Lock()
+			bindIf := a.bindIf
+			a.mu.Unlock()
+			info, err := CheckIP(ip, bindIf, 12*time.Second)
 			if err != nil {
 				res.Output, res.Code = err.Error(), proxy.Classify(err)
 			} else {
@@ -361,7 +390,7 @@ func (a *Agent) runCommand(c proto.Command) {
 		}
 		<-a.testSem
 	case "test_v6":
-		info, err := CheckIP(netip.Addr{}, 10*time.Second)
+		info, err := CheckIP(netip.Addr{}, 0, 10*time.Second)
 		if err != nil {
 			res.Output, res.Code = err.Error(), proxy.Classify(err)
 		} else {
@@ -416,11 +445,13 @@ type IPInfo struct {
 
 // CheckIP asks IPv6-only echo services which address they see. If src is
 // valid the connection is bound to it.
-func CheckIP(src netip.Addr, timeout time.Duration) (IPInfo, error) {
-	d := &net.Dialer{Timeout: timeout}
+func CheckIP(src netip.Addr, bindIf int, timeout time.Duration) (IPInfo, error) {
+	var local net.Addr
 	if src.IsValid() {
-		d.LocalAddr = &net.TCPAddr{IP: src.AsSlice()}
+		local = &net.TCPAddr{IP: src.AsSlice()}
 	}
+	d := proxy.BindDialer(local, bindIf)
+	d.Timeout = timeout
 	tr := &http.Transport{
 		Proxy:             nil,
 		DisableKeepAlives: true,

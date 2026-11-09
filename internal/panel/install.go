@@ -3,6 +3,7 @@ package panel
 import (
 	"fmt"
 	"net/http"
+	"openv6/internal/update"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,28 +22,50 @@ func normArch(a string) string {
 	return ""
 }
 
-// handleDownload serves the agent binary. Binaries for other architectures can
-// be dropped into <data>/bin/openv6-linux-<arch>.
+// handleDownload serves the agent binary for an OS/arch. The panel's own
+// binary is always the freshest for its platform; others come from
+// <data>/bin (filled by "Update" or copied there by hand).
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
+	goos := strings.ToLower(r.PathValue("os"))
+	if goos == "" {
+		goos = "linux"
+	}
 	arch := normArch(r.PathValue("arch"))
-	if arch == "" {
-		http.Error(w, "unsupported architecture", 404)
+	if arch == "" || (goos != "linux" && goos != "windows" && goos != "darwin") {
+		http.Error(w, "unsupported platform", 404)
 		return
 	}
-	// our own binary is always the freshest for our architecture
 	var p string
-	if runtime.GOOS == "linux" && runtime.GOARCH == arch && s.SelfExe != "" {
+	if runtime.GOOS == goos && runtime.GOARCH == arch && s.SelfExe != "" {
 		p = s.SelfExe
 	} else {
-		p = filepath.Join(s.DataDir, "bin", "openv6-linux-"+arch)
+		p = filepath.Join(s.DataDir, "bin", update.AssetName(goos, arch))
 		if _, err := os.Stat(p); err != nil {
-			http.Error(w, fmt.Sprintf("no binary for linux/%s on this panel: copy it to %s", arch, p), 404)
+			http.Error(w, fmt.Sprintf("no binary for %s/%s on this panel: copy it to %s", goos, arch, p), 404)
 			return
 		}
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, p)
 }
+
+// handleInstallPS1 installs a Windows node: run in an Administrator
+// PowerShell:  & ([scriptblock]::Create((irm PANEL/install.ps1))) -Token TOKEN
+func (s *Server) handleInstallPS1(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, strings.ReplaceAll(installPS1, "__PANEL__", s.panelURL(r)))
+}
+
+const installPS1 = `param([Parameter(Mandatory=$true)][string]$Token, [string]$Panel = "__PANEL__")
+$ErrorActionPreference = "Stop"
+$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) { Write-Host "Hay mo PowerShell bang 'Run as Administrator' / Run PowerShell as Administrator" -ForegroundColor Red; return }
+$arch = if ([Environment]::Is64BitOperatingSystem) { if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" } } else { "386" }
+$tmp = Join-Path $env:TEMP "openv6-setup.exe"
+Write-Host ">> downloading openv6 for windows/$arch"
+Invoke-WebRequest -UseBasicParsing -Uri "$Panel/download/windows/$arch" -OutFile $tmp
+& $tmp install agent -panel $Panel -token $Token
+`
 
 func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")

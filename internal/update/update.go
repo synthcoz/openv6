@@ -57,8 +57,20 @@ func Latest(ctx context.Context, repo string) (*Release, error) {
 	return r, nil
 }
 
-// AssetName is the release file for an architecture.
-func AssetName(arch string) string { return "openv6-linux-" + arch }
+// AssetName is the release file name of the binary for a platform.
+func AssetName(goos, arch string) string {
+	if goos == "windows" {
+		return "openv6-windows-" + arch + ".exe"
+	}
+	return "openv6-" + goos + "-" + arch
+}
+
+// TrayAssetName is the Windows GUI build used for the tray icon.
+func TrayAssetName(arch string) string { return "openv6-tray-windows-" + arch + ".exe" }
+
+// Platforms published in releases.
+var Platforms = [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"linux", "arm"},
+	{"windows", "amd64"}, {"darwin", "amd64"}, {"darwin", "arm64"}}
 
 // Newer reports whether version a (e.g. "v0.2.0" or "0.2.0") is newer than b.
 func Newer(a, b string) bool {
@@ -107,7 +119,11 @@ func Download(ctx context.Context, url, dst string, insecure bool) (string, erro
 		return "", err
 	}
 	defer res.Body.Close()
-	f, err := os.CreateTemp(filepath.Dir(dst), ".openv6-update-*")
+	pattern := ".openv6-update-*"
+	if runtime.GOOS == "windows" {
+		pattern += ".exe" // Windows only runs files with an executable extension
+	}
+	f, err := os.CreateTemp(filepath.Dir(dst), pattern)
 	if err != nil {
 		return "", err
 	}
@@ -131,13 +147,13 @@ func Install(tmp, dst, expect string) error {
 	}
 	_, _ = io.ReadFull(f, b)
 	f.Close()
-	if !bytes.Equal(b, []byte("\x7fELF")) {
-		return errors.New("downloaded file is not a Linux binary")
+	if runtimeOSOf(b) == "" {
+		return errors.New("downloaded file is not a program for this computer")
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return err
 	}
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == runtimeOSOf(b) {
 		out, err := exec.Command(tmp, "version").Output()
 		if err != nil {
 			return fmt.Errorf("new binary does not run: %v", err)
@@ -152,7 +168,28 @@ func Install(tmp, dst, expect string) error {
 		keep = tmp
 	}
 	defer os.Remove(keep)
-	return os.Rename(keep, dst)
+	if err := os.Rename(keep, dst); err != nil {
+		// Windows: a running .exe cannot be replaced but can be renamed
+		_ = os.Remove(dst + ".old")
+		if err2 := os.Rename(dst, dst+".old"); err2 != nil {
+			return err
+		}
+		return os.Rename(keep, dst)
+	}
+	return nil
+}
+
+// runtimeOSOf recognises the executable format from its first bytes.
+func runtimeOSOf(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte("\x7fELF")):
+		return "linux"
+	case bytes.HasPrefix(b, []byte("MZ")):
+		return "windows"
+	case bytes.HasPrefix(b, []byte{0xcf, 0xfa, 0xed, 0xfe}), bytes.HasPrefix(b, []byte{0xca, 0xfe, 0xba, 0xbe}):
+		return "darwin"
+	}
+	return ""
 }
 
 // SelfPath is the path of the running executable.

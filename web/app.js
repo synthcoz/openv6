@@ -602,6 +602,11 @@ async function pageNodes() {
   every(10000, () => { if (!document.activeElement || !document.activeElement.closest('.node-card')) draw().catch(() => {}); });
 }
 
+function osName(os) {
+  const p = String(os).split('/')[0];
+  return { linux: 'Linux', windows: 'Windows', darwin: 'macOS' }[p] || p;
+}
+
 function dnsMode(v) { return !v || v === 'system' ? 'system' : (['cloudflare', 'google', 'quad9'].includes(v) ? v : 'custom'); }
 
 function vpnSummary(n) {
@@ -626,12 +631,14 @@ function nodeCard(n) {
     <td>${p.auto ? '' : `<button class="small danger" data-delpool="${p.id}">${t('act_delete')}</button>`}</td></tr>`).join('');
   return `<div class="card node-card" data-id="${n.id}">
     <div class="head"><h2 style="margin:0">${esc(n.name)}</h2>${n.online ? badge('ok').replace(t('st_ok'), t('online')) : badge('offline')}
+      ${n.paused ? badge('paused') : ''} ${n.os ? `<span class="badge offline">${esc(osName(n.os))}</span>` : ''}
       ${n.is_local ? `<span class="badge offline">${t('local')}</span>` : ''}
       <div class="spacer"></div>
       <button class="small" data-a="test">${t('test_v6')}</button>
       <button class="small" data-a="logs">${t('logs')}</button>
       <button class="small" data-a="reapply" title="${t('reapply_hint')}">${t('reapply')}</button>
       <button class="small" data-a="restart">${t('restart')}</button>
+      <button class="small ${n.paused ? 'primary' : ''}" data-a="pause">${n.paused ? t('resume_all') : t('pause_all')}</button>
       ${n.outdated ? `<button class="small primary" data-a="update">${t('update_node', { v: esc(n.agent_version) })}</button>` : ''}
       ${n.is_local ? '' : `<button class="small" data-a="install">${t('install_cmd')}</button><button class="small" data-a="rotate">${t('rotate_token')}</button><button class="small danger" data-a="delete">${t('act_delete')}</button>`}
     </div>
@@ -684,6 +691,10 @@ function bindNodeCard(card, n) {
     e.target.disabled = false;
   };
   act('logs').onclick = () => openLogs(n);
+  act('pause').onclick = async () => {
+    try { await api('POST', `/api/nodes/${n.id}/pause`, { paused: !n.paused }); toast(n.paused ? t('resumed') : t('paused_msg')); renderPage(); }
+    catch (err) { toast(err.message, true); }
+  };
   act('reapply').onclick = async () => {
     if (!(await confirmBox(t('confirm_reapply')))) return;
     try { await api('POST', `/api/nodes/${n.id}/reapply`, {}); toast(t('reapply_sent')); } catch (err) { toast(err.message, true); }
@@ -773,13 +784,20 @@ function openAddNode() {
 }
 
 function showInstall(r, name) {
+  const tabs = [['linux', 'Linux', r.command, 'install_hint'], ['windows', 'Windows', r.command_windows, 'install_hint_win'], ['macos', 'macOS', r.command_macos, 'install_hint_mac']];
   modal(`<h2>${t('install_on', { name: esc(name) })}</h2>
-    <p class="small">${t('install_hint')}</p>
-    <div class="cmd" id="cmd">${esc(r.command)}</div>
+    <div class="tabs">${tabs.map(([k, l], i) => `<button class="small ${i ? '' : 'primary'}" data-tab="${k}">${l}</button>`).join('')}</div>
+    ${tabs.map(([k, , cmd, hint], i) => `<div data-pane="${k}" ${i ? 'hidden' : ''}><p class="small">${t(hint)}</p><div class="cmd">${esc(cmd || '')}</div></div>`).join('')}
     <p class="hint">${t('install_hint2')}</p>
     <div class="actions"><button class="primary" id="cp">${t('copy')}</button><button id="cl">${t('close')}</button></div>`,
   (m) => {
-    $('#cp', m).onclick = () => copyText(r.command);
+    let cur = 0;
+    for (const b of $$('[data-tab]', m)) b.onclick = () => {
+      cur = tabs.findIndex((x) => x[0] === b.dataset.tab);
+      for (const x of $$('[data-tab]', m)) x.classList.toggle('primary', x === b);
+      for (const p of $$('[data-pane]', m)) p.hidden = p.dataset.pane !== b.dataset.tab;
+    };
+    $('#cp', m).onclick = () => copyText(tabs[cur][2] || '');
     $('#cl', m).onclick = () => { closeModal(); if (state.page === 'nodes') renderPage(); };
   });
 }

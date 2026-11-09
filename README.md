@@ -8,7 +8,17 @@ Công cụ tạo **proxy IPv6 tĩnh** (HTTP + SOCKS5) từ dải IPv6 mà nhà m
 - Giao diện **tiếng Việt và tiếng Anh**, sáng và tối, dùng được trên điện thoại.
 - Chỉ **một file chạy duy nhất**, không cần Docker, không cần cài thêm proxy server khác.
 
-## Cài nhanh (máy Linux trong nhà: Zorin, Ubuntu, Debian…)
+## Cài đặt
+
+| Hệ điều hành | Cách cài |
+|---|---|
+| **Windows 10/11** | Tải `openv6-setup-windows-amd64.exe` ở [Releases](https://github.com/synthcoz/openv6/releases/latest), bấm Next → Install. Xem [docs/WINDOWS.md](docs/WINDOWS.md) |
+| **macOS** | Tải `openv6-macos.pkg` ở Releases |
+| **Ubuntu / Zorin / Debian** | Lệnh bên dưới, hoặc file `.deb` ở Releases |
+
+Sau khi cài, openv6 chạy nền và tự khởi động cùng máy. Icon ở khay hệ thống cho biết trạng thái và mở dashboard chỉ bằng một cú bấm.
+
+### Linux: cài bằng một lệnh
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
@@ -26,6 +36,7 @@ Hướng dẫn chi tiết (FPT, VPS, Windows, xử lý lỗi): [docs/HUONG-DAN.m
 
 | File | Nội dung |
 |---|---|
+| [docs/WINDOWS.md](docs/WINDOWS.md) | Cài và dùng trên Windows 10/11 (icon khay, dây LAN/Wi-Fi, tường lửa) |
 | [docs/ZORIN.md](docs/ZORIN.md) | Cài từng bước trên Zorin OS / Ubuntu |
 | [docs/HUONG-DAN.md](docs/HUONG-DAN.md) | Cài đặt và sử dụng, kiểm tra IPv6, mạng FPT, VPS, Windows, xử lý lỗi |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, luồng dữ liệu, cách gán IPv6, giao thức panel↔agent, API |
