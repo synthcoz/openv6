@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -50,24 +51,17 @@ func vpnKind(name string) string {
 	return ""
 }
 
-func ifaceUp(name string) bool {
-	b, err := os.ReadFile(filepath.Join("/sys/class/net", name, "operstate"))
-	if err != nil {
-		return false
-	}
-	s := strings.TrimSpace(string(b))
-	return s == "up" || s == "unknown" // tunnels report "unknown"
-}
-
+// detectVPNs lists tunnel interfaces via netlink (namespace-aware, unlike
+// /sys/class/net which reflects the namespace /sys was mounted in).
 func detectVPNs() []proto.VPN {
-	ents, err := os.ReadDir("/sys/class/net")
+	ifs, err := net.Interfaces()
 	if err != nil {
 		return nil
 	}
 	var out []proto.VPN
-	for _, e := range ents {
-		if k := vpnKind(e.Name()); k != "" {
-			out = append(out, proto.VPN{Iface: e.Name(), Kind: k, Up: ifaceUp(e.Name())})
+	for _, it := range ifs {
+		if k := vpnKind(it.Name); k != "" {
+			out = append(out, proto.VPN{Iface: it.Name, Kind: k, Up: it.Flags&net.FlagUp != 0})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Iface < out[j].Iface })

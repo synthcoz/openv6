@@ -43,10 +43,10 @@ func SelfTestBypass(dataDir string) ([]string, error) {
 	step("simulated network: eth0 with 2405:4802:1:2::/64 + a VPN tunnel holding the default route")
 	m := NewManager(dataDir)
 	st := m.Detect("")
-	if st.PrimaryIface != "eth0" || st.Gateway != "fe80::1" || st.EgressIface != "CloudflareWARP" {
+	if st.PrimaryIface != "eth0" || st.Gateway != "fe80::1" || st.EgressIface != "CloudflareWARP" || len(st.VPNs) == 0 || st.VPNs[0].Kind != "warp" {
 		return steps, fmt.Errorf("detection: primary=%q gateway=%q egress=%q", st.PrimaryIface, st.Gateway, st.EgressIface)
 	}
-	step("detection OK: primary=eth0, router=fe80::1, VPN detected (%d)", len(st.VPNs))
+	step("detection OK: primary=eth0, router=fe80::1, VPN detected: %s (%s)", st.VPNs[0].Kind, st.VPNs[0].Iface)
 	proxyIP := "2405:4802:1:2:aaaa:bbbb:cccc:dddd"
 	if errs, gerr := m.Apply(Desired{Iface: "eth0", Addrs: addrSet(proxyIP)}); len(errs) > 0 || len(gerr) > 0 {
 		return steps, fmt.Errorf("add address: %v %v", errs, gerr)
