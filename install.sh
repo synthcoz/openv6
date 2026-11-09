@@ -20,12 +20,24 @@ if ! command -v ip >/dev/null 2>&1; then
 fi
 if [ "$VERSION" = "latest" ]; then
   URL="https://github.com/$REPO/releases/latest/download/openv6-linux-$ARCH"
+  API="https://api.github.com/repos/$REPO/releases/latest"
 else
   URL="https://github.com/$REPO/releases/download/$VERSION/openv6-linux-$ARCH"
+  API="https://api.github.com/repos/$REPO/releases/tags/$VERSION"
 fi
-echo ">> downloading $URL"
-curl -fL --progress-bar "$URL" -o /usr/local/bin/openv6.new
-chmod +x /usr/local/bin/openv6.new
-mv -f /usr/local/bin/openv6.new /usr/local/bin/openv6
+OUT=/usr/local/bin/openv6.new
+echo ">> downloading openv6-linux-$ARCH"
+if ! curl -fL --retry 3 --retry-delay 3 --connect-timeout 15 --progress-bar "$URL" -o "$OUT"; then
+  # github.com download links sometimes fail (504); fall back to the API asset endpoint
+  echo ">> direct download failed, trying GitHub API"
+  ASSET=$(curl -fsSL --retry 3 "$API" | awk -v n="openv6-linux-$ARCH" '
+    /"url": *"https:\/\/api.github.com\/repos\/.*\/releases\/assets\// { gsub(/[",]/, "", $2); u=$2 }
+    /"name":/ { gsub(/[",]/, "", $2); if ($2 == n && u != "") { print u; exit } }')
+  if [ -z "$ASSET" ]; then echo "cannot find release asset openv6-linux-$ARCH"; exit 1; fi
+  curl -fL --retry 3 --retry-delay 3 --progress-bar -H "Accept: application/octet-stream" "$ASSET" -o "$OUT"
+fi
+if ! head -c 4 "$OUT" | grep -q "ELF"; then echo "downloaded file is not a Linux binary"; rm -f "$OUT"; exit 1; fi
+chmod +x "$OUT"
+mv -f "$OUT" /usr/local/bin/openv6
 if [ $# -eq 0 ]; then set -- server; fi
 /usr/local/bin/openv6 install "$@"
