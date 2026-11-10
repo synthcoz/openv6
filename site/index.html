@@ -42,6 +42,7 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+section[id] { scroll-margin-top: 84px; }
 main { overflow-x: clip; } /* the tilted hero and the phone mockup must not widen the page */
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; letter-spacing: -.005em; }
 a { color: inherit; }
@@ -123,6 +124,44 @@ h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.035em; line-height: 1.
 .checks li { display: flex; gap: 10px; color: var(--text-2); }
 .checks li::before { content: ''; flex: none; width: 18px; height: 18px; margin-top: 3px; border-radius: 50%; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat; }
 
+/* downloads */
+.dls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
+.dlc { position: relative; display: flex; flex-direction: column; gap: 16px; padding: 24px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); min-width: 0; }
+.dlc.mine { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary), var(--shadow); }
+.dlc .me { display: none; position: absolute; top: -12px; left: 24px; background: var(--primary); color: var(--primary-text); font-size: 12px; font-weight: 650; padding: 3px 10px; border-radius: 999px; }
+.dlc.mine .me { display: block; }
+.dlh { display: flex; gap: 14px; align-items: center; }
+.dlh h3 { margin: 0; font-size: 18px; letter-spacing: -.015em; }
+.dlh p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.4; }
+.osi { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--soft); border: 1px solid var(--border); }
+.osi svg { width: 22px; height: 22px; }
+.dlc .btn { width: 100%; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.cmd { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 10px; background: var(--soft); overflow: hidden; }
+.cmd code { flex: 1; min-width: 0; padding: 10px 12px; font: 500 12px/1.5 var(--mono); color: var(--text-2); white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.cmd .cp { flex: none; border: 0; border-left: 1px solid var(--border); background: var(--panel); color: var(--text); font: 600 12.5px var(--sans); padding: 0 12px; cursor: pointer; }
+.cmd.main { border-color: var(--border-2); background: var(--panel); }
+.cmd.main code { padding: 12px; font-size: 12.5px; color: var(--text); }
+.cmd.main .cp { background: var(--primary); color: var(--primary-text); border-left: 0; padding: 0 16px; }
+.cmd .cp:hover { background: var(--soft); }
+.cmd.main .cp:hover { background: var(--primary); opacity: .88; }
+.phonehint { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: center; text-align: center; margin: 28px auto 0; max-width: 560px; padding: 14px 16px; border-radius: 14px; border: 1px dashed var(--border-2); color: var(--text-2); font-size: 14.5px; }
+.phonehint[hidden] { display: none; }
+.dlfoot { text-align: center; color: var(--muted); font-size: 14px; margin: 28px 0 0; }
+.dlfoot a, a.ul { color: var(--text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-2); }
+dialog#dlDone { width: min(440px, calc(100vw - 32px)); padding: 28px; border: 1px solid var(--border-2); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+dialog#dlDone::backdrop { background: rgba(0,0,0,.45); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+dialog#dlDone h3 { margin: 12px 0 14px; font-size: 20px; letter-spacing: -.02em; }
+dialog#dlDone ol { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; color: var(--text-2); font-size: 15px; }
+dialog#dlDone .btn { width: 100%; margin-top: 6px; }
+dialog#dlDone .small { font-size: 13.5px; margin: 0 0 14px; }
+dialog#dlDone .muted { color: var(--muted); }
+dialog#dlDone a { color: var(--text); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.dlok { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); }
+.dlok svg { width: 22px; height: 22px; }
+.flash { animation: flash 1.6s ease; }
+@keyframes flash { 0%, 100% { box-shadow: 0 0 0 1px var(--primary), var(--shadow); } 30% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 55%, transparent), var(--shadow); } }
 /* paid notice (after a Polar checkout) */
 .paid{position:relative;z-index:60;padding:12px 16px;text-align:center;font-weight:600;background:#16a34a;color:#fff}
 /* pricing */
@@ -160,7 +199,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 
 @media (max-width: 900px) {
   .nav .links { display: none; }
-  .steps, .grid, .prices, .split { grid-template-columns: 1fr; }
+  .steps, .grid, .prices, .split, .dls { grid-template-columns: 1fr; }
   .split { gap: 32px; }
   section { padding: 72px 0; }
   .hero { padding-top: 56px; }
@@ -294,7 +333,7 @@ details p { animation: fIn .35s ease; }
   <div class="sp"></div>
   <div class="seg" id="lang"><button data-l="en">EN</button><button data-l="vi">VI</button></div>
   <button class="icon-btn" id="theme" type="button" data-t="theme_toggle"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-  <a class="btn sm primary dl" data-href="download" data-i="cta_download"></a>
+  <a class="btn sm primary dl" data-dl="auto" data-i="nav_download"></a>
 </div></div></header>
 
 <main>
@@ -304,10 +343,10 @@ details p { animation: fIn .35s ease; }
   <h1 data-i="h1"></h1>
   <p class="lead fade" style="--d:.45s" data-i="lead"></p>
   <div class="cta fade" style="--d:.6s">
-    <a class="btn primary" data-href="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i="cta_download"></span></a>
+    <a class="btn primary" data-dl="auto" data-label><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i="cta_download"></span></a>
     <a class="btn" href="#pricing" data-i="cta_pro"></a>
   </div>
-  <p class="fade" style="--d:.7s" data-i="platforms"></p>
+  <p class="fade" style="--d:.7s"><span data-i="platforms"></span> · <a href="#download" class="ul" data-i="dl_other"></a></p>
   <div class="stage fade" style="--d:.8s" id="stage">
     <div class="frame"><div class="bar"><span></span><span></span><span></span><em>127.0.0.1:8080</em></div>
       <img data-shot="shot-proxies" data-dark src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></div>
@@ -362,11 +401,45 @@ details p { animation: fIn .35s ease; }
 <section id="how"><div class="wrap">
   <div class="center rv"><div class="kicker" data-i="how_k"></div><h2 data-i="how_h"></h2><p class="sub" data-i="how_sub"></p></div>
   <div class="steps">
-    <div class="step rv"><b>1</b><h3 data-i="s1_h"></h3><p data-i="s1_p"></p><code>openv6-setup-windows-amd64.exe</code></div>
+    <div class="step rv"><b>1</b><h3 data-i="s1_h"></h3><p data-i="s1_p"></p><code id="s1file">openv6-setup-windows-amd64.exe</code></div>
     <div class="step rv" style="--d:.1s"><b>2</b><h3 data-i="s2_h"></h3><p data-i="s2_p"></p><code>FB 01 · FB 02 · … · FB 50</code></div>
     <div class="step rv" style="--d:.2s"><b>3</b><h3 data-i="s3_h"></h3><p data-i="s3_p"></p><code>192.168.1.10:10001:u7Kx:9fQe…</code></div>
   </div>
 </div></section>
+
+<section id="download" style="background:var(--bg-2)"><div class="wrap">
+  <div class="center rv"><div class="kicker" data-i="dl_k"></div><h2 data-i="dl_h"></h2><p class="sub" data-i="dl_sub"></p></div>
+  <div class="phonehint rv" id="phoneHint" hidden><span data-i="dl_phone"></span> <button type="button" class="btn sm" id="shareLink" data-i="dl_share"></button></div>
+  <div class="dls">
+    <div class="dlc rv" data-os="windows"><span class="me" data-i="dl_yours"></span>
+      <div class="dlh"><span class="osi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.5v7H3zM11.5 4.4 21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.4z"/></svg></span><div><h3>Windows</h3><p data-i="dl_req_win"></p></div></div>
+      <a class="btn primary" data-dl="windows"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i="dl_exe"></span></a>
+      <div class="or"><span data-i="dl_or_ps"></span></div>
+      <div class="cmd"><code>irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex</code><button type="button" class="cp" data-i="copy_all"></button></div>
+    </div>
+    <div class="dlc rv" data-os="macos"><span class="me" data-i="dl_yours"></span>
+      <div class="dlh"><span class="osi"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.5-1-2.5-3.8zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg></span><div><h3>macOS</h3><p data-i="dl_req_mac"></p></div></div>
+      <a class="btn primary" data-dl="macos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i="dl_pkg"></span></a>
+      <div class="or"><span data-i="dl_or_cmd"></span></div>
+      <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash</code><button type="button" class="cp" data-i="copy_all"></button></div>
+    </div>
+    <div class="dlc rv" data-os="linux"><span class="me" data-i="dl_yours"></span>
+      <div class="dlh"><span class="osi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg></span><div><h3>Linux</h3><p data-i="dl_req_linux"></p></div></div>
+      <div class="cmd main"><code>curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash</code><button type="button" class="cp" data-i="copy_all"></button></div>
+      <div class="or"><span data-i="dl_or_deb"></span></div>
+      <a class="btn" data-href="download"><span data-i="dl_deb"></span></a>
+    </div>
+  </div>
+  <p class="dlfoot rv"><span data-i="dl_auto"></span> <a data-href="download" data-i="dl_all"></a></p>
+</div></section>
+
+<dialog id="dlDone" aria-labelledby="dlDoneH"><form method="dialog">
+  <div class="dlok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
+  <h3 id="dlDoneH" data-i="dl_started"></h3>
+  <ol id="dlSteps"></ol>
+  <p class="muted small"><span data-i="dl_not_started"></span> <a id="dlRetry" data-i="dl_retry"></a></p>
+  <button class="btn primary" value="close" data-i="dl_close"></button>
+</form></dialog>
 
 <section id="features" style="background:var(--bg-2)"><div class="wrap">
   <div class="center rv"><div class="kicker" data-i="feat_k"></div><h2 data-i="feat_h"></h2><p class="sub" data-i="feat_sub"></p></div>
@@ -391,7 +464,7 @@ details p { animation: fIn .35s ease; }
   <div class="prices">
     <div class="price rv"><h3>Free</h3><div class="amt">$0</div><div class="once" data-i="p_free_once"></div>
       <ul><li data-i="pf1"></li><li data-i="pf2"></li><li data-i="pf3"></li><li data-i="pf4"></li></ul>
-      <a class="btn" data-href="download" data-i="cta_download"></a></div>
+      <a class="btn" data-dl="auto" data-i="cta_download"></a></div>
     <div class="price hot rv" style="--d:.08s"><span class="tag" data-i="popular"></span><h3 data-i="p1_h"></h3><div class="amt" data-price="pro1"></div><div class="once" data-i="once"></div>
       <ul><li data-i="pp1"></li><li data-i="pp2"></li><li data-i="pp3"></li><li data-i="pp4"></li><li data-i="pp5"></li></ul>
       <a class="btn primary" data-href="buy1" data-i="buy"></a></div>
@@ -414,7 +487,7 @@ details p { animation: fIn .35s ease; }
 </div></section>
 
 <div class="final rv"><h2 data-i="final_h"></h2><p data-i="final_p"></p>
-  <div class="cta"><a class="btn" data-href="download" data-i="cta_download"></a><a class="btn ghost" href="#pricing" data-i="cta_pro"></a></div></div>
+  <div class="cta"><a class="btn" data-dl="auto" data-label><span data-i="cta_download"></span></a><a class="btn ghost" href="#pricing" data-i="cta_pro"></a></div></div>
 </main>
 
 <footer><div class="wrap">
@@ -475,6 +548,14 @@ const T = {
     try_src: 'Nguồn mạng', src_home: 'Mạng nhà (ISP)', src_mini: 'Mini PC / máy bàn', try_count: 'Số proxy', try_fmt: 'Định dạng',
     copy_all: 'Sao chép', copied: 'Đã chép ✓', checking: 'đang kiểm tra', working: 'proxy đang chạy',
     theme_toggle: 'Đổi giao diện sáng / tối',
+    nav_download: 'Tải về', dl_phone: 'openv6 cài trên máy tính (Windows, macOS, Linux). Gửi link này sang máy tính để cài:', dl_share: 'Gửi link', dl_for: 'Tải cho {os}', dl_other: 'Hệ điều hành khác',
+    dl_k: 'Tải về', dl_h: 'Cài openv6 trong một phút', dl_sub: 'Miễn phí, không cần tài khoản. openv6 chạy nền và tự bật cùng máy.',
+    dl_yours: 'Máy của bạn', dl_req_win: 'Windows 10 / 11 · 64-bit', dl_req_mac: 'Intel & Apple silicon', dl_req_linux: 'Ubuntu, Debian, Zorin · amd64, arm64, armhf',
+    dl_exe: 'Tải bộ cài .exe', dl_pkg: 'Tải bộ cài .pkg', dl_deb: 'File .deb trên GitHub', dl_or_ps: 'hoặc một lệnh PowerShell (Admin)', dl_or_cmd: 'hoặc một lệnh trong Terminal', dl_or_deb: 'hoặc gói .deb',
+    dl_auto: 'Đã cài thì openv6 tự cập nhật ngay trong dashboard.', dl_all: 'Mọi bản tải và ghi chú phát hành →',
+    dl_started: 'Đang tải openv6…', dl_not_started: 'Không thấy file tải về?', dl_retry: 'Tải lại', dl_close: 'Đã hiểu',
+    dl_steps_windows: ['Mở file <b>openv6-setup-windows-amd64.exe</b> vừa tải.', 'Nếu Windows hiện <i>“Windows protected your PC”</i>: bấm <b>More info → Run anyway</b>.', 'Bấm <b>Next → Install</b>. Dashboard tự mở trong trình duyệt.'],
+    dl_steps_macos: ['Mở file <b>openv6-macos.pkg</b> vừa tải.', 'Nếu macOS chặn vì “không xác minh được nhà phát triển”: vào <b>Cài đặt hệ thống → Quyền riêng tư & Bảo mật</b>, bấm <b>Vẫn mở</b>.', 'Làm theo bộ cài. Dashboard tự mở ở <b>127.0.0.1:8080</b>.'],
     paid: 'Cảm ơn bạn đã mua openv6 Pro! License key đã được gửi tới email của bạn. Nhập key trong dashboard ở Cài đặt → Bản quyền.',
   },
   en: {
@@ -516,6 +597,14 @@ const T = {
     try_src: 'Network source', src_home: 'Home ISP', src_mini: 'Mini PC / desktop', try_count: 'Proxies', try_fmt: 'Format',
     copy_all: 'Copy', copied: 'Copied ✓', checking: 'checking', working: 'proxies working',
     theme_toggle: 'Switch light / dark',
+    nav_download: 'Download', dl_phone: 'openv6 installs on a computer (Windows, macOS, Linux). Send this link to your computer:', dl_share: 'Send link', dl_for: 'Download for {os}', dl_other: 'Other platforms',
+    dl_k: 'Download', dl_h: 'Install openv6 in a minute', dl_sub: 'Free, no account needed. openv6 runs in the background and starts with the machine.',
+    dl_yours: 'Your computer', dl_req_win: 'Windows 10 / 11 · 64-bit', dl_req_mac: 'Intel & Apple silicon', dl_req_linux: 'Ubuntu, Debian, Zorin · amd64, arm64, armhf',
+    dl_exe: 'Download .exe installer', dl_pkg: 'Download .pkg installer', dl_deb: '.deb files on GitHub', dl_or_ps: 'or one PowerShell command (Admin)', dl_or_cmd: 'or one Terminal command', dl_or_deb: 'or the .deb package',
+    dl_auto: 'Once installed, openv6 updates itself from the dashboard.', dl_all: 'All downloads and release notes →',
+    dl_started: 'Downloading openv6…', dl_not_started: 'No file showed up?', dl_retry: 'Download again', dl_close: 'Got it',
+    dl_steps_windows: ['Open <b>openv6-setup-windows-amd64.exe</b> from your downloads.', 'If Windows shows <i>“Windows protected your PC”</i>, click <b>More info → Run anyway</b>.', 'Click <b>Next → Install</b>. The dashboard opens in your browser.'],
+    dl_steps_macos: ['Open <b>openv6-macos.pkg</b> from your downloads.', 'If macOS says it can’t verify the developer, go to <b>System Settings → Privacy & Security</b> and click <b>Open Anyway</b>.', 'Follow the installer. The dashboard opens at <b>127.0.0.1:8080</b>.'],
     paid: 'Thanks for buying openv6 Pro! Your license key is on its way to your e-mail. Enter it in the dashboard under Settings → License.',
   },
 };
@@ -529,13 +618,68 @@ function render() {
   for (const el of document.querySelectorAll('[data-price]')) el.textContent = PRICES[el.dataset.price];
   for (const b of document.querySelectorAll('[data-l]')) b.classList.toggle('on', b.dataset.l === lang);
   for (const el of document.querySelectorAll('[data-t]')) { el.title = T[lang][el.dataset.t]; el.setAttribute('aria-label', el.title); }
-  shots();
+  shots(); dlButtons();
   document.title = 'openv6 — ' + T[lang].h1;
 }
 for (const b of document.querySelectorAll('[data-l]')) b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('ov6_lang', lang); } catch (e) { /* ignore */ } render(); splitH1(); if (typeof demoStarted !== 'undefined' && demoStarted) runDemo(); };
 // light / dark: follows the system until the visitor picks one (remembered)
 const darkMQ = matchMedia('(prefers-color-scheme: dark)');
 function theme() { return document.documentElement.dataset.theme || (darkMQ.matches ? 'dark' : 'light'); }
+// ---- downloads: the right installer for the visitor's OS ----
+const OS_NAME = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
+const DL_FILE = { windows: 'openv6-setup-windows-amd64.exe', macos: 'openv6-macos.pkg' };
+const myOS = (() => {
+  const ua = navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod|CrOS|Mobile/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return ''; // phones, tablets (iPad asks for the Mac site), ChromeOS
+  if (/Windows NT/.test(ua)) return 'windows';
+  if (/Macintosh|Mac OS X/.test(ua)) return 'macos';
+  if (/Linux|X11/.test(ua)) return 'linux';
+  return '';
+})();
+function dlButtons() {
+  for (const a of document.querySelectorAll('[data-dl]')) {
+    const os = a.dataset.dl === 'auto' ? myOS : a.dataset.dl;
+    a.href = DL_FILE[os] ? 'download/' + os : '#download';
+    if (a.hasAttribute('data-label')) { // hero / final CTA: "Download for Windows"
+      const s = a.querySelector('span'); s.removeAttribute('data-i');
+      s.textContent = OS_NAME[os] ? T[lang].dl_for.replace('{os}', OS_NAME[os]) : T[lang].cta_download;
+    }
+  }
+  document.getElementById('s1file').textContent = DL_FILE[myOS] || (myOS === 'linux' ? 'curl -fsSL …/install.sh | sudo bash' : DL_FILE.windows);
+}
+for (const c of document.querySelectorAll('.dlc')) c.classList.toggle('mine', c.dataset.os === myOS);
+if (!myOS) { // phone or tablet: openv6 installs on a computer, so offer to send the link there
+  document.getElementById('phoneHint').hidden = false;
+  document.getElementById('shareLink').onclick = async (e) => {
+    const url = location.origin + location.pathname + '#download';
+    try { if (navigator.share) await navigator.share({ title: 'openv6', url }); else { await navigator.clipboard.writeText(url); e.target.textContent = T[lang].copied; } } catch (err) { /* cancelled */ }
+  };
+}
+const dlg = document.getElementById('dlDone');
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('[data-dl]'); if (!a) return;
+  const os = a.dataset.dl === 'auto' ? myOS : a.dataset.dl;
+  if (!DL_FILE[os]) { // Linux, phones, unknown: show every option
+    // the link itself jumps to #download (scroll-margin keeps it clear of the floating header)
+    const c = document.querySelector('.dlc.mine'); if (c) { c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }
+    return;
+  }
+  // the browser downloads the file (GitHub sends it as an attachment); explain the next steps
+  document.getElementById('dlSteps').innerHTML = T[lang]['dl_steps_' + os].map((s) => '<li>' + s + '</li>').join('');
+  document.getElementById('dlRetry').href = a.href;
+  if (dlg.showModal) setTimeout(() => dlg.showModal(), 300);
+});
+dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // click outside closes
+// In-page links: the demo above can grow while a smooth scroll runs, so land precisely once it ends.
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href^="#"]'); const id = a && a.getAttribute('href').slice(1); const t = id && document.getElementById(id);
+  if (!t) return;
+  const fix = () => { const off = parseFloat(getComputedStyle(t).scrollMarginTop) || 0; if (Math.abs(t.getBoundingClientRect().top - off) > 4) t.scrollIntoView({ behavior: 'instant', block: 'start' }); };
+  if ('onscrollend' in window) addEventListener('scrollend', fix, { once: true }); else setTimeout(fix, 1200);
+});
+for (const b of document.querySelectorAll('.cmd .cp')) b.onclick = async () => {
+  try { await navigator.clipboard.writeText(b.previousElementSibling.textContent); b.textContent = T[lang].copied; setTimeout(() => { b.textContent = T[lang].copy_all; }, 1400); } catch (err) { /* clipboard blocked */ }
+};
 const ASSET_V = '__ASSET_V__'; // set by deploy/cloudflare/build.mjs (cache busting)
 function shots() { // dashboard screenshots in the page's language and theme
   const sfx = lang === 'vi' ? '-vi' : '', v = ASSET_V.startsWith('__') ? '' : '?v=' + ASSET_V;
