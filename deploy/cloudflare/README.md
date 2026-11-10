@@ -11,9 +11,9 @@ Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repos
 
 | Setting | Value |
 |---|---|
-| Project name | `openv6-landing` (must match `name` in `wrangler.jsonc`) |
+| Project name | `openv6-landing` (must match `name` in the root `wrangler.jsonc`) |
 | Production branch | `main` |
-| Root directory | `deploy/cloudflare` |
+| Root directory | *(empty: repo root)* |
 | Build command | `./build.sh` |
 | Deploy command | `npx wrangler deploy` |
 | Build watch paths (optional) | include `site/*`, `deploy/cloudflare/*` |
