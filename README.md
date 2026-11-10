@@ -1,64 +1,83 @@
-# openv6
+<p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
+<h1 align="center">openv6</h1>
+<p align="center"><b>Static IPv6 proxies (HTTP + SOCKS5) from your own network, with one web dashboard.</b></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Website</a> · <a href="https://github.com/synthcoz/openv6/releases/latest">Download</a> · <a href="CHANGELOG.md">Changelog</a></p>
+<p align="center"><b>English</b> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português</a></p>
 
-Công cụ tạo **proxy IPv6 tĩnh** (HTTP + SOCKS5) từ dải IPv6 mà nhà mạng hoặc nhà cung cấp VPS cấp cho bạn. Mọi thứ được quản lý qua **một web panel chung**, kể cả khi có nhiều máy (mạng nhà, mini PC, VPS, homelab).
+![openv6 dashboard](site/assets/shot-proxies.webp)
 
-- Mỗi proxy có **port riêng, user/pass riêng và IPv6 đi ra riêng**, cố định cho tới khi bạn tự đổi. Phù hợp để gắn vào trình duyệt anti-detect (GoLogin, GenLogin, Hidemyacc, MoreLogin…).
-- Thiết bị **kết nối vào proxy bằng IPv4** (IP LAN trong nhà, IP public với VPS), proxy **đi ra Internet bằng IPv6**.
-- Hỗ trợ **mạng gia đình** (prefix /64 on-link, prefix bị nhà mạng đổi thì tự cập nhật) và **VPS hoặc homelab** có dải /48 hay /56 được route về máy (mỗi proxy nằm ở một /64 riêng).
-- Giao diện **tiếng Việt và tiếng Anh**, sáng và tối, dùng được trên điện thoại.
-- Chỉ **một file chạy duy nhất**, không cần Docker, không cần cài thêm proxy server khác.
+openv6 turns the IPv6 prefix your home ISP or VPS provider gives you into hundreds of fixed proxies, one per account. It is made for anti-detect browsers (Multilogin, GoLogin, Dolphin Anty, ixBrowser, AdsPower, MoreLogin…).
 
-## Cài đặt
+- **One fixed IPv6 per proxy.** Every proxy has its own port, username, password and outgoing IPv6, kept until you change it.
+- **Any IPv6 network.** Home ISPs (a /64 on the LAN; when the ISP changes the prefix, openv6 follows and keeps ports and passwords) and VPS or homelab servers with a routed /64, /56 or /48.
+- **Clients connect over IPv4** (the machine's LAN IP, or the public IP of a VPS); traffic leaves over IPv6.
+- **Windows, macOS and Linux.** Any of them can run proxies (a "node"). Several machines are managed from one dashboard.
+- **Checks and fixes itself.** Regular IP checks, clear error causes, one-click fixes, Telegram alerts.
+- **Works with a VPN on**, and can be shared outside the LAN through a relay on a VPS, UPnP or Tailscale.
+- **One binary.** No Docker and no separate proxy server. Dashboard in English and Vietnamese, light and dark, mobile friendly.
 
-| Hệ điều hành | Cách cài |
+## Install
+
+| System | How |
 |---|---|
-| **Windows 10/11** | Tải `openv6-setup-windows-amd64.exe` ở [Releases](https://github.com/synthcoz/openv6/releases/latest), bấm Next → Install. Xem [docs/WINDOWS.md](docs/WINDOWS.md) |
-| **macOS** | Tải `openv6-macos.pkg` ở Releases |
-| **Ubuntu / Zorin / Debian** | Lệnh bên dưới, hoặc file `.deb` ở Releases |
-
-Sau khi cài, openv6 chạy nền và tự khởi động cùng máy. Icon ở khay hệ thống cho biết trạng thái và mở dashboard chỉ bằng một cú bấm.
-
-### Linux: cài bằng một lệnh
+| **Windows 10/11** | Download `openv6-setup-windows-amd64.exe` from [Releases](https://github.com/synthcoz/openv6/releases/latest) and click Next → Install. |
+| **macOS** (Intel and Apple silicon) | Download `openv6-macos.pkg` from Releases. |
+| **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | The command below, or the `.deb` file from Releases. |
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
 ```
 
-Mở trình duyệt `http://<IP-LAN-của-máy>:8080` để tạo tài khoản admin. Hướng dẫn từng bước cho Zorin: [docs/ZORIN.md](docs/ZORIN.md).
+openv6 runs in the background and starts with the machine. The tray icon shows the status and opens the dashboard.
 
-Sau đó vào **Proxy → Tạo proxy**, rồi bấm **Xuất danh sách** để copy vào anti-detect. Mọi thiết bị trong nhà (Windows, điện thoại…) dùng `IP-LAN-của-máy:port`.
+1. Open the dashboard (`http://<machine-LAN-IP>:8080`, or the tray icon) and create the admin account.
+2. **Proxies → Create proxies**, then **Export** in the format of your anti-detect browser.
+3. Every device on the network uses `machine-LAN-IP:port` (or the VPS public IP).
 
-Thêm máy khác (VPS, mini PC): vào **Máy chủ (node) → Thêm node** để lấy lệnh cài, rồi dán lệnh đó vào máy kia.
+To add another machine (VPS, mini PC, another PC): **Nodes → Add node**, then run the command it shows on that machine.
 
-Hướng dẫn chi tiết (FPT, VPS, Windows, xử lý lỗi): [docs/HUONG-DAN.md](docs/HUONG-DAN.md)
+## Free and Pro
 
-## Tài liệu
+| | Free | Pro (one-time payment) |
+|---|---|---|
+| Proxies | 3 | Unlimited |
+| Machines running proxies | 1 | Many (VPS, mini PCs, PCs) |
+| HTTP + SOCKS5, export, self-check | ✓ | ✓ |
+| Relay / UPnP / Tailscale sharing, API, customer accounts, Telegram, network card per proxy | | ✓ |
 
-| File | Nội dung |
+Buy a license on the [website](https://thephuc.xyz/openv6/#pricing) and enter it in **Settings → License**.
+
+## Commands
+
+```
+openv6 server  [-listen :8080] [-data DIR] [-no-local-agent] [-tls-cert FILE -tls-key FILE]
+openv6 agent   -panel URL -token TOKEN [-data DIR]
+openv6 install server|agent [flags]   # install as a service (root / Administrator)
+openv6 uninstall                      # remove the service and every IPv6 openv6 added
+openv6 tray                           # tray icon
+openv6 reset-password [-data DIR] [-user NAME]
+openv6 version
+```
+
+## Documentation
+
+The detailed guides are in Vietnamese for now.
+
+| File | Topic |
 |---|---|
-| [docs/WINDOWS.md](docs/WINDOWS.md) | Cài và dùng trên Windows 10/11 (icon khay, dây LAN/Wi-Fi, tường lửa) |
-| [docs/ZORIN.md](docs/ZORIN.md) | Cài từng bước trên Zorin OS / Ubuntu |
-| [docs/HUONG-DAN.md](docs/HUONG-DAN.md) | Cài đặt và sử dụng, kiểm tra IPv6, mạng FPT, VPS, Windows, xử lý lỗi |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, luồng dữ liệu, cách gán IPv6, giao thức panel↔agent, API |
-| [docs/RELEASE.md](docs/RELEASE.md) | Cách phát hành phiên bản mới (GitHub Actions) |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Tính năng nâng cao để phát triển tiếp (thương mại hoá, đa người dùng…) |
+| [docs/WINDOWS.md](docs/WINDOWS.md) | Windows 10/11: tray icon, LAN/Wi-Fi, firewall |
+| [docs/ZORIN.md](docs/ZORIN.md) | Step-by-step install on Zorin OS / Ubuntu |
+| [docs/HUONG-DAN.md](docs/HUONG-DAN.md) | Full guide: checking IPv6, home ISPs, VPS, troubleshooting |
+| [docs/API.md](docs/API.md) | JSON API and API tokens |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, IPv6 assignment, panel ↔ agent protocol |
+| [docs/RELEASE.md](docs/RELEASE.md) | Releasing a new version, signed updates |
 
-## Lệnh
-
-```
-openv6 server  [-listen :8080] [-data /var/lib/openv6] [-no-local-agent] [-tls-cert F -tls-key F]
-openv6 agent   -panel URL -token TOKEN [-data /var/lib/openv6-agent] [-insecure-tls]
-openv6 install server|agent [flags]   # cài systemd service
-openv6 uninstall                      # gỡ service và xoá các IPv6 đã thêm
-openv6 reset-password [-data DIR]     # quên mật khẩu admin
-```
-
-## Phát triển
+## Development
 
 ```bash
-make test        # unit test
-make dev         # chạy panel ở chế độ -dry-run (không đụng cấu hình mạng), http://localhost:18080
-make dist        # build linux amd64 + arm64 + armv7 vào dist/
+make test   # unit tests
+make dev    # dashboard in -dry-run mode (no network changes), http://localhost:18080
+make dist   # Linux builds into dist/
 ```
 
-Lưu ý: chỉ máy chạy proxy (node) cần Linux. Windows, macOS và điện thoại chỉ là máy dùng proxy.
+The landing page lives in [`site/`](site) and is deployed to Cloudflare (see [deploy/cloudflare](deploy/cloudflare)).
