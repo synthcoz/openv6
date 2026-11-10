@@ -1,0 +1,64 @@
+<!--
+{
+  "title": "Self-Hosted IPv6 Proxies vs Rented Proxies: Cost, Control and Trade-offs",
+  "description": "Residential, ISP, datacenter and self-hosted IPv6 proxies compared: how each is billed, how stable the IPs are, which sites they reach, and when running your own proxies pays off.",
+  "order": 7,
+  "date": "2026-11-10",
+  "keywords": ["self-hosted proxy", "residential vs datacenter proxy", "cheap static proxies", "proxy cost comparison", "IPv6 proxy vs residential proxy"],
+  "tldr": "Rented proxies are billed per IP per month or per GB of traffic. Self-hosted IPv6 proxies reuse the IPv6 your ISP or VPS already includes, so the cost is mostly one-time software plus hardware you have. The trade-off: they only reach IPv6-enabled sites without fallback, and you run them yourself.",
+  "faq": [
+    ["Are self-hosted proxies cheaper?", "Usually, once you need more than a few. Rented proxies cost per IP per month or per GB; self-hosted IPv6 proxies use address space that is already included with your connection or VPS, so adding the 50th proxy costs the same as the 5th."],
+    ["What do rented proxies do better?", "They come in many countries and cities, reach every website over IPv4, and somebody else runs the infrastructure. If you need a specific city or IPv4-only sites, renting is often simpler."],
+    ["Can I combine both?", "Yes. Many people use self-hosted IPv6 proxies for platforms that support IPv6 and keep a few rented IPv4 proxies for IPv4-only sites."],
+    ["What does openv6 cost?", "The Free version runs 3 proxies on 1 machine. Pro is a one-time payment: $6 for 1 dashboard machine or $12 for 3, with unlimited proxies and nodes."]
+  ]
+}
+-->
+<p>There are four common ways to get proxies for account work. They differ less in "quality" than in <strong>how you pay</strong>, <strong>how stable the IP is</strong> and <strong>which websites they can reach</strong>.</p>
+
+<h2 id="types">The four options</h2>
+<table>
+<thead><tr><th></th><th>Rotating residential</th><th>Static ISP / residential</th><th>Datacenter IPv4</th><th>Self-hosted IPv6</th></tr></thead>
+<tbody>
+<tr><td>Billed</td><td>Per GB of traffic</td><td>Per IP, monthly</td><td>Per IP, monthly</td><td>Software (one-time) + connection/VPS you already pay for</td></tr>
+<tr><td>IP stays fixed</td><td>No (rotates)</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+<tr><td>Looks like a home</td><td>Yes</td><td>Yes</td><td>No</td><td>Home connection: yes · VPS: no</td></tr>
+<tr><td>Reaches IPv4-only sites</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Only with IPv4 fallback (shared IPv4)</td></tr>
+<tr><td>Choice of country/city</td><td>Wide</td><td>Limited</td><td>Wide</td><td>Where your connections and servers are</td></tr>
+<tr><td>Cost of the next proxy</td><td>More traffic</td><td>Another monthly IP</td><td>Another monthly IP</td><td>≈ zero</td></tr>
+</tbody>
+</table>
+
+<h2 id="when-rent">When renting makes sense</h2>
+<ul>
+<li>You need IPs in <strong>many specific countries or cities</strong>.</li>
+<li>Your target sites are <strong>IPv4-only</strong>.</li>
+<li>You need only a few proxies, for a short time.</li>
+<li>You want zero setup and don't mind the monthly bill.</li>
+</ul>
+
+<h2 id="when-self-host">When self-hosting wins</h2>
+<ul>
+<li>You run <strong>many long-lived accounts</strong> on platforms that support IPv6 (Google, YouTube, Facebook, Instagram and others).</li>
+<li>You want <strong>static</strong> IPs that never get shared with other customers of a proxy company.</li>
+<li>You already have a home connection with IPv6, a spare PC or mini PC, or a VPS.</li>
+<li>You'd rather pay once than per IP every month.</li>
+</ul>
+
+<h2 id="hidden-costs">The costs nobody puts in the table</h2>
+<ul>
+<li><strong>Shared pools.</strong> Rented IPs may have been used by someone else before you, with whatever reputation they left behind. Your own IPv6 addresses start clean.</li>
+<li><strong>Your time.</strong> Self-hosting means you are the operator. Tools close most of that gap: openv6 installs as a background service, checks every proxy on a schedule, explains failures and fixes the common ones in one click, and can alert you on Telegram.</li>
+<li><strong>Network concentration.</strong> All proxies on one home connection share one /64. For accounts that must look unrelated, add more connections or a VPS with a routed /56 or /48: see <a href="../ipv6-prefixes-64-56-48-explained/">/64 vs /56 vs /48</a>.</li>
+</ul>
+
+<h2 id="example">A worked example</h2>
+<p>Say you need 50 static proxies for 50 profiles:</p>
+<ul>
+<li><strong>Renting static IPs:</strong> 50 × the monthly price per IP, every month.</li>
+<li><strong>Self-hosting:</strong> openv6 Pro once ($6 for one dashboard machine, $12 for three), your existing home connection and PC, optionally a small VPS for extra prefixes or a relay. The 50th proxy costs the same as the first.</li>
+</ul>
+<p>If a few of your sites are IPv4-only, keep a small number of rented IPv4 proxies just for them and run everything else on IPv6.</p>
+
+<h2 id="start">Try it</h2>
+<p>openv6 Free runs 3 proxies on 1 machine, enough to test with your own accounts. Start with <a href="../check-if-your-isp-supports-ipv6/">checking your IPv6</a>, then <a href="../static-ipv6-proxies-from-home-internet/">set up proxies at home</a> or <a href="../ipv6-proxies-on-a-vps/">on a VPS</a>.</p>

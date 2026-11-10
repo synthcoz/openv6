@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation | openv6</title>
+<meta name="description" content="Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.">
+<link rel="canonical" href="https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="openv6">
+<meta property="og:type" content="article">
+<meta property="og:title" content="/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation | openv6">
+<meta property="og:description" content="Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.">
+<meta property="og:url" content="https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/">
+<meta property="og:image" content="https://thephuc.xyz/openv6/assets/og/ipv6-prefixes-64-56-48-explained.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation | openv6">
+<meta name="twitter:description" content="Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.">
+<meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og/ipv6-prefixes-64-56-48-explained.jpg">
+<meta property="article:published_time" content="2026-11-10">
+<meta property="article:modified_time" content="2026-11-10">
+<meta name="keywords" content="IPv6 /64, IPv6 /48 proxy, IPv6 /56, IPv6 subnet proxies, account separation IPv6, IPv6 prefix explained">
+<link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
+<link rel="icon" href="../../assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
+<link rel="stylesheet" href="../../assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation","description":"Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.","image":"https://thephuc.xyz/openv6/assets/og/ipv6-prefixes-64-56-48-explained.jpg","datePublished":"2026-11-10","dateModified":"2026-11-10","author":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"publisher":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"mainEntityOfPage":"https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/","keywords":"IPv6 /64, IPv6 /48 proxy, IPv6 /56, IPv6 subnet proxies, account separation IPv6, IPv6 prefix explained","wordCount":518,"inLanguage":"en","about":{"@type":"SoftwareApplication","name":"openv6","url":"https://thephuc.xyz/openv6/"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"openv6","item":"https://thephuc.xyz/openv6/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://thephuc.xyz/openv6/blog/"},{"@type":"ListItem","position":3,"name":"/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation","item":"https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How many /64 networks are in a /48?","acceptedAnswer":{"@type":"Answer","text":"65,536. A /56 contains 256 /64 networks, and each /64 contains 2^64 (about 18.4 quintillion) addresses."}},{"@type":"Question","name":"Do websites block whole /64 ranges?","acceptedAnswer":{"@type":"Answer","text":"Rate limits, reputation and abuse systems often work per /64, because a /64 normally belongs to one customer. Treat a /64 like a single household when planning accounts."}},{"@type":"Question","name":"How do I get more than one /64?","acceptedAnswer":{"@type":"Answer","text":"Use a VPS whose provider routes a /56 or /48 to the server, ask your ISP for prefix delegation, or combine several connections and servers, each with its own /64."}},{"@type":"Question","name":"Does openv6 warn about shared /64s?","acceptedAnswer":{"@type":"Answer","text":"Yes. The dashboard shows how many distinct /64 networks your proxies use and warns when many accounts share one."}}]}</script>
+</head>
+<body>
+<header id="hdr"><div class="wrap"><div class="nav">
+  <a class="brand" href="../../"><img src="../../assets/logo.svg" alt="" width="30" height="30">openv6</a>
+  <nav class="links"><a href="../../#how">How it works</a><a href="../../#pricing">Pricing</a><a href="../../blog/">Blog</a><a href="../../#faq">FAQ</a></nav>
+  <div class="sp"></div>
+  <button class="icon-btn" id="theme" type="button" title="Switch light / dark" aria-label="Switch light / dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="btn sm primary dl" href="../../#download">Download</a>
+</div></div></header>
+<main class="wrap post">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">openv6</a><span>›</span><a href="../">Blog</a></nav>
+  <article>
+    <h1>/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation</h1>
+    <p class="pmeta"><time datetime="2026-11-10">November 10, 2026</time> · 2 min read</p>
+    <div class="tldr"><b>In short</b><p>An IPv6 /64 is one network, roughly one household or one server. Many platforms group addresses by /64, so proxies inside the same /64 can look related. A /56 holds 256 separate /64s and a /48 holds 65,536; with a routed /56 or /48 you can give every account its own /64.</p></div>
+    <nav class="toc" aria-label="Contents"><b>Contents</b><ol><li><a href="#notation">What the slash means</a></li><li><a href="#household">Why a /64 is &quot;one household&quot;</a></li><li><a href="#more-networks">Getting more /64s</a></li><li><a href="#planning">Planning accounts across prefixes</a></li><li><a href="#math">Quick math</a></li></ol></nav>
+    <div class="prose">
+<p>IPv6 gives you so many addresses that "one IP per account" stops being the hard part. The real question becomes <strong>how many networks</strong> your accounts are spread over. That is what the number after the slash tells you.</p>
+
+<h2 id="notation">What the slash means</h2>
+<p>An IPv6 address has 128 bits. A prefix like <code>2001:db8:51c0:1e::/64</code> says the first 64 bits identify the network and the remaining 64 bits are free for addresses inside it. The smaller the number after the slash, the bigger the block.</p>
+<div class="tbl"><table>
+<thead><tr><th>Prefix</th><th>Contains</th><th>Typically given to</th></tr></thead>
+<tbody>
+<tr><td>/64</td><td>~18.4 quintillion addresses, one network</td><td>One home LAN, one VPS</td></tr>
+<tr><td>/56</td><td>256 × /64</td><td>Some home ISPs (via prefix delegation), some VPS providers</td></tr>
+<tr><td>/48</td><td>65,536 × /64</td><td>Some VPS and dedicated server providers, businesses</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="household">Why a /64 is "one household"</h2>
+<p>By convention, a /64 is the smallest network handed to a single customer: your home router or your VPS. Every device in your house gets addresses from the same /64. Platforms know this, so their abuse, rate-limit and reputation systems often look at the <strong>/64</strong>, not the individual address.</p>
+<p>In practice: twenty proxies with twenty different addresses in the same /64 are much better than twenty accounts on one shared IPv4, but a platform can still see that they come from the same network. For a handful of related accounts that is fine; for accounts that must look unrelated, it isn't.</p>
+
+<h2 id="more-networks">Getting more /64s</h2>
+<ol>
+<li><strong>A VPS with a routed /56 or /48.</strong> The provider sends the whole prefix to your server. openv6 can then give each proxy its own random /64 inside it: tick <em>"Each proxy in its own /64"</em> when creating proxies on an <code>anyip</code> pool. See <a href="../ipv6-proxies-on-a-vps/">IPv6 proxies on a VPS</a>.</li>
+<li><strong>More locations.</strong> Each home connection and each VPS brings its own /64. openv6 manages them all as nodes in one dashboard, and the dashboard shows the number of <em>distinct /64 subnets</em> you are using.</li>
+<li><strong>Prefix delegation at home.</strong> Some ISPs delegate a /56 or /60 to your router. Using those extra /64s for proxies depends on your router; ask your ISP what they provide.</li>
+</ol>
+
+<h2 id="planning">Planning accounts across prefixes</h2>
+<ul>
+<li><strong>Group by risk.</strong> Accounts that may share an owner (a brand and its backups) can share a /64. Accounts that must look independent should not.</li>
+<li><strong>Keep the mapping fixed.</strong> Once an account lives on a proxy, keep it there. Moving accounts between networks is a stronger signal than sharing one.</li>
+<li><strong>Residential vs datacenter.</strong> Home /64s are residential; VPS prefixes are datacenter. Platforms treat them differently; mix them on purpose, not by accident.</li>
+<li><strong>Don't forget IPv4.</strong> If a proxy falls back to IPv4 for IPv4-only sites, every such proxy shares the machine's IPv4, which undoes the separation. Keep fallback off on account proxies.</li>
+</ul>
+
+<h2 id="math">Quick math</h2>
+<pre><code>/64 → 2^64 addresses          ≈ 18,446,744,073,709,551,616
+/56 → 2^(64-56) = 2^8  /64s   = 256 networks
+/48 → 2^(64-48) = 2^16 /64s   = 65,536 networks</code></pre>
+<p>Even a /56 gives more separate networks than most people will ever need for accounts; a single /64 gives more addresses than the entire IPv4 internet, many times over.</p>
+<p>New to this? Start with <a href="../what-is-an-ipv6-proxy/">What is an IPv6 proxy?</a></p>
+    </div>
+    <section class="faqs" id="faq"><h2>Frequently asked questions</h2><details><summary>How many /64 networks are in a /48?</summary><p>65,536. A /56 contains 256 /64 networks, and each /64 contains 2^64 (about 18.4 quintillion) addresses.</p></details><details><summary>Do websites block whole /64 ranges?</summary><p>Rate limits, reputation and abuse systems often work per /64, because a /64 normally belongs to one customer. Treat a /64 like a single household when planning accounts.</p></details><details><summary>How do I get more than one /64?</summary><p>Use a VPS whose provider routes a /56 or /48 to the server, ask your ISP for prefix delegation, or combine several connections and servers, each with its own /64.</p></details><details><summary>Does openv6 warn about shared /64s?</summary><p>Yes. The dashboard shows how many distinct /64 networks your proxies use and warns when many accounts share one.</p></details></section>
+  </article>
+  <aside class="cta-card">
+    <div><h2>Run your own static IPv6 proxies</h2><p>openv6 turns your home ISP or VPS IPv6 into fixed HTTP + SOCKS5 proxies for anti-detect browsers. Windows, macOS and Linux. Free for 3 proxies.</p></div>
+    <div class="cta"><a class="btn primary" href="../../#download">Download free</a><a class="btn" href="../../#pricing">See Pro</a></div>
+  </aside>
+  <section class="related"><h2>Keep reading</h2><div class="pgrid"><a class="pcard" href="../../blog/what-is-an-ipv6-proxy/"><h3>What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work</h3><p>An IPv6 proxy sends your traffic out from an IPv6 address instead of IPv4. Here is how IPv6 proxies work, why one fixed IPv6 per account matters, and when they beat IPv4 proxies.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/ipv6-proxies-on-a-vps/"><h3>IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies</h3><p>How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/static-ipv6-proxies-from-home-internet/"><h3>How to Turn Your Home Internet Into Static IPv6 Proxies</h3><p>Step-by-step: turn the IPv6 /64 your home ISP already gives you into dozens or hundreds of fixed HTTP/SOCKS5 proxies with residential addresses, using a Windows, macOS or Linux machine.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a></div></section>
+</main>
+<footer><div class="wrap">
+  <div class="fl"><a class="brand" href="../../" style="font-size:15px"><img src="../../assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© 2026 openv6</span></div>
+  <nav class="fr"><a href="../../blog/">Blog</a><a href="https://labs.thephuc.xyz/">Labs</a><a href="https://github.com/thephux/openv6-releases">GitHub</a><a href="../../#download">Downloads</a></nav>
+</div></footer>
+<script>
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+};
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
+</body>
+</html>

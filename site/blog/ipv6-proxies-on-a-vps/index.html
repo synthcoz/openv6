@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies | openv6</title>
+<meta name="description" content="How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.">
+<link rel="canonical" href="https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="openv6">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies | openv6">
+<meta property="og:description" content="How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.">
+<meta property="og:url" content="https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/">
+<meta property="og:image" content="https://thephuc.xyz/openv6/assets/og/ipv6-proxies-on-a-vps.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies | openv6">
+<meta name="twitter:description" content="How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.">
+<meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og/ipv6-proxies-on-a-vps.jpg">
+<meta property="article:published_time" content="2026-11-10">
+<meta property="article:modified_time" content="2026-11-10">
+<meta name="keywords" content="IPv6 proxy VPS, VPS IPv6 /64 proxy, routed /48 IPv6 proxy, datacenter IPv6 proxy, Hetzner IPv6 proxy">
+<link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
+<link rel="icon" href="../../assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
+<link rel="stylesheet" href="../../assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies","description":"How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.","image":"https://thephuc.xyz/openv6/assets/og/ipv6-proxies-on-a-vps.jpg","datePublished":"2026-11-10","dateModified":"2026-11-10","author":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"publisher":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"mainEntityOfPage":"https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/","keywords":"IPv6 proxy VPS, VPS IPv6 /64 proxy, routed /48 IPv6 proxy, datacenter IPv6 proxy, Hetzner IPv6 proxy","wordCount":633,"inLanguage":"en","about":{"@type":"SoftwareApplication","name":"openv6","url":"https://thephuc.xyz/openv6/"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"openv6","item":"https://thephuc.xyz/openv6/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://thephuc.xyz/openv6/blog/"},{"@type":"ListItem","position":3,"name":"IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies","item":"https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Which VPS providers give IPv6?","acceptedAnswer":{"@type":"Answer","text":"Most of them, including Hetzner, Vultr, DigitalOcean, OVHcloud, Linode/Akamai and many others. Some include a /64 by default, some let you request or enable a larger routed prefix in their control panel."}},{"@type":"Question","name":"What is the difference between an on-link /64 and a routed /48?","acceptedAnswer":{"@type":"Answer","text":"An on-link /64 sits on the server's network card, so each address must be added to the card. A routed prefix is sent to your server as a whole, so the server can use any address inside it without adding them one by one."}},{"@type":"Question","name":"Can I mix VPS proxies with home proxies?","acceptedAnswer":{"@type":"Answer","text":"Yes. openv6 manages several machines (nodes) from one dashboard. A common setup is the dashboard on the VPS and home machines connecting to it as nodes."}},{"@type":"Question","name":"Do VPS IPv6 addresses count as residential?","acceptedAnswer":{"@type":"Answer","text":"No. They belong to a datacenter provider. They are stable and fast, but platforms can tell they are not home connections."}}]}</script>
+</head>
+<body>
+<header id="hdr"><div class="wrap"><div class="nav">
+  <a class="brand" href="../../"><img src="../../assets/logo.svg" alt="" width="30" height="30">openv6</a>
+  <nav class="links"><a href="../../#how">How it works</a><a href="../../#pricing">Pricing</a><a href="../../blog/">Blog</a><a href="../../#faq">FAQ</a></nav>
+  <div class="sp"></div>
+  <button class="icon-btn" id="theme" type="button" title="Switch light / dark" aria-label="Switch light / dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="btn sm primary dl" href="../../#download">Download</a>
+</div></div></header>
+<main class="wrap post">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">openv6</a><span>›</span><a href="../">Blog</a></nav>
+  <article>
+    <h1>IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies</h1>
+    <p class="pmeta"><time datetime="2026-11-10">November 10, 2026</time> · 3 min read</p>
+    <div class="tldr"><b>In short</b><p>Almost every VPS comes with an IPv6 /64, and some providers route a /56 or /48 to your server. openv6 turns that prefix into static HTTP/SOCKS5 proxies: on a /64 it adds one address per proxy, on a routed /56 or /48 it can give every proxy its own /64 for much better separation.</p></div>
+    <nav class="toc" aria-label="Contents"><b>Contents</b><ol><li><a href="#why-vps">Why a VPS?</a></li><li><a href="#on-link-vs-routed">On-link /64 vs routed /56 or /48</a></li><li><a href="#setup">Setting it up</a></li><li><a href="#many-servers">Several servers, one dashboard</a></li><li><a href="#checks">Keep them healthy</a></li><li><a href="#cost">What it costs</a></li></ol></nav>
+    <div class="prose">
+<p>A VPS is the easiest place to run <strong>IPv6 proxies that never change</strong>. The address space comes with the server, the uptime is better than a home connection, and with the right prefix you can give every proxy a completely separate network.</p>
+
+<h2 id="why-vps">Why a VPS?</h2>
+<ul>
+<li><strong>Fixed prefix.</strong> Unlike most home ISPs, a VPS prefix does not change.</li>
+<li><strong>Public IPv4.</strong> Clients connect to <code>VPS-IP:port</code> from anywhere, no relays or port forwarding.</li>
+<li><strong>Bigger prefixes.</strong> Some providers route a /56 or /48 to your server, which means thousands to 65,536 separate /64 networks.</li>
+</ul>
+<p>The trade-off: VPS addresses are <em>datacenter</em> addresses. For residential IPs, use your <a href="../static-ipv6-proxies-from-home-internet/">home connection</a>; many people run both.</p>
+
+<h2 id="on-link-vs-routed">On-link /64 vs routed /56 or /48</h2>
+<p>This is the one technical detail worth understanding before you start.</p>
+<div class="tbl"><table>
+<thead><tr><th></th><th>On-link /64</th><th>Routed /56 or /48</th></tr></thead>
+<tbody>
+<tr><td>What you get</td><td>One /64 on the server's network card</td><td>A whole prefix routed to your server</td></tr>
+<tr><td>How proxies get addresses</td><td>Each address is added to the card</td><td>The server answers for every address in the range</td></tr>
+<tr><td>openv6 pool mode</td><td><code>auto</code> (detected automatically)</td><td><code>anyip</code> (you add the CIDR)</td></tr>
+<tr><td>Separation between proxies</td><td>All in one /64</td><td>One /64 per proxy possible</td></tr>
+<tr><td>How common</td><td>Almost every provider</td><td>Some providers, sometimes on request</td></tr>
+</tbody>
+</table></div>
+<p>If you are not sure which one you have, start with the /64: openv6 detects it on its own.</p>
+
+<h2 id="setup">Setting it up</h2>
+<h3>1. Install</h3>
+<p>On the VPS (Ubuntu or Debian), run:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash</code></pre>
+<p>Open <code>http://VPS-IP:8080</code>. Because the dashboard is reachable from the internet, a fresh install asks for the <strong>setup code</strong> that the installer prints before you can create the admin account. For anything beyond a quick test, put the dashboard behind HTTPS (built-in <code>-tls-cert</code>/<code>-tls-key</code>, or a reverse proxy such as Caddy).</p>
+
+<h3>2. Open the ports</h3>
+<p>Allow your proxy port range, for example <code>10001-11000/tcp</code>, both in the server firewall and in the provider's cloud firewall or security group if it has one.</p>
+
+<h3>3a. With a /64</h3>
+<p>Nothing to configure. The <code>auto</code> pool follows the card's /64. Create proxies, set the scope to <strong>Internet</strong> (a password is then required) and export.</p>
+
+<h3>3b. With a routed /56 or /48</h3>
+<p>Enable the prefix in your provider's panel if needed, then in openv6 open the node and <strong>add a pool</strong>: the CIDR, for example <code>2001:db8:1200::/48</code>, and the mode <code>anyip</code>. When creating proxies, choose that pool and tick <strong>"Each proxy in its own /64"</strong>. Every account now sits in a different /64, which is as separate as IPv6 gets without more servers.</p>
+<p>Only use <code>anyip</code> for prefixes that are really routed to the server. If the provider only gives an on-link /64, keep the <code>auto</code> pool.</p>
+
+<h2 id="many-servers">Several servers, one dashboard</h2>
+<p>openv6 separates the <strong>dashboard</strong> from the <strong>nodes</strong> that run proxies. Add a node (<strong>Nodes → Add node</strong>), run the command it shows on the new machine, and it appears online within seconds. Nodes always connect <em>out</em> to the dashboard, so they work behind NAT.</p>
+<p>A practical layout:</p>
+<ul>
+<li>Dashboard and datacenter proxies on one VPS.</li>
+<li>Home mini PCs as extra nodes for residential addresses.</li>
+<li>The same VPS as a <strong>relay</strong> so home proxies are reachable from anywhere.</li>
+</ul>
+
+<h2 id="checks">Keep them healthy</h2>
+<p>openv6 checks every proxy on a schedule (by default every 10 minutes), records latency, country and ISP, and can alert you on Telegram when a proxy fails twice in a row and again when it recovers. If the server reboots or an address disappears, the node adds it back automatically.</p>
+
+<h2 id="cost">What it costs</h2>
+<p>A small VPS with IPv6 typically costs a few dollars a month, and the IPv6 space is included. openv6 Free runs 3 proxies on 1 machine; <a href="../../#pricing">Pro</a> is a one-time payment for unlimited proxies and machines. Compare that with renting per IP: <a href="../self-hosted-vs-rented-proxies/">self-hosted vs rented proxies</a>.</p>
+    </div>
+    <section class="faqs" id="faq"><h2>Frequently asked questions</h2><details><summary>Which VPS providers give IPv6?</summary><p>Most of them, including Hetzner, Vultr, DigitalOcean, OVHcloud, Linode/Akamai and many others. Some include a /64 by default, some let you request or enable a larger routed prefix in their control panel.</p></details><details><summary>What is the difference between an on-link /64 and a routed /48?</summary><p>An on-link /64 sits on the server's network card, so each address must be added to the card. A routed prefix is sent to your server as a whole, so the server can use any address inside it without adding them one by one.</p></details><details><summary>Can I mix VPS proxies with home proxies?</summary><p>Yes. openv6 manages several machines (nodes) from one dashboard. A common setup is the dashboard on the VPS and home machines connecting to it as nodes.</p></details><details><summary>Do VPS IPv6 addresses count as residential?</summary><p>No. They belong to a datacenter provider. They are stable and fast, but platforms can tell they are not home connections.</p></details></section>
+  </article>
+  <aside class="cta-card">
+    <div><h2>Run your own static IPv6 proxies</h2><p>openv6 turns your home ISP or VPS IPv6 into fixed HTTP + SOCKS5 proxies for anti-detect browsers. Windows, macOS and Linux. Free for 3 proxies.</p></div>
+    <div class="cta"><a class="btn primary" href="../../#download">Download free</a><a class="btn" href="../../#pricing">See Pro</a></div>
+  </aside>
+  <section class="related"><h2>Keep reading</h2><div class="pgrid"><a class="pcard" href="../../blog/static-ipv6-proxies-from-home-internet/"><h3>How to Turn Your Home Internet Into Static IPv6 Proxies</h3><p>Step-by-step: turn the IPv6 /64 your home ISP already gives you into dozens or hundreds of fixed HTTP/SOCKS5 proxies with residential addresses, using a Windows, macOS or Linux machine.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/self-hosted-vs-rented-proxies/"><h3>Self-Hosted IPv6 Proxies vs Rented Proxies: Cost, Control and Trade-offs</h3><p>Residential, ISP, datacenter and self-hosted IPv6 proxies compared: how each is billed, how stable the IPs are, which sites they reach, and when running your own proxies pays off.</p><span class="pmeta">November 10, 2026 · 2 min read</span></a><a class="pcard" href="../../blog/what-is-an-ipv6-proxy/"><h3>What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work</h3><p>An IPv6 proxy sends your traffic out from an IPv6 address instead of IPv4. Here is how IPv6 proxies work, why one fixed IPv6 per account matters, and when they beat IPv4 proxies.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a></div></section>
+</main>
+<footer><div class="wrap">
+  <div class="fl"><a class="brand" href="../../" style="font-size:15px"><img src="../../assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© 2026 openv6</span></div>
+  <nav class="fr"><a href="../../blog/">Blog</a><a href="https://labs.thephuc.xyz/">Labs</a><a href="https://github.com/thephux/openv6-releases">GitHub</a><a href="../../#download">Downloads</a></nav>
+</div></footer>
+<script>
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+};
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
+</body>
+</html>

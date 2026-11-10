@@ -1,0 +1,70 @@
+<!--
+{
+  "title": "IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies",
+  "description": "How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.",
+  "order": 4,
+  "date": "2026-11-10",
+  "keywords": ["IPv6 proxy VPS", "VPS IPv6 /64 proxy", "routed /48 IPv6 proxy", "datacenter IPv6 proxy", "Hetzner IPv6 proxy"],
+  "tldr": "Almost every VPS comes with an IPv6 /64, and some providers route a /56 or /48 to your server. openv6 turns that prefix into static HTTP/SOCKS5 proxies: on a /64 it adds one address per proxy, on a routed /56 or /48 it can give every proxy its own /64 for much better separation.",
+  "faq": [
+    ["Which VPS providers give IPv6?", "Most of them, including Hetzner, Vultr, DigitalOcean, OVHcloud, Linode/Akamai and many others. Some include a /64 by default, some let you request or enable a larger routed prefix in their control panel."],
+    ["What is the difference between an on-link /64 and a routed /48?", "An on-link /64 sits on the server's network card, so each address must be added to the card. A routed prefix is sent to your server as a whole, so the server can use any address inside it without adding them one by one."],
+    ["Can I mix VPS proxies with home proxies?", "Yes. openv6 manages several machines (nodes) from one dashboard. A common setup is the dashboard on the VPS and home machines connecting to it as nodes."],
+    ["Do VPS IPv6 addresses count as residential?", "No. They belong to a datacenter provider. They are stable and fast, but platforms can tell they are not home connections."]
+  ]
+}
+-->
+<p>A VPS is the easiest place to run <strong>IPv6 proxies that never change</strong>. The address space comes with the server, the uptime is better than a home connection, and with the right prefix you can give every proxy a completely separate network.</p>
+
+<h2 id="why-vps">Why a VPS?</h2>
+<ul>
+<li><strong>Fixed prefix.</strong> Unlike most home ISPs, a VPS prefix does not change.</li>
+<li><strong>Public IPv4.</strong> Clients connect to <code>VPS-IP:port</code> from anywhere, no relays or port forwarding.</li>
+<li><strong>Bigger prefixes.</strong> Some providers route a /56 or /48 to your server, which means thousands to 65,536 separate /64 networks.</li>
+</ul>
+<p>The trade-off: VPS addresses are <em>datacenter</em> addresses. For residential IPs, use your <a href="../static-ipv6-proxies-from-home-internet/">home connection</a>; many people run both.</p>
+
+<h2 id="on-link-vs-routed">On-link /64 vs routed /56 or /48</h2>
+<p>This is the one technical detail worth understanding before you start.</p>
+<table>
+<thead><tr><th></th><th>On-link /64</th><th>Routed /56 or /48</th></tr></thead>
+<tbody>
+<tr><td>What you get</td><td>One /64 on the server's network card</td><td>A whole prefix routed to your server</td></tr>
+<tr><td>How proxies get addresses</td><td>Each address is added to the card</td><td>The server answers for every address in the range</td></tr>
+<tr><td>openv6 pool mode</td><td><code>auto</code> (detected automatically)</td><td><code>anyip</code> (you add the CIDR)</td></tr>
+<tr><td>Separation between proxies</td><td>All in one /64</td><td>One /64 per proxy possible</td></tr>
+<tr><td>How common</td><td>Almost every provider</td><td>Some providers, sometimes on request</td></tr>
+</tbody>
+</table>
+<p>If you are not sure which one you have, start with the /64: openv6 detects it on its own.</p>
+
+<h2 id="setup">Setting it up</h2>
+<h3>1. Install</h3>
+<p>On the VPS (Ubuntu or Debian), run:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash</code></pre>
+<p>Open <code>http://VPS-IP:8080</code>. Because the dashboard is reachable from the internet, a fresh install asks for the <strong>setup code</strong> that the installer prints before you can create the admin account. For anything beyond a quick test, put the dashboard behind HTTPS (built-in <code>-tls-cert</code>/<code>-tls-key</code>, or a reverse proxy such as Caddy).</p>
+
+<h3>2. Open the ports</h3>
+<p>Allow your proxy port range, for example <code>10001-11000/tcp</code>, both in the server firewall and in the provider's cloud firewall or security group if it has one.</p>
+
+<h3>3a. With a /64</h3>
+<p>Nothing to configure. The <code>auto</code> pool follows the card's /64. Create proxies, set the scope to <strong>Internet</strong> (a password is then required) and export.</p>
+
+<h3>3b. With a routed /56 or /48</h3>
+<p>Enable the prefix in your provider's panel if needed, then in openv6 open the node and <strong>add a pool</strong>: the CIDR, for example <code>2001:db8:1200::/48</code>, and the mode <code>anyip</code>. When creating proxies, choose that pool and tick <strong>"Each proxy in its own /64"</strong>. Every account now sits in a different /64, which is as separate as IPv6 gets without more servers.</p>
+<p>Only use <code>anyip</code> for prefixes that are really routed to the server. If the provider only gives an on-link /64, keep the <code>auto</code> pool.</p>
+
+<h2 id="many-servers">Several servers, one dashboard</h2>
+<p>openv6 separates the <strong>dashboard</strong> from the <strong>nodes</strong> that run proxies. Add a node (<strong>Nodes → Add node</strong>), run the command it shows on the new machine, and it appears online within seconds. Nodes always connect <em>out</em> to the dashboard, so they work behind NAT.</p>
+<p>A practical layout:</p>
+<ul>
+<li>Dashboard and datacenter proxies on one VPS.</li>
+<li>Home mini PCs as extra nodes for residential addresses.</li>
+<li>The same VPS as a <strong>relay</strong> so home proxies are reachable from anywhere.</li>
+</ul>
+
+<h2 id="checks">Keep them healthy</h2>
+<p>openv6 checks every proxy on a schedule (by default every 10 minutes), records latency, country and ISP, and can alert you on Telegram when a proxy fails twice in a row and again when it recovers. If the server reboots or an address disappears, the node adds it back automatically.</p>
+
+<h2 id="cost">What it costs</h2>
+<p>A small VPS with IPv6 typically costs a few dollars a month, and the IPv6 space is included. openv6 Free runs 3 proxies on 1 machine; <a href="../../#pricing">Pro</a> is a one-time payment for unlimited proxies and machines. Compare that with renting per IP: <a href="../self-hosted-vs-rented-proxies/">self-hosted vs rented proxies</a>.</p>

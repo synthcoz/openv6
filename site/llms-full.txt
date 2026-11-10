@@ -1,0 +1,671 @@
+# openv6: full reference
+
+openv6 turns the IPv6 prefix that a home internet connection or a VPS already has into static HTTP + SOCKS5 proxies, one fixed IPv6 address per proxy, for anti-detect browsers such as Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere, AdsPower and MoreLogin.
+
+- Each proxy has its own port, username, password and outgoing IPv6, kept until the user changes it. The same port speaks HTTP and SOCKS5.
+- Works with home ISPs (a /64 on the LAN; when the ISP changes the prefix, openv6 follows and keeps ports and passwords) and VPS or homelab servers with a /64 or a routed /56 or /48 (optionally one /64 per proxy).
+- Clients connect over IPv4 (the machine's LAN IP or the VPS public IP); traffic leaves over IPv6. IPv4 fallback is optional and off by default for account work.
+- Runs on Windows 10/11, macOS (Intel and Apple silicon) and Linux (Ubuntu, Debian, Zorin; amd64, arm64, armhf) as a background service with a tray icon. Several machines (nodes) are managed from one web dashboard.
+- Regular IP checks (latency, country, ISP), plain-language error causes with one-click fixes, Telegram alerts, works with a VPN on, sharing outside the LAN through a relay on a VPS, UPnP or Tailscale, JSON API, customer accounts for reselling.
+- Exports proxy lists in the formats of Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere 2 and AdsPower, plus host:port:user:pass, URLs, CSV and JSON.
+- Pricing: Free = 3 proxies on 1 machine. Pro = one-time payment, $6 for 1 dashboard machine or $12 for 3, unlimited proxies and nodes, no subscription. Licenses are sold through Polar.
+- Download: https://thephuc.xyz/openv6/#download (Windows .exe, macOS .pkg, Linux install command). Releases: https://github.com/thephux/openv6-releases/releases/latest
+
+---
+
+# What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work
+
+URL: https://thephuc.xyz/openv6/blog/what-is-an-ipv6-proxy/
+Published: 2026-11-10
+
+In short: An IPv6 proxy is a proxy server whose outgoing connections use an IPv6 address. Because a single /64 IPv6 network holds about 18.4 quintillion addresses, you can give every account its own fixed IP for free, as long as the website you visit supports IPv6.
+
+A proxy is a middleman: your browser connects to it, and it connects to the website for you. The website sees the proxy's IP address, not yours. An IPv6 proxy is simply a proxy whose outgoing connections leave from an IPv6 address instead of an IPv4 one.
+
+That small difference matters a lot if you run several accounts, because IPv6 addresses are practically unlimited. This guide explains how IPv6 proxies work, what "static" means, and when they are the right tool.
+
+## IPv4 vs IPv6 in one minute
+
+IPv4 addresses look like 203.0.113.7 . There are only about 4.3 billion of them, they ran out years ago, and they cost money. That is why IPv4 proxies are usually rented per IP, per month.
+
+IPv6 addresses look like 2001:db8:51c0:1e:2166:a92a:7d20:a41f . Internet providers hand them out in blocks called prefixes . The smallest block a home or VPS normally gets is a /64 , which contains 2 64 addresses: about 18.4 quintillion . You will never run out.
+
+|  | IPv4 proxy | IPv6 proxy |
+
+| Address format | 203.0.113.7 | 2001:db8::a41f |
+
+| Addresses you get | Usually one per rented proxy | A /64 = ~18.4 quintillion |
+
+| Typical cost | Paid per IP or per GB | Often free with your ISP or VPS |
+
+| Works on every website | Yes | Only on sites that support IPv6 |
+
+## How an IPv6 proxy works
+
+The trick is that your apps do not need IPv6 themselves. A typical setup looks like this:
+
+- Your browser or anti-detect profile connects to the proxy over IPv4, for example 192.168.1.10:10001 with a username and password.
+
+- The proxy machine binds a specific IPv6 address from its prefix to that proxy.
+
+- When the browser asks for a website, the proxy opens the connection from that IPv6 address .
+
+- The website sees 2001:db8:51c0::a41f , not your real IP.
+
+Run many proxies on different ports, give each one a different IPv6, and every browser profile gets its own address, all from a single internet connection.
+
+## What makes an IPv6 proxy "static"
+
+A static (or sticky) proxy keeps the same outgoing IP until you decide to change it. That is what you want for long-lived accounts: an account that logs in from the same IP every day looks normal, one that jumps between addresses does not.
+
+Rotating proxies do the opposite and change IP on every request or every few minutes. They are useful for scraping, not for account work.
+
+With openv6 each proxy has a fixed port, username, password and IPv6. On a home connection, ISPs sometimes change the prefix after a modem restart; openv6 notices, moves every proxy to the new prefix and keeps the same port, password and address suffix, so your anti-detect profiles keep working without edits.
+
+## Why one IP per account matters
+
+Platforms link accounts that share signals: cookies, browser fingerprints and IP addresses. Anti-detect browsers such as Multilogin, GoLogin or Dolphin Anty separate the browser side. The IP is the other half: if twenty profiles share one IP, they still look related.
+
+IPv6 makes "one IP per account" cheap. But keep one detail in mind: many platforms treat a whole /64 as one network, the way they treat one household. Twenty proxies inside the same /64 are better than one shared IPv4, but not as separated as twenty different /64s. Our guide to /64, /56 and /48 prefixes explains how to get more separation.
+
+## Limits you should know
+
+- IPv6-only reach. Google, YouTube, Facebook, Instagram, WhatsApp, Netflix and Wikipedia serve IPv6, as does any site behind Cloudflare with IPv6 enabled. Many smaller sites still don't. An IPv6 proxy cannot reach an IPv4-only site unless it falls back to IPv4, and then every profile shares the machine's IPv4.
+
+- You need IPv6 from your ISP or VPS. Most large ISPs and almost every VPS provider now include it. Here is how to check .
+
+- Same /64, same household. See above: for strong separation use more than one /64.
+
+## Where IPv6 proxies come from
+
+You can rent IPv6 proxies, or run your own on hardware you already have:
+
+- Your home connection. A PC or mini PC on your home network can turn its /64 into hundreds of proxies with residential addresses. See How to turn your home internet into static IPv6 proxies .
+
+- A VPS. Most providers give a /64 for free, some a routed /56 or /48. See IPv6 proxies on a VPS .
+
+openv6 does both from one dashboard: it creates the proxies, keeps them static, checks them regularly and exports them in the format your anti-detect browser expects.
+
+## FAQ
+
+**What is an IPv6 proxy?**
+A proxy server that connects to websites from an IPv6 address. Your app talks to the proxy as usual (HTTP or SOCKS5, often over IPv4), and the website sees the proxy's IPv6 address instead of yours.
+
+**Are IPv6 proxies static?**
+They can be. A static IPv6 proxy keeps the same outgoing address until you change it. openv6 keeps each proxy's IPv6, port and password fixed, and on a home connection it follows the ISP when the prefix changes.
+
+**Do all websites support IPv6?**
+No. Large platforms such as Google, YouTube, Facebook, Instagram and Wikipedia serve IPv6, but many smaller sites are IPv4-only. A pure IPv6 proxy cannot open an IPv4-only site unless you enable an IPv4 fallback.
+
+**Is an IPv6 proxy the same as a residential proxy?**
+Not necessarily. An IPv6 proxy describes the address family. If the IPv6 comes from your home ISP it is residential; if it comes from a VPS provider it is a datacenter address.
+
+---
+
+# How to Turn Your Home Internet Into Static IPv6 Proxies
+
+URL: https://thephuc.xyz/openv6/blog/static-ipv6-proxies-from-home-internet/
+Published: 2026-11-10
+
+In short: If your home connection has IPv6, it already has a /64 with about 18.4 quintillion addresses. Install openv6 on a PC or mini PC on that network, create proxies, and every device on your LAN can use them over IPv4, while websites see a residential IPv6 that stays fixed per proxy.
+
+Most people already pay for something that proxy companies sell: a residential IP . If your home connection has IPv6, it even comes with a whole /64 network , enough for a fixed address per account for the rest of your life. This guide shows how to turn it into static HTTP/SOCKS5 proxies.
+
+## What you need
+
+- A home internet connection with IPv6. Most large ISPs enable it today; check yours in two minutes .
+
+- One computer that stays on: a Windows 10/11 PC, a Mac, or a Linux box (Ubuntu, Debian, Zorin, a mini PC or a Raspberry Pi-class device).
+
+- Your anti-detect browser or any app that accepts HTTP or SOCKS5 proxies.
+
+## How it works
+
+Your router gives every device on the LAN addresses from the same /64. openv6 adds one more address from that /64 to the machine for every proxy, and binds each proxy's outgoing connections to it:
+
+```
+Anti-detect profile ──IPv4──► 192.168.1.10:10001 (user/pass)
+                               openv6 on your PC
+                               └─ leaves from 2001:db8:51c0::a41f ──► website
+```
+
+Your apps connect over plain IPv4 on the LAN, so nothing else on your network needs to change.
+
+## Step 1: Install openv6
+
+Download the installer for your system from the download section , or use the one-line installer:
+
+```
+# macOS / Linux (Terminal)
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
+
+# Windows (PowerShell as Administrator)
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
+```
+
+openv6 runs as a background service, starts with the machine and puts an icon in the tray. The dashboard opens at http://127.0.0.1:8080 ; from another device use http://<machine-LAN-IP>:8080 .
+
+## Step 2: Let it find your IPv6 prefix
+
+On first start openv6 checks the network card, the IPv6 prefix and the default route, and tells you in plain words if something is missing (no IPv6 from the ISP, a VPN taking over the route, a firewall blocking ports). Most problems have a Fix button.
+
+If the machine has both Ethernet and Wi-Fi, you can choose which one the proxies use.
+
+## Step 3: Create proxies
+
+Go to Proxies → Create proxies and choose:
+
+- How many , and a name prefix such as FB (you get FB 01 , FB 02 , …).
+
+- Authentication : a random username and password per proxy is the safe default.
+
+- IPv4 fallback : leave it off for account work (see below).
+
+Every proxy gets its own port, password and IPv6. The same port accepts both HTTP and SOCKS5.
+
+## Step 4: Check and export
+
+Click Check all . openv6 asks an IP-echo service which address it sees through each proxy and compares it with the expected IPv6, so a green result means the website really sees that proxy's address. You also get the latency, country and ISP.
+
+Then click Export and pick your anti-detect browser. openv6 has presets for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower. More in our anti-detect setup guide .
+
+Test one from any computer on the LAN:
+
+```
+curl -x http://USER:PASS@192.168.1.10:10001 https://api64.ipify.org
+curl --socks5-hostname USER:PASS@192.168.1.10:10001 https://api64.ipify.org
+```
+
+Both should print the proxy's IPv6.
+
+## When your ISP changes the prefix
+
+Home ISPs often rotate the prefix, for example after a power cut. openv6 stores each proxy as prefix + suffix , not as a full address. When the prefix changes, each proxy keeps its port, password and suffix and simply moves to the new prefix. Your profiles keep working; websites see a new address on the same ISP, which looks like a normal home reconnect.
+
+If you need addresses that never change at all, use a VPS: see IPv6 proxies on a VPS .
+
+## Using the proxies outside your home
+
+Many home connections are behind CGNAT, so you cannot open a port from the internet. openv6 offers three ways out:
+
+| Method | When to use |
+
+| Relay through a VPS | Works everywhere, even behind CGNAT. The home machine connects out to a cheap VPS (encrypted); websites still see your home IPv6. |
+
+| UPnP | Your router has a public IPv4 and UPnP enabled. |
+
+| Tailscale | Only your own devices need access. |
+
+## Tips for account work
+
+- One profile, one proxy. Don't swap proxies between profiles.
+
+- Keep IPv4 fallback off for accounts: with it on, sites without IPv6 see your shared IPv4.
+
+- Same /64 = same household. All home proxies share your /64, so a platform may still group them. For stronger separation add a VPS with a /56 or /48; read /64 vs /56 vs /48 .
+
+- Follow the rules of the platforms you use and of your ISP.
+
+openv6's Free version runs 3 proxies on 1 machine, enough to try all of this. Pro is a one-time payment for unlimited proxies and machines.
+
+## FAQ
+
+**Do I need a static IPv6 from my ISP?**
+No. Most home ISPs hand out a prefix that can change, for example after a modem restart. openv6 detects the new prefix and moves every proxy to it, keeping the same port, password and address suffix.
+
+**Can I use the proxies from another computer?**
+Yes. Devices on your LAN connect to the proxy machine's LAN IP and port. From outside your home you can share through a relay on a cheap VPS, UPnP, or Tailscale.
+
+**Will my own traffic change?**
+No. openv6 marks the extra addresses so the machine does not use them for its own connections; only the proxies send traffic from them.
+
+**Is a home IPv6 proxy residential?**
+Yes. The address belongs to your home ISP, so websites see a residential connection, the same as your normal browsing.
+
+---
+
+# Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser
+
+URL: https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/
+Published: 2026-11-10
+
+In short: Give every anti-detect profile its own fixed proxy, use SOCKS5 with remote DNS where possible, keep IPv4 fallback off, and paste the proxy in the format the browser expects. openv6 exports ready-made lists for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower.
+
+An anti-detect browser keeps every profile's fingerprint, cookies and storage separate. The proxy keeps the network separate. Get the proxy part wrong and the best fingerprint in the world won't help, because the platform simply sees twenty accounts on one IP.
+
+This guide covers the formats, the protocol choice and a short checklist. The examples use proxies created by openv6 , but the rules apply to any provider.
+
+## The formats each browser expects
+
+Most anti-detect browsers accept a list of proxies, one per line, for bulk import. The format differs per browser. openv6's Export has a preset for each:
+
+| Browser | Line format (openv6 preset) | Protocol |
+
+| Multilogin | host:port:user:pass | HTTP |
+
+| GoLogin | socks5://host:port:user:pass | SOCKS5 |
+
+| Dolphin {Anty} | socks5://user:pass@host:port | SOCKS5 |
+
+| ixBrowser | host:port:user:pass | SOCKS5 |
+
+| Linken Sphere 2 | host:port@user:pass | SOCKS5 |
+
+| AdsPower | host:port:user:pass | SOCKS5 |
+
+For other tools (MoreLogin, Incogniton, Kameleo, plain Chrome extensions, scripts) the generic formats work: host:port:user:pass , user:pass@host:port , a full URL such as http://user:pass@host:port , CSV or JSON.
+
+Anti-detect browsers change their import screens from time to time; if a field name differs from what you see here, the format line above is what matters.
+
+## HTTP or SOCKS5?
+
+Every openv6 port accepts both ; the proxy detects the protocol from the first byte. So the question is only what the browser prefers:
+
+- SOCKS5 with remote DNS ( socks5h , or a "remote DNS" toggle) resolves domain names at the proxy. Good default: the website's DNS lookups don't come from your own network.
+
+- HTTP works everywhere, including tools that only know HTTP proxies. With HTTPS sites the browser uses CONNECT , so the traffic stays encrypted end to end.
+
+## The checklist that keeps profiles separate
+
+- One profile, one proxy, forever. Write the account name in the proxy's note (openv6: Edit → Note ) so you always know which proxy belongs to which profile.
+
+- Static, not rotating. An account that logs in from a new IP every session looks hijacked. Use proxies that keep their IP.
+
+- Keep IPv4 fallback off on account proxies. Fallback lets a proxy open IPv4-only sites, but all such traffic leaves from the machine's single IPv4, shared by every profile.
+
+- Match location signals. Set each profile's time zone, language and geolocation to the proxy's country. openv6's check shows the country and ISP websites see for each proxy.
+
+- Mind the /64. Proxies inside the same IPv6 /64 can be grouped like a household. Spread important accounts across several /64s: see /64, /56 and /48 explained .
+
+- Check before you log in. Run a check on new proxies first; a green result means the website really sees the expected address.
+
+## Importing a list
+
+- In openv6, filter proxies by tag (for example facebook ), select them and click Export .
+
+- Pick your browser's preset. If the browser runs on another computer, choose how it connects: the LAN address, the public IP of a VPS, or a relay.
+
+- Copy the list or download the file, then use the browser's bulk proxy import.
+
+- Assign one proxy to each profile and run the browser's own proxy check.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+
+| Proxy check fails in the browser, works in openv6 | Wrong protocol or format selected in the profile; or the browser's machine can't reach the proxy port (firewall, VPN without LAN access). |
+
+| Some sites load, one site shows a 502 or never loads | That site has no IPv6. |
+
+| Proxies stop working after turning on a VPN | On the proxy machine, the VPN takes the default route. openv6 routes proxies around it; with an IPv6 kill switch, nothing can get through. |
+
+| Auth prompt appears in the browser | Username and password not imported; re-export with credentials. |
+
+Need proxies to start with? Turn your home internet into static IPv6 proxies , or run them on a VPS .
+
+## FAQ
+
+**Should I use HTTP or SOCKS5 in an anti-detect browser?**
+Either works with openv6, because the same port speaks both. SOCKS5 with remote DNS (often written socks5h) is a good default, since DNS lookups then happen at the proxy instead of on your machine.
+
+**Can several profiles share one proxy?**
+They can, but they will look related because they share an IP. For separate accounts, give each profile its own proxy and never swap them.
+
+**Why does a site work in my normal browser but fail through the proxy?**
+The site probably has no IPv6. An IPv6 proxy cannot reach it unless IPv4 fallback is on, and with fallback every profile shares the machine's IPv4, so keep it off for account work.
+
+**Which format does Multilogin use?**
+openv6's Multilogin preset exports host:port:user:pass over HTTP. Each browser preset in openv6 picks the format and protocol that browser's bulk import accepts.
+
+---
+
+# IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies
+
+URL: https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/
+Published: 2026-11-10
+
+In short: Almost every VPS comes with an IPv6 /64, and some providers route a /56 or /48 to your server. openv6 turns that prefix into static HTTP/SOCKS5 proxies: on a /64 it adds one address per proxy, on a routed /56 or /48 it can give every proxy its own /64 for much better separation.
+
+A VPS is the easiest place to run IPv6 proxies that never change . The address space comes with the server, the uptime is better than a home connection, and with the right prefix you can give every proxy a completely separate network.
+
+## Why a VPS?
+
+- Fixed prefix. Unlike most home ISPs, a VPS prefix does not change.
+
+- Public IPv4. Clients connect to VPS-IP:port from anywhere, no relays or port forwarding.
+
+- Bigger prefixes. Some providers route a /56 or /48 to your server, which means thousands to 65,536 separate /64 networks.
+
+The trade-off: VPS addresses are datacenter addresses. For residential IPs, use your home connection ; many people run both.
+
+## On-link /64 vs routed /56 or /48
+
+This is the one technical detail worth understanding before you start.
+
+|  | On-link /64 | Routed /56 or /48 |
+
+| What you get | One /64 on the server's network card | A whole prefix routed to your server |
+
+| How proxies get addresses | Each address is added to the card | The server answers for every address in the range |
+
+| openv6 pool mode | auto (detected automatically) | anyip (you add the CIDR) |
+
+| Separation between proxies | All in one /64 | One /64 per proxy possible |
+
+| How common | Almost every provider | Some providers, sometimes on request |
+
+If you are not sure which one you have, start with the /64: openv6 detects it on its own.
+
+## Setting it up
+
+### 1. Install
+
+On the VPS (Ubuntu or Debian), run:
+
+```
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
+```
+
+Open http://VPS-IP:8080 . Because the dashboard is reachable from the internet, a fresh install asks for the setup code that the installer prints before you can create the admin account. For anything beyond a quick test, put the dashboard behind HTTPS (built-in -tls-cert / -tls-key , or a reverse proxy such as Caddy).
+
+### 2. Open the ports
+
+Allow your proxy port range, for example 10001-11000/tcp , both in the server firewall and in the provider's cloud firewall or security group if it has one.
+
+### 3a. With a /64
+
+Nothing to configure. The auto pool follows the card's /64. Create proxies, set the scope to Internet (a password is then required) and export.
+
+### 3b. With a routed /56 or /48
+
+Enable the prefix in your provider's panel if needed, then in openv6 open the node and add a pool : the CIDR, for example 2001:db8:1200::/48 , and the mode anyip . When creating proxies, choose that pool and tick "Each proxy in its own /64" . Every account now sits in a different /64, which is as separate as IPv6 gets without more servers.
+
+Only use anyip for prefixes that are really routed to the server. If the provider only gives an on-link /64, keep the auto pool.
+
+## Several servers, one dashboard
+
+openv6 separates the dashboard from the nodes that run proxies. Add a node ( Nodes → Add node ), run the command it shows on the new machine, and it appears online within seconds. Nodes always connect out to the dashboard, so they work behind NAT.
+
+A practical layout:
+
+- Dashboard and datacenter proxies on one VPS.
+
+- Home mini PCs as extra nodes for residential addresses.
+
+- The same VPS as a relay so home proxies are reachable from anywhere.
+
+## Keep them healthy
+
+openv6 checks every proxy on a schedule (by default every 10 minutes), records latency, country and ISP, and can alert you on Telegram when a proxy fails twice in a row and again when it recovers. If the server reboots or an address disappears, the node adds it back automatically.
+
+## What it costs
+
+A small VPS with IPv6 typically costs a few dollars a month, and the IPv6 space is included. openv6 Free runs 3 proxies on 1 machine; Pro is a one-time payment for unlimited proxies and machines. Compare that with renting per IP: self-hosted vs rented proxies .
+
+## FAQ
+
+**Which VPS providers give IPv6?**
+Most of them, including Hetzner, Vultr, DigitalOcean, OVHcloud, Linode/Akamai and many others. Some include a /64 by default, some let you request or enable a larger routed prefix in their control panel.
+
+**What is the difference between an on-link /64 and a routed /48?**
+An on-link /64 sits on the server's network card, so each address must be added to the card. A routed prefix is sent to your server as a whole, so the server can use any address inside it without adding them one by one.
+
+**Can I mix VPS proxies with home proxies?**
+Yes. openv6 manages several machines (nodes) from one dashboard. A common setup is the dashboard on the VPS and home machines connecting to it as nodes.
+
+**Do VPS IPv6 addresses count as residential?**
+No. They belong to a datacenter provider. They are stable and fast, but platforms can tell they are not home connections.
+
+---
+
+# Does My ISP Support IPv6? How to Check on Windows, macOS and Linux
+
+URL: https://thephuc.xyz/openv6/blog/check-if-your-isp-supports-ipv6/
+Published: 2026-11-10
+
+In short: Run ipconfig (Windows), ifconfig or System Settings (macOS) or ip -6 addr (Linux) and look for an address that starts with 2 or 3: that is a global IPv6. Then confirm with curl -6 https://api6.ipify.org. If you only see fe80:: addresses, enable IPv6 on your router or ask your ISP.
+
+Before you can use IPv6 proxies, or run your own, your connection needs IPv6 . Most large ISPs and almost every VPS provider enable it today, but plenty of routers still ship with it switched off. Here is how to check in two minutes.
+
+## The 10-second test
+
+Open a terminal (PowerShell on Windows) and run:
+
+```
+curl -6 https://api6.ipify.org
+```
+
+If it prints an address like 2001:db8:51c0:1e::a41f , you have working IPv6. An error such as "Couldn't connect" or "Could not resolve host" means no IPv6 route to the internet. (On Windows, use curl.exe if curl is mapped to PowerShell's own command.)
+
+Prefer a website? Open test-ipv6.com in a browser with any VPN turned off.
+
+## Windows
+
+```
+ipconfig
+```
+
+Under your active adapter, look for IPv6 Address or Temporary IPv6 Address starting with 2 or 3 . A line that only says Link-local IPv6 Address . . . : fe80::… does not count.
+
+## macOS
+
+```
+ifconfig | grep "inet6 2"
+```
+
+Or open System Settings → Network → (your connection) → Details → TCP/IP and check the IPv6 address and prefix length. Set "Configure IPv6" to Automatically if it is off.
+
+## Linux
+
+```
+ip -6 addr show scope global
+```
+
+A good result contains a line like inet6 2001:db8:51c0:1e:…/64 scope global dynamic mngtmpaddr . The /64 is your prefix length; mngtmpaddr and dynamic mean the address was assigned automatically from the router's /64.
+
+Also check that there is a default route:
+
+```
+ip -6 route show default
+```
+
+## Reading the result
+
+| You see | Meaning |
+
+| Address starting with 2 or 3 | Global IPv6: you are good. |
+
+| Only fe80:: | Link-local only: IPv6 is off on the router or not provided by the ISP. |
+
+| fd… or fc… | Private (ULA) address: the router uses IPv6 internally but has no internet IPv6. |
+
+| Prefix length /64 | Standard LAN network: about 18.4 quintillion addresses for your proxies. |
+
+## If you don't have IPv6
+
+- Turn off any VPN and test again. Many VPNs disable IPv6 to prevent leaks.
+
+- Check the router. Log in (often 192.168.1.1 or 192.168.0.1 ), find the IPv6 section, enable it on the WAN (DHCPv6, PPPoE IPv6 or "Auto", depending on the ISP) and choose SLAAC / Stateless / Auto for the LAN.
+
+- Restart the router, then the computer.
+
+- Ask the ISP. Some contracts need IPv6 enabled on their side; ask support for "IPv6 with a /64 on the LAN" or "prefix delegation".
+
+- No luck? Use a VPS instead: nearly all of them include IPv6. See IPv6 proxies on a VPS .
+
+## A note on changing prefixes
+
+Many home ISPs give you a dynamic prefix that can change after a modem restart. That is fine for proxies: openv6 notices the new prefix and moves every proxy to it while keeping its port, password and address suffix. If you need a prefix that never changes, ask the ISP for a static prefix or use a VPS.
+
+Next step: turn that /64 into static proxies .
+
+## FAQ
+
+**How do I know if I have a real IPv6 address?**
+Global IPv6 addresses currently start with 2 or 3, for example 2001:db8:... Addresses starting with fe80:: are link-local and only work inside your network; fd or fc addresses are private.
+
+**What is a /64 and do I have one?**
+A /64 is the standard IPv6 network size for a home or VPS LAN, about 18.4 quintillion addresses. If your address list shows a prefix length of 64, or the address was assigned automatically (SLAAC), your network is a /64.
+
+**My router has IPv6 settings but it is off. What should I pick?**
+Enable IPv6 on the WAN side (often DHCPv6 or Auto), and on the LAN side choose SLAAC, Stateless or Auto. Restart the computer afterwards.
+
+**Can a VPN hide my IPv6?**
+Yes. Many VPNs disable IPv6 or block it to prevent leaks. Run the checks with the VPN off, or allow IPv6 in the VPN settings.
+
+---
+
+# /64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation
+
+URL: https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/
+Published: 2026-11-10
+
+In short: An IPv6 /64 is one network, roughly one household or one server. Many platforms group addresses by /64, so proxies inside the same /64 can look related. A /56 holds 256 separate /64s and a /48 holds 65,536; with a routed /56 or /48 you can give every account its own /64.
+
+IPv6 gives you so many addresses that "one IP per account" stops being the hard part. The real question becomes how many networks your accounts are spread over. That is what the number after the slash tells you.
+
+## What the slash means
+
+An IPv6 address has 128 bits. A prefix like 2001:db8:51c0:1e::/64 says the first 64 bits identify the network and the remaining 64 bits are free for addresses inside it. The smaller the number after the slash, the bigger the block.
+
+| Prefix | Contains | Typically given to |
+
+| /64 | ~18.4 quintillion addresses, one network | One home LAN, one VPS |
+
+| /56 | 256 × /64 | Some home ISPs (via prefix delegation), some VPS providers |
+
+| /48 | 65,536 × /64 | Some VPS and dedicated server providers, businesses |
+
+## Why a /64 is "one household"
+
+By convention, a /64 is the smallest network handed to a single customer: your home router or your VPS. Every device in your house gets addresses from the same /64. Platforms know this, so their abuse, rate-limit and reputation systems often look at the /64 , not the individual address.
+
+In practice: twenty proxies with twenty different addresses in the same /64 are much better than twenty accounts on one shared IPv4, but a platform can still see that they come from the same network. For a handful of related accounts that is fine; for accounts that must look unrelated, it isn't.
+
+## Getting more /64s
+
+- A VPS with a routed /56 or /48. The provider sends the whole prefix to your server. openv6 can then give each proxy its own random /64 inside it: tick "Each proxy in its own /64" when creating proxies on an anyip pool. See IPv6 proxies on a VPS .
+
+- More locations. Each home connection and each VPS brings its own /64. openv6 manages them all as nodes in one dashboard, and the dashboard shows the number of distinct /64 subnets you are using.
+
+- Prefix delegation at home. Some ISPs delegate a /56 or /60 to your router. Using those extra /64s for proxies depends on your router; ask your ISP what they provide.
+
+## Planning accounts across prefixes
+
+- Group by risk. Accounts that may share an owner (a brand and its backups) can share a /64. Accounts that must look independent should not.
+
+- Keep the mapping fixed. Once an account lives on a proxy, keep it there. Moving accounts between networks is a stronger signal than sharing one.
+
+- Residential vs datacenter. Home /64s are residential; VPS prefixes are datacenter. Platforms treat them differently; mix them on purpose, not by accident.
+
+- Don't forget IPv4. If a proxy falls back to IPv4 for IPv4-only sites, every such proxy shares the machine's IPv4, which undoes the separation. Keep fallback off on account proxies.
+
+## Quick math
+
+```
+/64 → 2^64 addresses          ≈ 18,446,744,073,709,551,616
+/56 → 2^(64-56) = 2^8  /64s   = 256 networks
+/48 → 2^(64-48) = 2^16 /64s   = 65,536 networks
+```
+
+Even a /56 gives more separate networks than most people will ever need for accounts; a single /64 gives more addresses than the entire IPv4 internet, many times over.
+
+New to this? Start with What is an IPv6 proxy?
+
+## FAQ
+
+**How many /64 networks are in a /48?**
+65,536. A /56 contains 256 /64 networks, and each /64 contains 2^64 (about 18.4 quintillion) addresses.
+
+**Do websites block whole /64 ranges?**
+Rate limits, reputation and abuse systems often work per /64, because a /64 normally belongs to one customer. Treat a /64 like a single household when planning accounts.
+
+**How do I get more than one /64?**
+Use a VPS whose provider routes a /56 or /48 to the server, ask your ISP for prefix delegation, or combine several connections and servers, each with its own /64.
+
+**Does openv6 warn about shared /64s?**
+Yes. The dashboard shows how many distinct /64 networks your proxies use and warns when many accounts share one.
+
+---
+
+# Self-Hosted IPv6 Proxies vs Rented Proxies: Cost, Control and Trade-offs
+
+URL: https://thephuc.xyz/openv6/blog/self-hosted-vs-rented-proxies/
+Published: 2026-11-10
+
+In short: Rented proxies are billed per IP per month or per GB of traffic. Self-hosted IPv6 proxies reuse the IPv6 your ISP or VPS already includes, so the cost is mostly one-time software plus hardware you have. The trade-off: they only reach IPv6-enabled sites without fallback, and you run them yourself.
+
+There are four common ways to get proxies for account work. They differ less in "quality" than in how you pay , how stable the IP is and which websites they can reach .
+
+## The four options
+
+|  | Rotating residential | Static ISP / residential | Datacenter IPv4 | Self-hosted IPv6 |
+
+| Billed | Per GB of traffic | Per IP, monthly | Per IP, monthly | Software (one-time) + connection/VPS you already pay for |
+
+| IP stays fixed | No (rotates) | Yes | Yes | Yes |
+
+| Looks like a home | Yes | Yes | No | Home connection: yes · VPS: no |
+
+| Reaches IPv4-only sites | Yes | Yes | Yes | Only with IPv4 fallback (shared IPv4) |
+
+| Choice of country/city | Wide | Limited | Wide | Where your connections and servers are |
+
+| Cost of the next proxy | More traffic | Another monthly IP | Another monthly IP | ≈ zero |
+
+## When renting makes sense
+
+- You need IPs in many specific countries or cities .
+
+- Your target sites are IPv4-only .
+
+- You need only a few proxies, for a short time.
+
+- You want zero setup and don't mind the monthly bill.
+
+## When self-hosting wins
+
+- You run many long-lived accounts on platforms that support IPv6 (Google, YouTube, Facebook, Instagram and others).
+
+- You want static IPs that never get shared with other customers of a proxy company.
+
+- You already have a home connection with IPv6, a spare PC or mini PC, or a VPS.
+
+- You'd rather pay once than per IP every month.
+
+## The costs nobody puts in the table
+
+- Shared pools. Rented IPs may have been used by someone else before you, with whatever reputation they left behind. Your own IPv6 addresses start clean.
+
+- Your time. Self-hosting means you are the operator. Tools close most of that gap: openv6 installs as a background service, checks every proxy on a schedule, explains failures and fixes the common ones in one click, and can alert you on Telegram.
+
+- Network concentration. All proxies on one home connection share one /64. For accounts that must look unrelated, add more connections or a VPS with a routed /56 or /48: see /64 vs /56 vs /48 .
+
+## A worked example
+
+Say you need 50 static proxies for 50 profiles:
+
+- Renting static IPs: 50 × the monthly price per IP, every month.
+
+- Self-hosting: openv6 Pro once ($6 for one dashboard machine, $12 for three), your existing home connection and PC, optionally a small VPS for extra prefixes or a relay. The 50th proxy costs the same as the first.
+
+If a few of your sites are IPv4-only, keep a small number of rented IPv4 proxies just for them and run everything else on IPv6.
+
+## Try it
+
+openv6 Free runs 3 proxies on 1 machine, enough to test with your own accounts. Start with checking your IPv6 , then set up proxies at home or on a VPS .
+
+## FAQ
+
+**Are self-hosted proxies cheaper?**
+Usually, once you need more than a few. Rented proxies cost per IP per month or per GB; self-hosted IPv6 proxies use address space that is already included with your connection or VPS, so adding the 50th proxy costs the same as the 5th.
+
+**What do rented proxies do better?**
+They come in many countries and cities, reach every website over IPv4, and somebody else runs the infrastructure. If you need a specific city or IPv4-only sites, renting is often simpler.
+
+**Can I combine both?**
+Yes. Many people use self-hosted IPv6 proxies for platforms that support IPv6 and keep a few rented IPv4 proxies for IPv4-only sites.
+
+**What does openv6 cost?**
+The Free version runs 3 proxies on 1 machine. Pro is a one-time payment: $6 for 1 dashboard machine or $12 for 3, with unlimited proxies and nodes.
+

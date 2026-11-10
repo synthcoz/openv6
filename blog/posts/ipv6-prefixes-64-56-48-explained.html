@@ -1,0 +1,54 @@
+<!--
+{
+  "title": "/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation",
+  "description": "Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.",
+  "order": 6,
+  "date": "2026-11-10",
+  "keywords": ["IPv6 /64", "IPv6 /48 proxy", "IPv6 /56", "IPv6 subnet proxies", "account separation IPv6", "IPv6 prefix explained"],
+  "tldr": "An IPv6 /64 is one network, roughly one household or one server. Many platforms group addresses by /64, so proxies inside the same /64 can look related. A /56 holds 256 separate /64s and a /48 holds 65,536; with a routed /56 or /48 you can give every account its own /64.",
+  "faq": [
+    ["How many /64 networks are in a /48?", "65,536. A /56 contains 256 /64 networks, and each /64 contains 2^64 (about 18.4 quintillion) addresses."],
+    ["Do websites block whole /64 ranges?", "Rate limits, reputation and abuse systems often work per /64, because a /64 normally belongs to one customer. Treat a /64 like a single household when planning accounts."],
+    ["How do I get more than one /64?", "Use a VPS whose provider routes a /56 or /48 to the server, ask your ISP for prefix delegation, or combine several connections and servers, each with its own /64."],
+    ["Does openv6 warn about shared /64s?", "Yes. The dashboard shows how many distinct /64 networks your proxies use and warns when many accounts share one."]
+  ]
+}
+-->
+<p>IPv6 gives you so many addresses that "one IP per account" stops being the hard part. The real question becomes <strong>how many networks</strong> your accounts are spread over. That is what the number after the slash tells you.</p>
+
+<h2 id="notation">What the slash means</h2>
+<p>An IPv6 address has 128 bits. A prefix like <code>2001:db8:51c0:1e::/64</code> says the first 64 bits identify the network and the remaining 64 bits are free for addresses inside it. The smaller the number after the slash, the bigger the block.</p>
+<table>
+<thead><tr><th>Prefix</th><th>Contains</th><th>Typically given to</th></tr></thead>
+<tbody>
+<tr><td>/64</td><td>~18.4 quintillion addresses, one network</td><td>One home LAN, one VPS</td></tr>
+<tr><td>/56</td><td>256 × /64</td><td>Some home ISPs (via prefix delegation), some VPS providers</td></tr>
+<tr><td>/48</td><td>65,536 × /64</td><td>Some VPS and dedicated server providers, businesses</td></tr>
+</tbody>
+</table>
+
+<h2 id="household">Why a /64 is "one household"</h2>
+<p>By convention, a /64 is the smallest network handed to a single customer: your home router or your VPS. Every device in your house gets addresses from the same /64. Platforms know this, so their abuse, rate-limit and reputation systems often look at the <strong>/64</strong>, not the individual address.</p>
+<p>In practice: twenty proxies with twenty different addresses in the same /64 are much better than twenty accounts on one shared IPv4, but a platform can still see that they come from the same network. For a handful of related accounts that is fine; for accounts that must look unrelated, it isn't.</p>
+
+<h2 id="more-networks">Getting more /64s</h2>
+<ol>
+<li><strong>A VPS with a routed /56 or /48.</strong> The provider sends the whole prefix to your server. openv6 can then give each proxy its own random /64 inside it: tick <em>"Each proxy in its own /64"</em> when creating proxies on an <code>anyip</code> pool. See <a href="../ipv6-proxies-on-a-vps/">IPv6 proxies on a VPS</a>.</li>
+<li><strong>More locations.</strong> Each home connection and each VPS brings its own /64. openv6 manages them all as nodes in one dashboard, and the dashboard shows the number of <em>distinct /64 subnets</em> you are using.</li>
+<li><strong>Prefix delegation at home.</strong> Some ISPs delegate a /56 or /60 to your router. Using those extra /64s for proxies depends on your router; ask your ISP what they provide.</li>
+</ol>
+
+<h2 id="planning">Planning accounts across prefixes</h2>
+<ul>
+<li><strong>Group by risk.</strong> Accounts that may share an owner (a brand and its backups) can share a /64. Accounts that must look independent should not.</li>
+<li><strong>Keep the mapping fixed.</strong> Once an account lives on a proxy, keep it there. Moving accounts between networks is a stronger signal than sharing one.</li>
+<li><strong>Residential vs datacenter.</strong> Home /64s are residential; VPS prefixes are datacenter. Platforms treat them differently; mix them on purpose, not by accident.</li>
+<li><strong>Don't forget IPv4.</strong> If a proxy falls back to IPv4 for IPv4-only sites, every such proxy shares the machine's IPv4, which undoes the separation. Keep fallback off on account proxies.</li>
+</ul>
+
+<h2 id="math">Quick math</h2>
+<pre><code>/64 → 2^64 addresses          ≈ 18,446,744,073,709,551,616
+/56 → 2^(64-56) = 2^8  /64s   = 256 networks
+/48 → 2^(64-48) = 2^16 /64s   = 65,536 networks</code></pre>
+<p>Even a /56 gives more separate networks than most people will ever need for accounts; a single /64 gives more addresses than the entire IPv4 internet, many times over.</p>
+<p>New to this? Start with <a href="../what-is-an-ipv6-proxy/">What is an IPv6 proxy?</a></p>

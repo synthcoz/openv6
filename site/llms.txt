@@ -1,0 +1,35 @@
+# openv6
+
+> Self-hosted static IPv6 proxies (HTTP + SOCKS5) from your own home internet or VPS, one fixed IPv6 per account, for anti-detect browsers. Windows, macOS, Linux. Free for 3 proxies; Pro is a one-time $6 / $12.
+
+openv6 turns the IPv6 prefix that a home internet connection or a VPS already has into static HTTP + SOCKS5 proxies, one fixed IPv6 address per proxy, for anti-detect browsers such as Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere, AdsPower and MoreLogin.
+
+- Each proxy has its own port, username, password and outgoing IPv6, kept until the user changes it. The same port speaks HTTP and SOCKS5.
+- Works with home ISPs (a /64 on the LAN; when the ISP changes the prefix, openv6 follows and keeps ports and passwords) and VPS or homelab servers with a /64 or a routed /56 or /48 (optionally one /64 per proxy).
+- Clients connect over IPv4 (the machine's LAN IP or the VPS public IP); traffic leaves over IPv6. IPv4 fallback is optional and off by default for account work.
+- Runs on Windows 10/11, macOS (Intel and Apple silicon) and Linux (Ubuntu, Debian, Zorin; amd64, arm64, armhf) as a background service with a tray icon. Several machines (nodes) are managed from one web dashboard.
+- Regular IP checks (latency, country, ISP), plain-language error causes with one-click fixes, Telegram alerts, works with a VPN on, sharing outside the LAN through a relay on a VPS, UPnP or Tailscale, JSON API, customer accounts for reselling.
+- Exports proxy lists in the formats of Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere 2 and AdsPower, plus host:port:user:pass, URLs, CSV and JSON.
+- Pricing: Free = 3 proxies on 1 machine. Pro = one-time payment, $6 for 1 dashboard machine or $12 for 3, unlimited proxies and nodes, no subscription. Licenses are sold through Polar.
+- Download: https://thephuc.xyz/openv6/#download (Windows .exe, macOS .pkg, Linux install command). Releases: https://github.com/thephux/openv6-releases/releases/latest
+
+## Pages
+
+- [openv6 home](https://thephuc.xyz/openv6/): features, how it works, pricing, FAQ
+- [Download](https://thephuc.xyz/openv6/#download): installers for Windows, macOS and Linux
+- [Pricing](https://thephuc.xyz/openv6/#pricing): Free and Pro plans
+
+## Guides
+
+- [What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work](https://thephuc.xyz/openv6/blog/what-is-an-ipv6-proxy/): An IPv6 proxy sends your traffic out from an IPv6 address instead of IPv4. Here is how IPv6 proxies work, why one fixed IPv6 per account matters, and when they beat IPv4 proxies.
+- [How to Turn Your Home Internet Into Static IPv6 Proxies](https://thephuc.xyz/openv6/blog/static-ipv6-proxies-from-home-internet/): Step-by-step: turn the IPv6 /64 your home ISP already gives you into dozens or hundreds of fixed HTTP/SOCKS5 proxies with residential addresses, using a Windows, macOS or Linux machine.
+- [Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser](https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/): Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.
+- [IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies](https://thephuc.xyz/openv6/blog/ipv6-proxies-on-a-vps/): How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.
+- [Does My ISP Support IPv6? How to Check on Windows, macOS and Linux](https://thephuc.xyz/openv6/blog/check-if-your-isp-supports-ipv6/): Find out in two minutes whether your internet connection has IPv6 and a /64 prefix, using built-in commands on Windows, macOS and Linux, plus what to do if it doesn't.
+- [/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation](https://thephuc.xyz/openv6/blog/ipv6-prefixes-64-56-48-explained/): Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.
+- [Self-Hosted IPv6 Proxies vs Rented Proxies: Cost, Control and Trade-offs](https://thephuc.xyz/openv6/blog/self-hosted-vs-rented-proxies/): Residential, ISP, datacenter and self-hosted IPv6 proxies compared: how each is billed, how stable the IPs are, which sites they reach, and when running your own proxies pays off.
+
+## Optional
+
+- [Full text of all guides](https://thephuc.xyz/openv6/llms-full.txt)
+- [Release notes and downloads](https://github.com/thephux/openv6-releases/releases)
