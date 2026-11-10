@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>openv6 — Proxy IPv6 tĩnh từ chính mạng của bạn</title>
-<meta name="description" content="Biến dải IPv6 của mạng nhà, VPS hay mini PC thành hàng trăm proxy HTTP/SOCKS5 cố định cho Multilogin, GoLogin, Dolphin Anty, ixBrowser. Windows, macOS, Linux.">
-<meta property="og:title" content="openv6 — Proxy IPv6 tĩnh từ chính mạng của bạn">
-<meta property="og:description" content="Mỗi tài khoản một IPv6 riêng, cố định. Cài 1 phút, dán thẳng vào trình duyệt anti-detect.">
+<title>openv6 — Static IPv6 proxies from your own network</title>
+<meta name="description" content="Turn the IPv6 prefix of your home ISP, VPS or mini PC into hundreds of fixed HTTP/SOCKS5 proxies for Multilogin, GoLogin, Dolphin Anty, ixBrowser. Windows, macOS, Linux.">
+<meta property="og:title" content="openv6 — Static IPv6 proxies from your own network">
+<meta property="og:description" content="One fixed IPv6 per account, from any home ISP or VPS. Install in a minute, paste straight into your anti-detect browser.">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:image" content="https://thephuc.xyz/openv6/assets/shot-proxies.webp">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -156,7 +157,109 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
   .nav .dl { display: none; }
   .cta .btn { width: 100%; }
 }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+/* ---- motion ---- */
+.hero { position: relative; }
+.glow { position: absolute; inset: -80px 0 auto; height: 720px; z-index: -1; pointer-events: none; overflow: hidden;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); }
+.glow::before { content: ''; position: absolute; inset: -40px; background-image: radial-gradient(var(--border-2) 1px, transparent 1px); background-size: 22px 22px; animation: drift 40s linear infinite; }
+.glow::after { content: ''; position: absolute; left: 50%; top: 80px; width: 680px; height: 380px; margin-left: -340px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(16,185,129,.16), transparent); filter: blur(10px); animation: breathe 9s ease-in-out infinite; }
+@keyframes drift { to { transform: translate(22px, 22px); } }
+@keyframes breathe { 50% { transform: scale(1.12); opacity: .7; } }
+.hero h1 .w { display: inline-block; opacity: 0; transform: translateY(14px); filter: blur(6px); animation: wIn .7s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i) * 70ms + 80ms); }
+@keyframes wIn { to { opacity: 1; transform: none; filter: none; } }
+.fade { opacity: 0; animation: fIn .8s ease forwards; animation-delay: var(--d, .4s); }
+@keyframes fIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.stage { perspective: 1600px; }
+.stage .frame { transform: rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transform-origin: 50% 0; transition: transform .5s cubic-bezier(.2,.7,.2,1); }
+.stage.flat .frame { --rx: 0deg; }
+.phone { animation: float 6s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-10px); } }
+.rv { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); transition-delay: var(--d, 0s); }
+.rv.in { opacity: 1; transform: none; }
+.btn.primary { position: relative; overflow: hidden; }
+.btn.primary::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.22) 50%, transparent 65%); transform: translateX(-120%); }
+.btn.primary:hover::after { transform: translateX(120%); transition: transform .7s ease; }
+.step, .price { transition: transform .25s cubic-bezier(.2,.7,.2,1), box-shadow .25s, border-color .25s; }
+.step:hover, .price:not(.hot):hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--border-2); }
+.feat { position: relative; }
+.feat::before { content: ''; position: absolute; inset: 0; opacity: 0; transition: opacity .3s; pointer-events: none;
+  background: radial-gradient(320px circle at var(--mx, 50%) var(--my, 50%), rgba(16,185,129,.09), transparent 60%); }
+.feat:hover::before { opacity: 1; }
+.feat .ic { transition: transform .3s cubic-bezier(.2,.7,.2,1); }
+.feat:hover .ic { transform: translateY(-2px) rotate(-4deg); }
+details p { animation: fIn .35s ease; }
+
+/* sources marquee */
+.marquee { margin-top: 28px; display: grid; gap: 12px; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.mrow { display: flex; width: max-content; gap: 10px; animation: slide 46s linear infinite; }
+.mrow.rev { animation-direction: reverse; animation-duration: 52s; }
+.marquee:hover .mrow { animation-play-state: paused; }
+@keyframes slide { to { transform: translateX(-50%); } }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-weight: 600; font-size: 14.5px; color: var(--text-2); white-space: nowrap; }
+.chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.chip.vps i { background: #6366f1; }
+.chip small { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.legend { display: flex; gap: 18px; justify-content: center; margin-top: 18px; color: var(--muted); font-size: 13.5px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); } .legend .vps i { background: #6366f1; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+.stat { padding: 22px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); text-align: center; }
+.stat b { display: block; font-size: clamp(28px, 4vw, 38px); letter-spacing: -.04em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 14.5px; }
+
+/* interactive demo */
+.demo { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 44px; text-align: left; }
+.ctl { padding: 22px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); display: grid; gap: 22px; align-content: start; }
+.ctl label { display: block; font-size: 12.5px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.src { display: grid; gap: 8px; }
+.src button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; cursor: pointer; transition: border-color .2s, background .2s, transform .15s; }
+.src button:hover { background: var(--soft); }
+.src button:active { transform: scale(.99); }
+.src button.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.src svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
+.src b { display: block; font-size: 14.5px; font-weight: 600; }
+.src small { display: block; color: var(--muted); font-size: 12.5px; }
+.range { display: flex; align-items: center; gap: 12px; }
+.range input { flex: 1; accent-color: var(--primary); }
+.range output { font: 600 15px var(--mono); min-width: 2ch; text-align: right; }
+.fmt { display: flex; flex-wrap: wrap; gap: 6px; }
+.fmt button { border: 1px solid var(--border); background: transparent; color: var(--text-2); font: 500 12.5px var(--mono); padding: 6px 9px; border-radius: 8px; cursor: pointer; }
+.fmt button.on { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+.term { border-radius: 18px; overflow: hidden; border: 1px solid var(--border-2); background: #0c0c0c; color: #e5e5e5; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 440px; }
+.term .bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08); font: 500 12.5px var(--mono); color: #a3a3a3; }
+.term .bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,.18); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); } }
+.term .bar .sp { flex: 1; }
+.term .copy { border: 1px solid rgba(255,255,255,.14); background: transparent; color: #e5e5e5; font: 500 12px var(--sans); padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+.term .copy:hover { background: rgba(255,255,255,.06); }
+.rows { padding: 8px 0; flex: 1; overflow: hidden; }
+.row { display: grid; grid-template-columns: 82px 1fr auto; gap: 14px; align-items: center; padding: 7px 16px; font: 500 12.5px/1.5 var(--mono); opacity: 0; transform: translateX(-8px); animation: rIn .35s ease forwards; }
+@keyframes rIn { to { opacity: 1; transform: none; } }
+.row .nm { color: #a3a3a3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ip { color: #fafafa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ip em { font-style: normal; color: #34d399; }
+.row .ln { grid-column: 2 / 4; color: #737373; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: -4px; }
+.row .st { font-size: 11.5px; color: #737373; white-space: nowrap; }
+.row .st.ok { color: #34d399; }
+.term .foot { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.08); font: 500 12px var(--mono); color: #737373; display: flex; justify-content: space-between; gap: 12px; }
+
+@media (max-width: 900px) {
+  .demo { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr; }
+  .stage .frame { transform: none; }
+}
+@media (max-width: 520px) {
+  .row { grid-template-columns: 1fr auto; gap: 4px 10px; }
+  .row .nm { grid-column: 1 / 3; }
+  .row .ln { grid-column: 1 / 3; margin-top: 0; }
+  .term { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  .rv, .fade, .hero h1 .w, .row { opacity: 1 !important; transform: none !important; filter: none !important; }
+}
 </style>
 </head>
 <body>
@@ -164,21 +267,22 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
   <a class="brand" href="#"><img src="assets/logo.svg" alt="" width="30" height="30">openv6</a>
   <nav class="links"><a href="#how" data-i="nav_how"></a><a href="#features" data-i="nav_features"></a><a href="#pricing" data-i="nav_pricing"></a><a href="#faq" data-i="nav_faq"></a></nav>
   <div class="sp"></div>
-  <div class="seg" id="lang"><button data-l="vi">VI</button><button data-l="en">EN</button></div>
+  <div class="seg" id="lang"><button data-l="en">EN</button><button data-l="vi">VI</button></div>
   <a class="btn sm primary dl" data-href="download" data-i="cta_download"></a>
 </div></header>
 
 <main>
 <div class="wrap hero">
-  <span class="eyebrow"><i></i><span data-i="eyebrow"></span></span>
+  <div class="glow" aria-hidden="true"></div>
+  <span class="eyebrow fade" style="--d:0s"><i></i><span data-i="eyebrow"></span></span>
   <h1 data-i="h1"></h1>
-  <p class="lead" data-i="lead"></p>
-  <div class="cta">
+  <p class="lead fade" style="--d:.45s" data-i="lead"></p>
+  <div class="cta fade" style="--d:.6s">
     <a class="btn primary" data-href="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span data-i="cta_download"></span></a>
     <a class="btn" href="#pricing" data-i="cta_pro"></a>
   </div>
-  <p data-i="platforms"></p>
-  <div class="stage">
+  <p class="fade" style="--d:.7s" data-i="platforms"></p>
+  <div class="stage fade" style="--d:.8s" id="stage">
     <div class="frame"><div class="bar"><span></span><span></span><span></span><em>127.0.0.1:8080</em></div>
       <picture><source srcset="assets/shot-proxies-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></picture></div>
     <div class="phone"><img src="assets/shot-mobile.webp" width="1170" height="1992" alt="openv6 on a phone" loading="lazy"></div>
@@ -186,22 +290,61 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 </div>
 
 <section class="center" style="padding-top:80px">
-  <div class="wrap"><div class="kicker" data-i="works_k"></div>
-    <div class="works"><span>Multilogin</span><span>GoLogin</span><span>Dolphin {Anty}</span><span>ixBrowser</span><span>Linken Sphere 2</span><span>AdsPower</span><span>MoreLogin</span></div></div>
+  <div class="wrap"><div class="kicker rv" data-i="works_k"></div>
+    <div class="works rv"><span>Multilogin</span><span>GoLogin</span><span>Dolphin {Anty}</span><span>ixBrowser</span><span>Linken Sphere 2</span><span>AdsPower</span><span>MoreLogin</span></div></div>
 </section>
 
+<section class="center" id="sources" style="padding-top:88px"><div class="wrap">
+  <div class="kicker rv" data-i="src_k"></div><h2 class="rv" data-i="src_h"></h2><p class="sub rv" data-i="src_sub"></p>
+</div>
+  <div class="marquee rv" aria-label="ISPs and VPS providers">
+    <div class="mrow" id="mrow1"></div>
+    <div class="mrow rev" id="mrow2"></div>
+  </div>
+  <div class="wrap">
+    <div class="legend rv"><span><i></i><span data-i="lg_isp"></span></span><span class="vps"><i></i><span data-i="lg_vps"></span></span></div>
+    <div class="stats">
+      <div class="stat rv"><b data-count="18446744073709551616" data-fmt="quint">0</b><span data-i="st1"></span></div>
+      <div class="stat rv" style="--d:.08s"><b data-count="3" data-suffix=" min">0</b><span data-i="st2"></span></div>
+      <div class="stat rv" style="--d:.16s"><b data-count="0" data-prefix="$">$0</b><span data-i="st3"></span></div>
+    </div>
+  </div>
+</section>
+
+<section id="try" class="center" style="background:var(--bg-2)"><div class="wrap">
+  <div class="kicker rv" data-i="try_k"></div><h2 class="rv" data-i="try_h"></h2><p class="sub rv" data-i="try_sub"></p>
+  <div class="demo rv">
+    <div class="ctl">
+      <div><label data-i="try_src"></label>
+        <div class="src" id="srcs">
+          <button data-s="home" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span><b data-i="src_home"></b><small>Comcast · AT&amp;T · Viettel · BT…</small></span></button>
+          <button data-s="vps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12.5 3.5 3.5 0 0 0 6 19z"/></svg><span><b>VPS</b><small>Hetzner · Vultr · OVHcloud…</small></span></button>
+          <button data-s="mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span><b data-i="src_mini"></b><small>Windows · macOS · Linux</small></span></button>
+        </div></div>
+      <div><label data-i="try_count"></label><div class="range"><input type="range" id="cnt" min="1" max="12" value="6"><output id="cntv">6</output></div></div>
+      <div><label data-i="try_fmt"></label>
+        <div class="fmt" id="fmts"><button data-f="hpup" class="on">host:port:user:pass</button><button data-f="socks">socks5://</button><button data-f="http">http://</button></div></div>
+    </div>
+    <div class="term" aria-live="polite">
+      <div class="bar"><span class="dot"></span><span id="tpfx"></span><span class="sp"></span><button class="copy" id="tcopy" data-i="copy_all"></button></div>
+      <div class="rows" id="trows"></div>
+      <div class="foot"><span id="tisp"></span><span id="tsum"></span></div>
+    </div>
+  </div>
+</div></section>
+
 <section id="how"><div class="wrap">
-  <div class="center"><div class="kicker" data-i="how_k"></div><h2 data-i="how_h"></h2><p class="sub" data-i="how_sub"></p></div>
+  <div class="center rv"><div class="kicker" data-i="how_k"></div><h2 data-i="how_h"></h2><p class="sub" data-i="how_sub"></p></div>
   <div class="steps">
-    <div class="step"><b>1</b><h3 data-i="s1_h"></h3><p data-i="s1_p"></p><code>openv6-setup-windows-amd64.exe</code></div>
-    <div class="step"><b>2</b><h3 data-i="s2_h"></h3><p data-i="s2_p"></p><code>FB 01 · FB 02 · … · FB 50</code></div>
-    <div class="step"><b>3</b><h3 data-i="s3_h"></h3><p data-i="s3_p"></p><code>192.168.1.10:10001:u7Kx:9fQe…</code></div>
+    <div class="step rv"><b>1</b><h3 data-i="s1_h"></h3><p data-i="s1_p"></p><code>openv6-setup-windows-amd64.exe</code></div>
+    <div class="step rv" style="--d:.1s"><b>2</b><h3 data-i="s2_h"></h3><p data-i="s2_p"></p><code>FB 01 · FB 02 · … · FB 50</code></div>
+    <div class="step rv" style="--d:.2s"><b>3</b><h3 data-i="s3_h"></h3><p data-i="s3_p"></p><code>192.168.1.10:10001:u7Kx:9fQe…</code></div>
   </div>
 </div></section>
 
 <section id="features" style="background:var(--bg-2)"><div class="wrap">
-  <div class="center"><div class="kicker" data-i="feat_k"></div><h2 data-i="feat_h"></h2><p class="sub" data-i="feat_sub"></p></div>
-  <div class="grid">
+  <div class="center rv"><div class="kicker" data-i="feat_k"></div><h2 data-i="feat_h"></h2><p class="sub" data-i="feat_sub"></p></div>
+  <div class="grid rv">
     <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></div><h3 data-i="f1_h"></h3><p data-i="f1_p"></p></div>
     <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><h3 data-i="f2_h"></h3><p data-i="f2_p"></p></div>
     <div class="feat"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div><h3 data-i="f3_h"></h3><p data-i="f3_p"></p></div>
@@ -212,29 +355,29 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 </div></section>
 
 <section><div class="wrap split">
-  <div><div class="kicker" data-i="copy_k"></div><h2 data-i="copy_h"></h2><p class="sub" data-i="copy_sub"></p>
+  <div class="rv"><div class="kicker" data-i="copy_k"></div><h2 data-i="copy_h"></h2><p class="sub" data-i="copy_sub"></p>
     <ul class="checks"><li data-i="c1"></li><li data-i="c2"></li><li data-i="c3"></li><li data-i="c4"></li></ul></div>
-  <div class="frame"><img src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details"></div>
+  <div class="frame rv" style="--d:.1s"><img src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details"></div>
 </div></section>
 
 <section id="pricing" style="background:var(--bg-2)"><div class="wrap">
-  <div class="center"><div class="kicker" data-i="price_k"></div><h2 data-i="price_h"></h2><p class="sub" data-i="price_sub"></p></div>
+  <div class="center rv"><div class="kicker" data-i="price_k"></div><h2 data-i="price_h"></h2><p class="sub" data-i="price_sub"></p></div>
   <div class="prices">
-    <div class="price"><h3>Free</h3><div class="amt">$0</div><div class="once" data-i="p_free_once"></div>
+    <div class="price rv"><h3>Free</h3><div class="amt">$0</div><div class="once" data-i="p_free_once"></div>
       <ul><li data-i="pf1"></li><li data-i="pf2"></li><li data-i="pf3"></li><li data-i="pf4"></li></ul>
       <a class="btn" data-href="download" data-i="cta_download"></a></div>
-    <div class="price hot"><span class="tag" data-i="popular"></span><h3 data-i="p1_h"></h3><div class="amt" data-price="pro1"></div><div class="once" data-i="once"></div>
+    <div class="price hot rv" style="--d:.08s"><span class="tag" data-i="popular"></span><h3 data-i="p1_h"></h3><div class="amt" data-price="pro1"></div><div class="once" data-i="once"></div>
       <ul><li data-i="pp1"></li><li data-i="pp2"></li><li data-i="pp3"></li><li data-i="pp4"></li><li data-i="pp5"></li></ul>
       <a class="btn primary" data-href="buy1" data-i="buy"></a></div>
-    <div class="price"><h3 data-i="p3_h"></h3><div class="amt" data-price="pro3"></div><div class="once" data-i="once"></div>
+    <div class="price rv" style="--d:.16s"><h3 data-i="p3_h"></h3><div class="amt" data-price="pro3"></div><div class="once" data-i="once"></div>
       <ul><li data-i="pp3m"></li><li data-i="pp1"></li><li data-i="pp2"></li><li data-i="pp3"></li><li data-i="pp4"></li></ul>
       <a class="btn" data-href="buy3" data-i="buy"></a></div>
   </div>
 </div></section>
 
 <section id="faq"><div class="wrap">
-  <div class="center"><div class="kicker" data-i="faq_k"></div><h2 data-i="faq_h"></h2></div>
-  <div class="faq">
+  <div class="center rv"><div class="kicker" data-i="faq_k"></div><h2 data-i="faq_h"></h2></div>
+  <div class="faq rv">
     <details><summary data-i="q1"></summary><p data-i="a1"></p></details>
     <details><summary data-i="q2"></summary><p data-i="a2"></p></details>
     <details><summary data-i="q3"></summary><p data-i="a3"></p></details>
@@ -244,7 +387,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
   </div>
 </div></section>
 
-<div class="final"><h2 data-i="final_h"></h2><p data-i="final_p"></p>
+<div class="final rv"><h2 data-i="final_h"></h2><p data-i="final_p"></p>
   <div class="cta"><a class="btn" data-href="download" data-i="cta_download"></a><a class="btn ghost" href="#pricing" data-i="cta_pro"></a></div></div>
 </main>
 
@@ -291,7 +434,7 @@ const T = {
     popular: 'Phổ biến nhất', p1_h: 'Pro · 1 máy', p3_h: 'Pro · 3 máy', once: 'trả một lần', buy: 'Mua license',
     pp1: 'Không giới hạn proxy', pp2: 'Nhiều máy chạy proxy (VPS, mini PC)', pp3: 'Relay qua VPS, UPnP, Tailscale', pp4: 'API, tài khoản khách, Telegram', pp5: 'Card mạng riêng từng proxy', pp3m: 'Kích hoạt trên 3 máy chạy dashboard',
     faq_k: 'Hỏi đáp', faq_h: 'Câu hỏi thường gặp',
-    q1: 'Tôi cần gì để dùng openv6?', a1: 'Một máy (Windows, macOS hoặc Linux) nối vào mạng có IPv6. FPT, Viettel, VNPT đều đã cấp IPv6 cho gói gia đình; VPS thì hầu hết đều có sẵn một dải /64.',
+    q1: 'Tôi cần gì để dùng openv6?', a1: 'Một máy (Windows, macOS hoặc Linux) nối vào mạng có IPv6. Viettel, FPT, VNPT và hầu hết nhà mạng trên thế giới (Comcast, AT&T, BT, Deutsche Telekom…) đều đã cấp IPv6; VPS (Hetzner, Vultr, DigitalOcean, OVHcloud, Linode…) gần như đều có sẵn một dải /64.',
     q2: 'Website không hỗ trợ IPv6 thì sao?', a2: 'Facebook, Google, TikTok, Amazon… đều chạy IPv6. Với site chỉ có IPv4, bạn có thể bật "dự phòng IPv4" cho proxy, nhưng các proxy đó sẽ dùng chung IPv4 của máy.',
     q3: 'Có phải trả tiền hằng tháng không?', a3: 'Không. Bạn mua license một lần, kích hoạt trên 1 hoặc 3 máy, và nhận các bản cập nhật.',
     q4: 'Đổi máy thì sao?', a4: 'Bấm "Huỷ kích hoạt" trên máy cũ rồi nhập key trên máy mới.',
@@ -299,6 +442,11 @@ const T = {
     q6: 'Một mạng nhà tạo được bao nhiêu proxy?', a6: 'Một dải /64 có hơn 18 tỷ tỷ địa chỉ. Thực tế bạn tạo vài chục tới vài trăm proxy trên một máy mà không cần thêm phần cứng.',
     final_h: 'Thử miễn phí ngay hôm nay', final_p: 'Bản Free có 3 proxy, đủ để thấy openv6 chạy thế nào trên mạng của bạn.',
     f_releases: 'Tải về', f_contact: 'Liên hệ',
+    src_k: 'Nguồn mạng', src_h: 'Chạy trên mọi mạng có IPv6', src_sub: 'Mạng nhà của bất kỳ nhà mạng nào, VPS của bất kỳ nhà cung cấp nào. Có một dải /64 là đủ.',
+    lg_isp: 'Nhà mạng gia đình', lg_vps: 'VPS & cloud', st1: 'địa chỉ IPv6 trong một dải /64', st2: 'từ lúc cài tới proxy đầu tiên', st3: 'phí hằng tháng',
+    try_k: 'Thử ngay', try_h: 'Mỗi tài khoản một IPv6 riêng', try_sub: 'Chọn nguồn mạng và xem openv6 cấp địa chỉ từ dải /64 của nó.',
+    try_src: 'Nguồn mạng', src_home: 'Mạng nhà (ISP)', src_mini: 'Mini PC / máy bàn', try_count: 'Số proxy', try_fmt: 'Định dạng',
+    copy_all: 'Sao chép', copied: 'Đã chép ✓', checking: 'đang kiểm tra', working: 'proxy đang chạy',
   },
   en: {
     nav_how: 'How it works', nav_features: 'Features', nav_pricing: 'Pricing', nav_faq: 'FAQ',
@@ -318,14 +466,14 @@ const T = {
     f4_h: 'Stable with a VPN on', f4_p: 'Proxies keep using the right network card while VPN, Cloudflare WARP or Tailscale is on.',
     f5_h: 'Use them anywhere', f5_p: 'Share through a relay on a VPS (works behind CGNAT), UPnP or Tailscale. Pick LAN or Wi-Fi per proxy.',
     f6_h: 'Many machines, resell to customers', f6_p: 'Manage VPSs and mini PCs from one dashboard. Customer accounts see only the proxies assigned to them.',
-    copy_k: 'Dashboard', copy_h: 'One click gives you the right proxy line', copy_sub: 'Light or dark, Vietnamese or English, works great on phones.',
+    copy_k: 'Dashboard', copy_h: 'One click gives you the right proxy line', copy_sub: 'Light or dark, English or Vietnamese, works great on phones.',
     c1: 'Ready-made formats for each anti-detect browser', c2: 'Latency, country and ISP history per proxy', c3: 'Speed and connection limits per proxy', c4: 'Telegram alerts when a proxy fails or the prefix changes',
     price_k: 'Pricing', price_h: 'Pay once, use forever', price_sub: 'No subscription. Start with Free, upgrade when you need more.',
     p_free_once: 'forever', pf1: '3 proxies', pf2: '1 machine', pf3: 'HTTP + SOCKS5, anti-detect export', pf4: 'Self-check & fix',
     popular: 'Most popular', p1_h: 'Pro · 1 machine', p3_h: 'Pro · 3 machines', once: 'one-time payment', buy: 'Buy license',
     pp1: 'Unlimited proxies', pp2: 'Multiple proxy machines (VPS, mini PC)', pp3: 'Relay via VPS, UPnP, Tailscale', pp4: 'API, customer accounts, Telegram', pp5: 'Network card per proxy', pp3m: 'Activate on 3 dashboard machines',
     faq_k: 'FAQ', faq_h: 'Frequently asked questions',
-    q1: 'What do I need?', a1: 'A Windows, macOS or Linux machine on a network with IPv6. Most home ISPs provide IPv6 today, and nearly every VPS comes with a /64.',
+    q1: 'What do I need?', a1: 'A Windows, macOS or Linux machine on a network with IPv6. Comcast, AT&T, Verizon, Spectrum, BT, Deutsche Telekom, Orange, Viettel, FPT, VNPT and most other home ISPs hand out IPv6 today, and nearly every VPS (Hetzner, Vultr, DigitalOcean, OVHcloud, Linode…) comes with a /64.',
     q2: 'What about sites without IPv6?', a2: 'Facebook, Google, TikTok, Amazon… all run IPv6. For IPv4-only sites you can enable "IPv4 fallback" per proxy, which shares the machine\'s IPv4.',
     q3: 'Is there a monthly fee?', a3: 'No. You buy a license once, activate it on 1 or 3 machines, and get updates.',
     q4: 'Changing computers?', a4: 'Click "Deactivate" on the old machine and enter the key on the new one.',
@@ -333,23 +481,115 @@ const T = {
     q6: 'How many proxies per network?', a6: 'A /64 holds over 18 quintillion addresses. In practice you run dozens to hundreds of proxies on one machine with no extra hardware.',
     final_h: 'Try it free today', final_p: 'Free includes 3 proxies: enough to see openv6 working on your network.',
     f_releases: 'Downloads', f_contact: 'Contact',
+    src_k: 'Sources', src_h: 'Works on any IPv6 network', src_sub: 'Any home ISP, any VPS provider. If it gives you a /64, openv6 turns it into proxies.',
+    lg_isp: 'Home ISPs', lg_vps: 'VPS & cloud', st1: 'IPv6 addresses in a single /64', st2: 'from install to the first proxy', st3: 'monthly fees',
+    try_k: 'Try it', try_h: 'One IPv6 per account, live', try_sub: 'Pick a network source and watch openv6 assign addresses from its /64.',
+    try_src: 'Network source', src_home: 'Home ISP', src_mini: 'Mini PC / desktop', try_count: 'Proxies', try_fmt: 'Format',
+    copy_all: 'Copy', copied: 'Copied ✓', checking: 'checking', working: 'proxies working',
   },
 };
 
-let lang = (navigator.language || '').toLowerCase().startsWith('vi') ? 'vi' : 'en';
-try { lang = localStorage.getItem('ov6_lang') || ((navigator.language || '').toLowerCase().startsWith('vi') ? 'vi' : 'en'); } catch (e) { /* storage blocked */ }
+let lang = 'en'; // English by default; the VI/EN switch is remembered
+try { const saved = localStorage.getItem('ov6_lang'); if (saved === 'vi' || saved === 'en') lang = saved; } catch (e) { /* storage blocked */ }
 function render() {
   document.documentElement.lang = lang;
-  for (const el of document.querySelectorAll('[data-i]')) el.textContent = T[lang][el.dataset.i] || T.vi[el.dataset.i] || '';
+  for (const el of document.querySelectorAll('[data-i]')) el.textContent = T[lang][el.dataset.i] || T.en[el.dataset.i] || '';
   for (const el of document.querySelectorAll('[data-href]')) el.href = LINKS[el.dataset.href];
   for (const el of document.querySelectorAll('[data-price]')) el.textContent = PRICES[el.dataset.price];
   for (const b of document.querySelectorAll('[data-l]')) b.classList.toggle('on', b.dataset.l === lang);
   document.title = 'openv6 — ' + T[lang].h1;
 }
-for (const b of document.querySelectorAll('[data-l]')) b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('ov6_lang', lang); } catch (e) { /* ignore */ } render(); };
+for (const b of document.querySelectorAll('[data-l]')) b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('ov6_lang', lang); } catch (e) { /* ignore */ } render(); splitH1(); if (typeof demoStarted !== 'undefined' && demoStarted) runDemo(); };
 document.getElementById('yr').textContent = new Date().getFullYear();
 const c = document.getElementById('contact'); if (CONTACT) c.href = 'mailto:' + CONTACT; else c.remove();
 render();
+splitH1();
+
+// ---- motion & interactions ----
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function splitH1() {
+  const h = document.querySelector('.hero h1'); const words = h.textContent.split(' ');
+  h.textContent = ''; words.forEach((w, i) => { const sp = document.createElement('span'); sp.className = 'w'; sp.style.setProperty('--i', i); sp.textContent = w; h.append(sp, ' '); });
+}
+const io = 'IntersectionObserver' in window ? new IntersectionObserver((es) => {
+  for (const e of es) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); if (e.target.dataset.count !== undefined) count(e.target); }
+}, { rootMargin: '0px 0px -8% 0px' }) : null;
+for (const el of document.querySelectorAll('.rv')) io ? io.observe(el) : el.classList.add('in');
+
+// sources marquee
+const ISP = [['Comcast Xfinity','US'],['AT&T','US'],['Verizon Fios','US'],['Spectrum','US'],['T-Mobile','US'],['Bell','CA'],['BT','UK'],['Sky','UK'],['Virgin Media','UK'],['Deutsche Telekom','DE'],['Vodafone','DE'],['Orange','FR'],['Free','FR'],['KPN','NL'],['Telstra','AU'],['NTT','JP'],['KDDI','JP'],['Jio','IN'],['Airtel','IN'],['Viettel','VN'],['FPT Telecom','VN'],['VNPT','VN'],['Singtel','SG'],['Claro','BR']];
+const VPS = ['Hetzner','Vultr','DigitalOcean','OVHcloud','Linode / Akamai','AWS Lightsail','Google Cloud','Azure','Oracle Cloud','Contabo','Scaleway','UpCloud','Kamatera','Hostinger','BuyVM','netcup','IONOS','RackNerd'];
+function chips(list, vps) { return list.map((x) => `<span class="chip${vps ? ' vps' : ''}"><i></i>${Array.isArray(x) ? x[0] + ' <small>' + x[1] + '</small>' : x}</span>`).join(''); }
+const half = Math.ceil(ISP.length / 2);
+const r1 = chips(ISP.slice(0, half), false) + chips(VPS.slice(0, 9), true), r2 = chips(VPS.slice(9), true) + chips(ISP.slice(half), false);
+document.getElementById('mrow1').innerHTML = r1 + r1; document.getElementById('mrow2').innerHTML = r2 + r2;
+for (const r of document.querySelectorAll('.mrow')) for (const c of [...r.children].slice(r.children.length / 2)) c.setAttribute('aria-hidden', 'true');
+
+// counters
+function count(el) {
+  const big = el.dataset.fmt === 'quint', target = big ? 18.4 : Number(el.dataset.count), pre = el.dataset.prefix || '', suf = el.dataset.suffix || '';
+  const show = (v) => { el.textContent = big ? v.toFixed(1) + ' quintillion' : pre + Math.round(v) + suf; };
+  if (reduce || target === 0) return show(target);
+  const t0 = performance.now(), dur = 1400;
+  (function tick(t) { const k = Math.min(1, (t - t0) / dur); show(target * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(tick); })(t0);
+}
+for (const el of document.querySelectorAll('[data-count]')) io ? io.observe(el) : count(el);
+
+// hero tilt
+const stage = document.getElementById('stage');
+if (!reduce && matchMedia('(hover: hover) and (min-width: 901px)').matches) {
+  addEventListener('scroll', () => stage.classList.toggle('flat', scrollY > 120), { passive: true });
+  stage.addEventListener('pointermove', (e) => { const r = stage.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    stage.style.setProperty('--ry', (x * 6).toFixed(2) + 'deg'); stage.style.setProperty('--rx', (scrollY > 120 ? 0 : 6) - y * 4 + 'deg'); });
+  stage.addEventListener('pointerleave', () => { stage.style.removeProperty('--ry'); stage.style.removeProperty('--rx'); });
+}
+// feature spotlight
+for (const f of document.querySelectorAll('.feat')) f.addEventListener('pointermove', (e) => { const r = f.getBoundingClientRect(); f.style.setProperty('--mx', e.clientX - r.left + 'px'); f.style.setProperty('--my', e.clientY - r.top + 'px'); });
+
+// interactive demo
+const SOURCES = {
+  home: { pfx: '2601:646:8a00:51c0', host: '192.168.1.10', isp: 'AS7922 Comcast Cable · US', names: ['Amazon', 'eBay', 'Etsy', 'Shopify'] },
+  vps:  { pfx: '2a01:4f8:c17:2b9e', host: '167.235.62.14', isp: 'AS24940 Hetzner Online · DE', names: ['TikTok', 'Reddit', 'X', 'Google'] },
+  mini: { pfx: '2402:800:6371:2a4e', host: '192.168.1.20', isp: 'AS7552 Viettel · VN', names: ['Facebook', 'Instagram', 'Zalo', 'Gmail'] },
+};
+let dsrc = 'home', dfmt = 'hpup', dn = 6, dlines = [], dtimer = [];
+const hex = () => Math.floor(Math.random() * 65536).toString(16);
+const tok = (n) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 55)]).join('');
+function line(h, port, u, pw) { return dfmt === 'socks' ? `socks5://${u}:${pw}@${h}:${port}` : dfmt === 'http' ? `http://${u}:${pw}@${h}:${port}` : `${h}:${port}:${u}:${pw}`; }
+function scramble(el, final, delay) {
+  if (reduce) { el.textContent = final; return; }
+  let n = 0; const id = setInterval(() => { n++; el.textContent = n > 8 ? final : final.replace(/[0-9a-f](?=[0-9a-f]*$)/g, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]); if (n > 8) clearInterval(id); }, 45);
+  dtimer.push(id);
+}
+function runDemo() {
+  dtimer.forEach(clearTimeout); dtimer.forEach(clearInterval); dtimer = [];
+  const S = SOURCES[dsrc], rows = document.getElementById('trows'); rows.innerHTML = ''; dlines = [];
+  document.getElementById('tpfx').textContent = S.pfx + '::/64';
+  document.getElementById('tisp').textContent = S.isp;
+  const sum = document.getElementById('tsum'); sum.textContent = '0/' + dn + ' ' + T[lang].working;
+  let ok = 0;
+  for (let i = 0; i < dn; i++) {
+    const name = S.names[i % S.names.length] + ' ' + String(Math.floor(i / S.names.length) + 1).padStart(2, '0');
+    const suffix = [hex(), hex(), hex(), hex()].join(':'), port = 10001 + i, u = 'u' + tok(6), pw = tok(8);
+    const L = line(S.host, port, u, pw); dlines.push({ h: S.host, port, u, pw });
+    const r = document.createElement('div'); r.className = 'row'; r.style.animationDelay = (reduce ? 0 : i * 110) + 'ms';
+    r.innerHTML = `<span class="nm"></span><span class="ip">${S.pfx}:<em></em></span><span class="st">${T[lang].checking}…</span><span class="ln"></span>`;
+    r.querySelector('.nm').textContent = name; r.querySelector('.ln').textContent = L;
+    rows.append(r);
+    const em = r.querySelector('em'); em.textContent = suffix.replace(/[0-9a-f]/g, '0');
+    dtimer.push(setTimeout(() => scramble(em, suffix), reduce ? 0 : i * 110 + 120));
+    dtimer.push(setTimeout(() => { const st = r.querySelector('.st'); st.textContent = '✓ ' + (40 + Math.floor(Math.random() * 160)) + ' ms'; st.classList.add('ok'); ok++; sum.textContent = ok + '/' + dn + ' ' + T[lang].working; }, reduce ? 0 : 700 + i * 160));
+  }
+}
+document.getElementById('srcs').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; dsrc = b.dataset.s; for (const x of e.currentTarget.children) x.classList.toggle('on', x === b); runDemo(); };
+document.getElementById('fmts').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; dfmt = b.dataset.f; for (const x of e.currentTarget.children) x.classList.toggle('on', x === b);
+  const lns = document.querySelectorAll('#trows .ln'); dlines.forEach((d, i) => { if (lns[i]) lns[i].textContent = line(d.h, d.port, d.u, d.pw); }); };
+const cnt = document.getElementById('cnt'); let deb;
+cnt.oninput = () => { dn = Number(cnt.value); document.getElementById('cntv').textContent = dn; clearTimeout(deb); deb = setTimeout(runDemo, 120); };
+document.getElementById('tcopy').onclick = async (e) => { try { await navigator.clipboard.writeText(dlines.map((d) => line(d.h, d.port, d.u, d.pw)).join('\n')); e.target.textContent = T[lang].copied; setTimeout(() => { e.target.textContent = T[lang].copy_all; }, 1400); } catch (err) { /* clipboard blocked */ } };
+let demoStarted = false;
+const demoEl = document.querySelector('.demo');
+if (io) new IntersectionObserver((es, o) => { if (es[0].isIntersecting) { demoStarted = true; runDemo(); o.disconnect(); } }, { threshold: .3 }).observe(demoEl); else runDemo();
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 # Landing page on Cloudflare (thephuc.xyz/openv6)
 
 The landing in `site/` is served at **https://thephuc.xyz/openv6/** by the
-Worker `openv6-landing` (static assets only). Its routes run in front of the
+Worker `openv6-landing`; `build.sh` bundles the files into one script. Its routes run in front of the
 rest of thephuc.xyz, so the main site is untouched.
 
 ## Automatic deploys (Workers Builds, one-time setup)
@@ -11,9 +11,9 @@ Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repos
 
 | Setting | Value |
 |---|---|
-| Project name | `openv6-landing` (must match `name` in `wrangler.jsonc`) |
+| Project name | `openv6-landing` (must match `name` in the root `wrangler.jsonc`) |
 | Production branch | `main` |
-| Root directory | `deploy/cloudflare` |
+| Root directory | *(empty: repo root)* |
 | Build command | `./build.sh` |
 | Deploy command | `npx wrangler deploy` |
 | Build watch paths (optional) | include `site/*`, `deploy/cloudflare/*` |
