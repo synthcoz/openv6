@@ -106,6 +106,8 @@ h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.035em; line-height: 1.
 .checks li { display: flex; gap: 10px; color: var(--text-2); }
 .checks li::before { content: ''; flex: none; width: 18px; height: 18px; margin-top: 3px; border-radius: 50%; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat; }
 
+/* paid notice (after a Polar checkout) */
+.paid{position:sticky;top:0;z-index:60;padding:12px 16px;text-align:center;font-weight:600;background:#16a34a;color:#fff}
 /* pricing */
 .prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; align-items: stretch; }
 .price { position: relative; padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); display: flex; flex-direction: column; }
@@ -402,8 +404,8 @@ details p { animation: fIn .35s ease; }
 const LINKS = {
   download: 'https://github.com/thephux/openv6-releases/releases/latest',
   github: 'https://github.com/thephux/openv6-releases',
-  buy1: 'https://polar.sh/thephuc', // replace with the Polar checkout link of "openv6 Pro (1 máy)"
-  buy3: 'https://polar.sh/thephuc', // replace with the Polar checkout link of "openv6 Pro (3 máy)"
+  buy1: 'https://buy.polar.sh/polar_cl_AvvfX0pokfI5ymgstpQ6cqAKNAwLpCwRkqcNN2BBpfB', // Polar checkout link "openv6 Pro 1 máy"
+  buy3: 'https://buy.polar.sh/polar_cl_UmLueNgzfXcsTkTnFdUPO6jQGGoLgpecZrj933a5MCj', // Polar checkout link "openv6 Pro 3 máy"
 };
 const PRICES = { pro1: '$29', pro3: '$69' };
 const CONTACT = ''; // support e-mail shown in the footer (leave empty to hide)
@@ -447,6 +449,7 @@ const T = {
     try_k: 'Thử ngay', try_h: 'Mỗi tài khoản một IPv6 riêng', try_sub: 'Chọn nguồn mạng và xem openv6 cấp địa chỉ từ dải /64 của nó.',
     try_src: 'Nguồn mạng', src_home: 'Mạng nhà (ISP)', src_mini: 'Mini PC / máy bàn', try_count: 'Số proxy', try_fmt: 'Định dạng',
     copy_all: 'Sao chép', copied: 'Đã chép ✓', checking: 'đang kiểm tra', working: 'proxy đang chạy',
+    paid: 'Cảm ơn bạn đã mua openv6 Pro! License key đã được gửi tới email của bạn. Nhập key trong dashboard ở Cài đặt → Bản quyền.',
   },
   en: {
     nav_how: 'How it works', nav_features: 'Features', nav_pricing: 'Pricing', nav_faq: 'FAQ',
@@ -486,6 +489,7 @@ const T = {
     try_k: 'Try it', try_h: 'One IPv6 per account, live', try_sub: 'Pick a network source and watch openv6 assign addresses from its /64.',
     try_src: 'Network source', src_home: 'Home ISP', src_mini: 'Mini PC / desktop', try_count: 'Proxies', try_fmt: 'Format',
     copy_all: 'Copy', copied: 'Copied ✓', checking: 'checking', working: 'proxies working',
+    paid: 'Thanks for buying openv6 Pro! Your license key is on its way to your e-mail. Enter it in the dashboard under Settings → License.',
   },
 };
 
@@ -504,6 +508,13 @@ document.getElementById('yr').textContent = new Date().getFullYear();
 const c = document.getElementById('contact'); if (CONTACT) c.href = 'mailto:' + CONTACT; else c.remove();
 render();
 splitH1();
+
+// back from a Polar checkout (success_url ...?paid=1&checkout_id=...): say where the key is
+if (new URLSearchParams(location.search).has('paid')) {
+  const n = document.createElement('div'); n.className = 'paid'; n.setAttribute('role', 'status'); n.dataset.i = 'paid';
+  n.textContent = T[lang].paid; document.body.prepend(n);
+  history.replaceState(null, '', location.pathname + location.hash);
+}
 
 // ---- motion & interactions ----
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;

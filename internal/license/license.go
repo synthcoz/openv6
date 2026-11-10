@@ -29,7 +29,7 @@ var (
 		"33bd84ab-1bfd-4e58-a5d2-6463f9dc0da6": 3, // openv6 Pro (3 machines)
 	}
 	APIBase = "https://api.polar.sh"
-	BuyURL  = "https://polar.sh/thephuc"
+	BuyURL  = "https://thephuc.xyz/openv6/#pricing"
 )
 
 const (
