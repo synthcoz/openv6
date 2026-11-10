@@ -13,7 +13,7 @@ env:
   # Installers and updates are published to a separate public repository, so
   # this source repository can stay private. RELEASES_TOKEN: fine-grained
   # token with Contents read/write on that repository only.
-  RELEASES_REPO: synthcoz/openv6-releases
+  RELEASES_REPO: thephux/openv6-releases
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -191,13 +191,13 @@ jobs:
           cat > notes.md <<'EOF'
           **Windows 10/11:** in PowerShell
           ```powershell
-          irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+          irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
           ```
           or download `openv6-setup-windows-amd64.exe`, run it and click Next. If Windows shows "Unknown publisher", choose *More info → Run anyway*.
 
           **macOS and Ubuntu / Debian / Zorin:** in Terminal
           ```bash
-          curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+          curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
           ```
           or download `openv6-macos.pkg` (macOS) or the `.deb` (`sudo apt install ./openv6_*.deb`).
 

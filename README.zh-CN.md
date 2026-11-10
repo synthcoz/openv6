@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>用你自己网络的 IPv6 生成静态代理（HTTP + SOCKS5），一个网页面板统一管理。</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">官网</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">下载</a> · <a href="CHANGELOG.md">更新日志</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">官网</a> · <a href="https://github.com/thephux/openv6-releases/releases/latest">下载</a> · <a href="CHANGELOG.md">更新日志</a></p>
 <p align="center"><a href="README.md">English</a> · <a href="README.vi.md">Tiếng Việt</a> · <b>简体中文</b> · <a href="README.es.md">Español</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português</a></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,20 +20,20 @@ openv6 把家庭宽带或 VPS 服务商分配给你的 IPv6 前缀变成数百�
 
 | 系统 | 方法 |
 |---|---|
-| **Windows 10/11** | 从 [Releases](https://github.com/synthcoz/openv6-releases/releases/latest) 下载 `openv6-setup-windows-amd64.exe`，点击 Next → Install。 |
+| **Windows 10/11** | 从 [Releases](https://github.com/thephux/openv6-releases/releases/latest) 下载 `openv6-setup-windows-amd64.exe`，点击 Next → Install。 |
 | **macOS** （Intel 与 Apple 芯片） | 从 Releases 下载 `openv6-macos.pkg`。 |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | 使用下面的命令，或 Releases 中的 `.deb` 文件。 |
 
 **Windows**（PowerShell）：
 
 ```powershell
-irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
 ```
 
 **macOS / Linux**（终端）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 ```
 
 openv6 在后台运行并随系统启动。托盘图标显示状态并可打开面板。

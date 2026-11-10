@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # openv6 one-line installer for Linux and macOS (latest release from GitHub).
-#   panel + proxies on this machine:  curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+#   panel + proxies on this machine:  curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 #   remote node:                      ... | sudo bash -s -- agent --panel URL --token TOKEN
-#   Windows: irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+#   Windows: irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
 set -euo pipefail
-REPO="${OPENV6_REPO:-synthcoz/openv6-releases}"
+REPO="${OPENV6_REPO:-thephux/openv6-releases}"
 VERSION="${OPENV6_VERSION:-latest}"
 if [ "$(id -u)" != "0" ]; then echo "Hãy chạy với sudo / run as root"; exit 1; fi
 if [ "$VERSION" = "latest" ]; then BASE="https://github.com/$REPO/releases/latest/download"; else BASE="https://github.com/$REPO/releases/download/$VERSION"; fi

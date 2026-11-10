@@ -37,7 +37,7 @@ Lấy địa chỉ dạng `192.168.1.xx`. Đây là địa chỉ để các máy
 ### Cách A: một lệnh (khi repo GitHub đã có bản phát hành)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 ```
 
 Script tự tải đúng bản cho CPU của máy, cài vào `/usr/local/bin/openv6`, rồi tạo dịch vụ `openv6-server` tự chạy mỗi khi bật máy.
@@ -71,7 +71,7 @@ sudo snap install go --classic
 ```
 
 ```bash
-git clone https://github.com/synthcoz/openv6.git && cd openv6
+git clone https://github.com/thephux/openv6.git && cd openv6
 ```
 
 ```bash

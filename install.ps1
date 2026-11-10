@@ -1,5 +1,5 @@
 # openv6 one-line installer for Windows 10/11 (latest release from GitHub).
-#   irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
 # Downloads the installer, checks it against SHA256SUMS and installs it
 # silently (Windows asks once for administrator permission).
 & {
@@ -7,7 +7,7 @@
   $ProgressPreference = 'SilentlyContinue' # much faster downloads on Windows PowerShell 5.1
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-  $repo = if ($env:OPENV6_REPO) { $env:OPENV6_REPO } else { 'synthcoz/openv6-releases' }
+  $repo = if ($env:OPENV6_REPO) { $env:OPENV6_REPO } else { 'thephux/openv6-releases' }
   $ver = if ($env:OPENV6_VERSION) { $env:OPENV6_VERSION } else { 'latest' }
   $base = if ($ver -eq 'latest') { "https://github.com/$repo/releases/latest/download" } else { "https://github.com/$repo/releases/download/$ver" }
   $name = 'openv6-setup-windows-amd64.exe'
