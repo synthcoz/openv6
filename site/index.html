@@ -42,6 +42,7 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+main { overflow-x: clip; } /* the tilted hero and the phone mockup must not widen the page */
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; letter-spacing: -.005em; }
 a { color: inherit; }
 img { max-width: 100%; height: auto; display: block; }
@@ -153,7 +154,8 @@ details p { color: var(--muted); margin: 10px 0 0; }
 .final .btn { background: var(--primary-text); color: var(--primary); border-color: var(--primary-text); }
 .final .btn.ghost { background: transparent; color: var(--primary-text); border-color: color-mix(in srgb, var(--primary-text) 30%, transparent); }
 footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; }
-footer .wrap { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+footer .wrap { display: flex; gap: 16px 24px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+footer .fl, footer .fr { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 
 @media (max-width: 900px) {
@@ -174,6 +176,11 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
   .nav { gap: 8px; padding: 0 8px 0 14px; }
   .nav .dl { display: none; }
   .cta .btn { width: 100%; }
+  .frame.shotm { width: min(280px, 78vw); margin: 0 auto; border: 8px solid #111; border-radius: 36px; background: #111; }
+  footer .wrap { flex-direction: column; align-items: flex-start; }
+}
+:root[data-theme="dark"] .phone, :root[data-theme="dark"] .frame.shotm { box-shadow: 0 0 0 1px var(--border-2), var(--shadow); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .phone, :root:not([data-theme="light"]) .frame.shotm { box-shadow: 0 0 0 1px var(--border-2), var(--shadow); }
 }
 /* ---- motion ---- */
 .hero { position: relative; }
@@ -304,7 +311,7 @@ details p { animation: fIn .35s ease; }
   <div class="stage fade" style="--d:.8s" id="stage">
     <div class="frame"><div class="bar"><span></span><span></span><span></span><em>127.0.0.1:8080</em></div>
       <img data-shot="shot-proxies" data-dark src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></div>
-    <div class="phone"><img data-shot="shot-mobile" src="assets/shot-mobile.webp" width="1170" height="1992" alt="openv6 on a phone" loading="lazy"></div>
+    <div class="phone"><img data-shot="shot-mobile" data-dark src="assets/shot-mobile.webp" width="1170" height="1992" alt="openv6 on a phone" loading="lazy"></div>
   </div>
 </div>
 
@@ -376,7 +383,7 @@ details p { animation: fIn .35s ease; }
 <section><div class="wrap split">
   <div class="rv"><div class="kicker" data-i="copy_k"></div><h2 data-i="copy_h"></h2><p class="sub" data-i="copy_sub"></p>
     <ul class="checks"><li data-i="c1"></li><li data-i="c2"></li><li data-i="c3"></li><li data-i="c4"></li></ul></div>
-  <div class="frame rv" style="--d:.1s"><img data-shot="shot-drawer" src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details"></div>
+  <div class="frame shotm rv" style="--d:.1s"><picture><source media="(max-width: 520px)" data-shot="shot-drawer-m" data-dark srcset="assets/shot-drawer-m.webp" width="1170" height="1992"><img data-shot="shot-drawer" data-dark src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details" loading="lazy"></picture></div>
 </div></section>
 
 <section id="pricing" style="background:var(--bg-2)"><div class="wrap">
@@ -411,9 +418,9 @@ details p { animation: fIn .35s ease; }
 </main>
 
 <footer><div class="wrap">
-  <a class="brand" href="#" style="font-size:15px"><img src="assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
-  <span>© <span id="yr"></span> openv6</span><span class="sp" style="flex:1"></span>
-  <a data-href="labs">Labs</a><a data-href="github">GitHub</a><a data-href="download" data-i="f_releases"></a><a href="mailto:" id="contact" data-i="f_contact"></a>
+  <div class="fl"><a class="brand" href="#" style="font-size:15px"><img src="assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© <span id="yr"></span> openv6</span></div>
+  <nav class="fr"><a data-href="labs">Labs</a><a data-href="github">GitHub</a><a data-href="download" data-i="f_releases"></a><a href="mailto:" id="contact" data-i="f_contact"></a></nav>
 </div></footer>
 
 <script>
@@ -529,11 +536,13 @@ for (const b of document.querySelectorAll('[data-l]')) b.onclick = () => { lang 
 // light / dark: follows the system until the visitor picks one (remembered)
 const darkMQ = matchMedia('(prefers-color-scheme: dark)');
 function theme() { return document.documentElement.dataset.theme || (darkMQ.matches ? 'dark' : 'light'); }
-function shots() { // dashboard screenshots in the page's language (and theme for the hero)
-  const sfx = lang === 'vi' ? '-vi' : '';
-  for (const img of document.querySelectorAll('[data-shot]')) {
-    const src = 'assets/' + img.dataset.shot + (img.hasAttribute('data-dark') && theme() === 'dark' ? '-dark' : '') + sfx + '.webp';
-    if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+const ASSET_V = '__ASSET_V__'; // set by deploy/cloudflare/build.mjs (cache busting)
+function shots() { // dashboard screenshots in the page's language and theme
+  const sfx = lang === 'vi' ? '-vi' : '', v = ASSET_V.startsWith('__') ? '' : '?v=' + ASSET_V;
+  for (const el of document.querySelectorAll('[data-shot]')) {
+    const url = 'assets/' + el.dataset.shot + (el.hasAttribute('data-dark') && theme() === 'dark' ? '-dark' : '') + sfx + '.webp' + v;
+    const attr = el.tagName === 'SOURCE' ? 'srcset' : 'src';
+    if (el.getAttribute(attr) !== url) el.setAttribute(attr, url);
   }
 }
 document.getElementById('theme').onclick = () => {
