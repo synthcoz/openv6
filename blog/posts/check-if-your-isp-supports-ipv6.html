@@ -1,0 +1,61 @@
+<!--
+{
+  "title": "Does My ISP Support IPv6? How to Check on Windows, macOS and Linux",
+  "description": "Find out in two minutes whether your internet connection has IPv6 and a /64 prefix, using built-in commands on Windows, macOS and Linux, plus what to do if it doesn't.",
+  "order": 5,
+  "date": "2026-11-10",
+  "keywords": ["check IPv6", "does my ISP support IPv6", "IPv6 test", "how to enable IPv6 router", "IPv6 /64 prefix check"],
+  "tldr": "Run ipconfig (Windows), ifconfig or System Settings (macOS) or ip -6 addr (Linux) and look for an address that starts with 2 or 3: that is a global IPv6. Then confirm with curl -6 https://api6.ipify.org. If you only see fe80:: addresses, enable IPv6 on your router or ask your ISP.",
+  "faq": [
+    ["How do I know if I have a real IPv6 address?", "Global IPv6 addresses currently start with 2 or 3, for example 2001:db8:... Addresses starting with fe80:: are link-local and only work inside your network; fd or fc addresses are private."],
+    ["What is a /64 and do I have one?", "A /64 is the standard IPv6 network size for a home or VPS LAN, about 18.4 quintillion addresses. If your address list shows a prefix length of 64, or the address was assigned automatically (SLAAC), your network is a /64."],
+    ["My router has IPv6 settings but it is off. What should I pick?", "Enable IPv6 on the WAN side (often DHCPv6 or Auto), and on the LAN side choose SLAAC, Stateless or Auto. Restart the computer afterwards."],
+    ["Can a VPN hide my IPv6?", "Yes. Many VPNs disable IPv6 or block it to prevent leaks. Run the checks with the VPN off, or allow IPv6 in the VPN settings."]
+  ]
+}
+-->
+<p>Before you can use IPv6 proxies, or run your own, your connection needs <strong>IPv6</strong>. Most large ISPs and almost every VPS provider enable it today, but plenty of routers still ship with it switched off. Here is how to check in two minutes.</p>
+
+<h2 id="quick-test">The 10-second test</h2>
+<p>Open a terminal (PowerShell on Windows) and run:</p>
+<pre><code>curl -6 https://api6.ipify.org</code></pre>
+<p>If it prints an address like <code>2001:db8:51c0:1e::a41f</code>, you have working IPv6. An error such as "Couldn't connect" or "Could not resolve host" means no IPv6 route to the internet. (On Windows, use <code>curl.exe</code> if <code>curl</code> is mapped to PowerShell's own command.)</p>
+<p>Prefer a website? Open <code>test-ipv6.com</code> in a browser with any VPN turned off.</p>
+
+<h2 id="windows">Windows</h2>
+<pre><code>ipconfig</code></pre>
+<p>Under your active adapter, look for <strong>IPv6 Address</strong> or <strong>Temporary IPv6 Address</strong> starting with <code>2</code> or <code>3</code>. A line that only says <strong>Link-local IPv6 Address . . . : fe80::…</strong> does not count.</p>
+
+<h2 id="macos">macOS</h2>
+<pre><code>ifconfig | grep "inet6 2"</code></pre>
+<p>Or open <strong>System Settings → Network → (your connection) → Details → TCP/IP</strong> and check the IPv6 address and prefix length. Set "Configure IPv6" to <strong>Automatically</strong> if it is off.</p>
+
+<h2 id="linux">Linux</h2>
+<pre><code>ip -6 addr show scope global</code></pre>
+<p>A good result contains a line like <code>inet6 2001:db8:51c0:1e:…/64 scope global dynamic mngtmpaddr</code>. The <code>/64</code> is your prefix length; <code>mngtmpaddr</code> and <code>dynamic</code> mean the address was assigned automatically from the router's /64.</p>
+<p>Also check that there is a default route:</p>
+<pre><code>ip -6 route show default</code></pre>
+
+<h2 id="reading">Reading the result</h2>
+<table>
+<thead><tr><th>You see</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Address starting with <code>2</code> or <code>3</code></td><td>Global IPv6: you are good.</td></tr>
+<tr><td>Only <code>fe80::</code></td><td>Link-local only: IPv6 is off on the router or not provided by the ISP.</td></tr>
+<tr><td><code>fd…</code> or <code>fc…</code></td><td>Private (ULA) address: the router uses IPv6 internally but has no internet IPv6.</td></tr>
+<tr><td>Prefix length <code>/64</code></td><td>Standard LAN network: about 18.4 quintillion addresses for your proxies.</td></tr>
+</tbody>
+</table>
+
+<h2 id="enable">If you don't have IPv6</h2>
+<ol>
+<li><strong>Turn off any VPN</strong> and test again. Many VPNs disable IPv6 to prevent leaks.</li>
+<li><strong>Check the router.</strong> Log in (often <code>192.168.1.1</code> or <code>192.168.0.1</code>), find the IPv6 section, enable it on the WAN (DHCPv6, PPPoE IPv6 or "Auto", depending on the ISP) and choose <strong>SLAAC / Stateless / Auto</strong> for the LAN.</li>
+<li><strong>Restart</strong> the router, then the computer.</li>
+<li><strong>Ask the ISP.</strong> Some contracts need IPv6 enabled on their side; ask support for "IPv6 with a /64 on the LAN" or "prefix delegation".</li>
+<li><strong>No luck?</strong> Use a VPS instead: nearly all of them include IPv6. See <a href="../ipv6-proxies-on-a-vps/">IPv6 proxies on a VPS</a>.</li>
+</ol>
+
+<h2 id="dynamic">A note on changing prefixes</h2>
+<p>Many home ISPs give you a <strong>dynamic</strong> prefix that can change after a modem restart. That is fine for proxies: <a href="../../">openv6</a> notices the new prefix and moves every proxy to it while keeping its port, password and address suffix. If you need a prefix that never changes, ask the ISP for a static prefix or use a VPS.</p>
+<p>Next step: <a href="../static-ipv6-proxies-from-home-internet/">turn that /64 into static proxies</a>.</p>

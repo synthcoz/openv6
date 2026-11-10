@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser | openv6</title>
+<meta name="description" content="Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.">
+<link rel="canonical" href="https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="openv6">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser | openv6">
+<meta property="og:description" content="Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.">
+<meta property="og:url" content="https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/">
+<meta property="og:image" content="https://thephuc.xyz/openv6/assets/og/proxies-for-anti-detect-browsers.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser | openv6">
+<meta name="twitter:description" content="Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.">
+<meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og/proxies-for-anti-detect-browsers.jpg">
+<meta property="article:published_time" content="2026-11-10">
+<meta property="article:modified_time" content="2026-11-10">
+<meta name="keywords" content="anti-detect browser proxy, Multilogin proxy format, GoLogin proxy, Dolphin Anty proxy, AdsPower proxy setup, ixBrowser proxy, proxy per profile">
+<link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
+<link rel="icon" href="../../assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
+<link rel="stylesheet" href="../../assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser","description":"Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.","image":"https://thephuc.xyz/openv6/assets/og/proxies-for-anti-detect-browsers.jpg","datePublished":"2026-11-10","dateModified":"2026-11-10","author":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"publisher":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"mainEntityOfPage":"https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/","keywords":"anti-detect browser proxy, Multilogin proxy format, GoLogin proxy, Dolphin Anty proxy, AdsPower proxy setup, ixBrowser proxy, proxy per profile","wordCount":617,"inLanguage":"en","about":{"@type":"SoftwareApplication","name":"openv6","url":"https://thephuc.xyz/openv6/"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"openv6","item":"https://thephuc.xyz/openv6/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://thephuc.xyz/openv6/blog/"},{"@type":"ListItem","position":3,"name":"Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser","item":"https://thephuc.xyz/openv6/blog/proxies-for-anti-detect-browsers/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Should I use HTTP or SOCKS5 in an anti-detect browser?","acceptedAnswer":{"@type":"Answer","text":"Either works with openv6, because the same port speaks both. SOCKS5 with remote DNS (often written socks5h) is a good default, since DNS lookups then happen at the proxy instead of on your machine."}},{"@type":"Question","name":"Can several profiles share one proxy?","acceptedAnswer":{"@type":"Answer","text":"They can, but they will look related because they share an IP. For separate accounts, give each profile its own proxy and never swap them."}},{"@type":"Question","name":"Why does a site work in my normal browser but fail through the proxy?","acceptedAnswer":{"@type":"Answer","text":"The site probably has no IPv6. An IPv6 proxy cannot reach it unless IPv4 fallback is on, and with fallback every profile shares the machine's IPv4, so keep it off for account work."}},{"@type":"Question","name":"Which format does Multilogin use?","acceptedAnswer":{"@type":"Answer","text":"openv6's Multilogin preset exports host:port:user:pass over HTTP. Each browser preset in openv6 picks the format and protocol that browser's bulk import accepts."}}]}</script>
+</head>
+<body>
+<header id="hdr"><div class="wrap"><div class="nav">
+  <a class="brand" href="../../"><img src="../../assets/logo.svg" alt="" width="30" height="30">openv6</a>
+  <nav class="links"><a href="../../#how">How it works</a><a href="../../#pricing">Pricing</a><a href="../../blog/">Blog</a><a href="../../#faq">FAQ</a></nav>
+  <div class="sp"></div>
+  <button class="icon-btn" id="theme" type="button" title="Switch light / dark" aria-label="Switch light / dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="btn sm primary dl" href="../../#download">Download</a>
+</div></div></header>
+<main class="wrap post">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">openv6</a><span>›</span><a href="../">Blog</a></nav>
+  <article>
+    <h1>Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser</h1>
+    <p class="pmeta"><time datetime="2026-11-10">November 10, 2026</time> · 3 min read</p>
+    <div class="tldr"><b>In short</b><p>Give every anti-detect profile its own fixed proxy, use SOCKS5 with remote DNS where possible, keep IPv4 fallback off, and paste the proxy in the format the browser expects. openv6 exports ready-made lists for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower.</p></div>
+    <nav class="toc" aria-label="Contents"><b>Contents</b><ol><li><a href="#formats">The formats each browser expects</a></li><li><a href="#http-or-socks5">HTTP or SOCKS5?</a></li><li><a href="#checklist">The checklist that keeps profiles separate</a></li><li><a href="#import">Importing a list</a></li><li><a href="#troubleshooting">Troubleshooting</a></li></ol></nav>
+    <div class="prose">
+<p>An anti-detect browser keeps every profile's fingerprint, cookies and storage separate. The proxy keeps the <strong>network</strong> separate. Get the proxy part wrong and the best fingerprint in the world won't help, because the platform simply sees twenty accounts on one IP.</p>
+<p>This guide covers the formats, the protocol choice and a short checklist. The examples use proxies created by <a href="../../">openv6</a>, but the rules apply to any provider.</p>
+
+<h2 id="formats">The formats each browser expects</h2>
+<p>Most anti-detect browsers accept a list of proxies, one per line, for bulk import. The format differs per browser. openv6's <strong>Export</strong> has a preset for each:</p>
+<div class="tbl"><table>
+<thead><tr><th>Browser</th><th>Line format (openv6 preset)</th><th>Protocol</th></tr></thead>
+<tbody>
+<tr><td>Multilogin</td><td><code>host:port:user:pass</code></td><td>HTTP</td></tr>
+<tr><td>GoLogin</td><td><code>socks5://host:port:user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>Dolphin {Anty}</td><td><code>socks5://user:pass@host:port</code></td><td>SOCKS5</td></tr>
+<tr><td>ixBrowser</td><td><code>host:port:user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>Linken Sphere 2</td><td><code>host:port@user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>AdsPower</td><td><code>host:port:user:pass</code></td><td>SOCKS5</td></tr>
+</tbody>
+</table></div>
+<p>For other tools (MoreLogin, Incogniton, Kameleo, plain Chrome extensions, scripts) the generic formats work: <code>host:port:user:pass</code>, <code>user:pass@host:port</code>, a full URL such as <code>http://user:pass@host:port</code>, CSV or JSON.</p>
+<p>Anti-detect browsers change their import screens from time to time; if a field name differs from what you see here, the format line above is what matters.</p>
+
+<h2 id="http-or-socks5">HTTP or SOCKS5?</h2>
+<p>Every openv6 port accepts <strong>both</strong>; the proxy detects the protocol from the first byte. So the question is only what the browser prefers:</p>
+<ul>
+<li><strong>SOCKS5 with remote DNS</strong> (<code>socks5h</code>, or a "remote DNS" toggle) resolves domain names at the proxy. Good default: the website's DNS lookups don't come from your own network.</li>
+<li><strong>HTTP</strong> works everywhere, including tools that only know HTTP proxies. With HTTPS sites the browser uses <code>CONNECT</code>, so the traffic stays encrypted end to end.</li>
+</ul>
+
+<h2 id="checklist">The checklist that keeps profiles separate</h2>
+<ol>
+<li><strong>One profile, one proxy, forever.</strong> Write the account name in the proxy's note (openv6: <em>Edit → Note</em>) so you always know which proxy belongs to which profile.</li>
+<li><strong>Static, not rotating.</strong> An account that logs in from a new IP every session looks hijacked. Use proxies that keep their IP.</li>
+<li><strong>Keep IPv4 fallback off</strong> on account proxies. Fallback lets a proxy open IPv4-only sites, but all such traffic leaves from the machine's single IPv4, shared by every profile.</li>
+<li><strong>Match location signals.</strong> Set each profile's time zone, language and geolocation to the proxy's country. openv6's check shows the country and ISP websites see for each proxy.</li>
+<li><strong>Mind the /64.</strong> Proxies inside the same IPv6 /64 can be grouped like a household. Spread important accounts across several /64s: see <a href="../ipv6-prefixes-64-56-48-explained/">/64, /56 and /48 explained</a>.</li>
+<li><strong>Check before you log in.</strong> Run a check on new proxies first; a green result means the website really sees the expected address.</li>
+</ol>
+
+<h2 id="import">Importing a list</h2>
+<ol>
+<li>In openv6, filter proxies by tag (for example <code>facebook</code>), select them and click <strong>Export</strong>.</li>
+<li>Pick your browser's preset. If the browser runs on another computer, choose how it connects: the LAN address, the public IP of a VPS, or a relay.</li>
+<li>Copy the list or download the file, then use the browser's bulk proxy import.</li>
+<li>Assign one proxy to each profile and run the browser's own proxy check.</li>
+</ol>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<div class="tbl"><table>
+<thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+<tbody>
+<tr><td>Proxy check fails in the browser, works in openv6</td><td>Wrong protocol or format selected in the profile; or the browser's machine can't reach the proxy port (firewall, VPN without LAN access).</td></tr>
+<tr><td>Some sites load, one site shows a 502 or never loads</td><td>That site has no IPv6.</td></tr>
+<tr><td>Proxies stop working after turning on a VPN</td><td>On the proxy machine, the VPN takes the default route. openv6 routes proxies around it; with an IPv6 kill switch, nothing can get through.</td></tr>
+<tr><td>Auth prompt appears in the browser</td><td>Username and password not imported; re-export with credentials.</td></tr>
+</tbody>
+</table></div>
+<p>Need proxies to start with? <a href="../static-ipv6-proxies-from-home-internet/">Turn your home internet into static IPv6 proxies</a>, or <a href="../ipv6-proxies-on-a-vps/">run them on a VPS</a>.</p>
+    </div>
+    <section class="faqs" id="faq"><h2>Frequently asked questions</h2><details><summary>Should I use HTTP or SOCKS5 in an anti-detect browser?</summary><p>Either works with openv6, because the same port speaks both. SOCKS5 with remote DNS (often written socks5h) is a good default, since DNS lookups then happen at the proxy instead of on your machine.</p></details><details><summary>Can several profiles share one proxy?</summary><p>They can, but they will look related because they share an IP. For separate accounts, give each profile its own proxy and never swap them.</p></details><details><summary>Why does a site work in my normal browser but fail through the proxy?</summary><p>The site probably has no IPv6. An IPv6 proxy cannot reach it unless IPv4 fallback is on, and with fallback every profile shares the machine's IPv4, so keep it off for account work.</p></details><details><summary>Which format does Multilogin use?</summary><p>openv6's Multilogin preset exports host:port:user:pass over HTTP. Each browser preset in openv6 picks the format and protocol that browser's bulk import accepts.</p></details></section>
+  </article>
+  <aside class="cta-card">
+    <div><h2>Run your own static IPv6 proxies</h2><p>openv6 turns your home ISP or VPS IPv6 into fixed HTTP + SOCKS5 proxies for anti-detect browsers. Windows, macOS and Linux. Free for 3 proxies.</p></div>
+    <div class="cta"><a class="btn primary" href="../../#download">Download free</a><a class="btn" href="../../#pricing">See Pro</a></div>
+  </aside>
+  <section class="related"><h2>Keep reading</h2><div class="pgrid"><a class="pcard" href="../../blog/static-ipv6-proxies-from-home-internet/"><h3>How to Turn Your Home Internet Into Static IPv6 Proxies</h3><p>Step-by-step: turn the IPv6 /64 your home ISP already gives you into dozens or hundreds of fixed HTTP/SOCKS5 proxies with residential addresses, using a Windows, macOS or Linux machine.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/ipv6-proxies-on-a-vps/"><h3>IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies</h3><p>How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/ipv6-prefixes-64-56-48-explained/"><h3>/64 vs /56 vs /48: How IPv6 Prefixes Affect Account Separation</h3><p>Why platforms treat an IPv6 /64 like one household, how many /64 networks a /56 or /48 contains, and how to give every account its own /64 with proxies.</p><span class="pmeta">November 10, 2026 · 2 min read</span></a></div></section>
+</main>
+<footer><div class="wrap">
+  <div class="fl"><a class="brand" href="../../" style="font-size:15px"><img src="../../assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© 2026 openv6</span></div>
+  <nav class="fr"><a href="../../blog/">Blog</a><a href="https://labs.thephuc.xyz/">Labs</a><a href="https://github.com/thephux/openv6-releases">GitHub</a><a href="../../#download">Downloads</a></nav>
+</div></footer>
+<script>
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+};
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
+</body>
+</html>

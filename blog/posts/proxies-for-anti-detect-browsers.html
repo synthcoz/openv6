@@ -1,0 +1,71 @@
+<!--
+{
+  "title": "Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser",
+  "description": "Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.",
+  "order": 3,
+  "date": "2026-11-10",
+  "keywords": ["anti-detect browser proxy", "Multilogin proxy format", "GoLogin proxy", "Dolphin Anty proxy", "AdsPower proxy setup", "ixBrowser proxy", "proxy per profile"],
+  "tldr": "Give every anti-detect profile its own fixed proxy, use SOCKS5 with remote DNS where possible, keep IPv4 fallback off, and paste the proxy in the format the browser expects. openv6 exports ready-made lists for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower.",
+  "faq": [
+    ["Should I use HTTP or SOCKS5 in an anti-detect browser?", "Either works with openv6, because the same port speaks both. SOCKS5 with remote DNS (often written socks5h) is a good default, since DNS lookups then happen at the proxy instead of on your machine."],
+    ["Can several profiles share one proxy?", "They can, but they will look related because they share an IP. For separate accounts, give each profile its own proxy and never swap them."],
+    ["Why does a site work in my normal browser but fail through the proxy?", "The site probably has no IPv6. An IPv6 proxy cannot reach it unless IPv4 fallback is on, and with fallback every profile shares the machine's IPv4, so keep it off for account work."],
+    ["Which format does Multilogin use?", "openv6's Multilogin preset exports host:port:user:pass over HTTP. Each browser preset in openv6 picks the format and protocol that browser's bulk import accepts."]
+  ]
+}
+-->
+<p>An anti-detect browser keeps every profile's fingerprint, cookies and storage separate. The proxy keeps the <strong>network</strong> separate. Get the proxy part wrong and the best fingerprint in the world won't help, because the platform simply sees twenty accounts on one IP.</p>
+<p>This guide covers the formats, the protocol choice and a short checklist. The examples use proxies created by <a href="../../">openv6</a>, but the rules apply to any provider.</p>
+
+<h2 id="formats">The formats each browser expects</h2>
+<p>Most anti-detect browsers accept a list of proxies, one per line, for bulk import. The format differs per browser. openv6's <strong>Export</strong> has a preset for each:</p>
+<table>
+<thead><tr><th>Browser</th><th>Line format (openv6 preset)</th><th>Protocol</th></tr></thead>
+<tbody>
+<tr><td>Multilogin</td><td><code>host:port:user:pass</code></td><td>HTTP</td></tr>
+<tr><td>GoLogin</td><td><code>socks5://host:port:user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>Dolphin {Anty}</td><td><code>socks5://user:pass@host:port</code></td><td>SOCKS5</td></tr>
+<tr><td>ixBrowser</td><td><code>host:port:user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>Linken Sphere 2</td><td><code>host:port@user:pass</code></td><td>SOCKS5</td></tr>
+<tr><td>AdsPower</td><td><code>host:port:user:pass</code></td><td>SOCKS5</td></tr>
+</tbody>
+</table>
+<p>For other tools (MoreLogin, Incogniton, Kameleo, plain Chrome extensions, scripts) the generic formats work: <code>host:port:user:pass</code>, <code>user:pass@host:port</code>, a full URL such as <code>http://user:pass@host:port</code>, CSV or JSON.</p>
+<p>Anti-detect browsers change their import screens from time to time; if a field name differs from what you see here, the format line above is what matters.</p>
+
+<h2 id="http-or-socks5">HTTP or SOCKS5?</h2>
+<p>Every openv6 port accepts <strong>both</strong>; the proxy detects the protocol from the first byte. So the question is only what the browser prefers:</p>
+<ul>
+<li><strong>SOCKS5 with remote DNS</strong> (<code>socks5h</code>, or a "remote DNS" toggle) resolves domain names at the proxy. Good default: the website's DNS lookups don't come from your own network.</li>
+<li><strong>HTTP</strong> works everywhere, including tools that only know HTTP proxies. With HTTPS sites the browser uses <code>CONNECT</code>, so the traffic stays encrypted end to end.</li>
+</ul>
+
+<h2 id="checklist">The checklist that keeps profiles separate</h2>
+<ol>
+<li><strong>One profile, one proxy, forever.</strong> Write the account name in the proxy's note (openv6: <em>Edit → Note</em>) so you always know which proxy belongs to which profile.</li>
+<li><strong>Static, not rotating.</strong> An account that logs in from a new IP every session looks hijacked. Use proxies that keep their IP.</li>
+<li><strong>Keep IPv4 fallback off</strong> on account proxies. Fallback lets a proxy open IPv4-only sites, but all such traffic leaves from the machine's single IPv4, shared by every profile.</li>
+<li><strong>Match location signals.</strong> Set each profile's time zone, language and geolocation to the proxy's country. openv6's check shows the country and ISP websites see for each proxy.</li>
+<li><strong>Mind the /64.</strong> Proxies inside the same IPv6 /64 can be grouped like a household. Spread important accounts across several /64s: see <a href="../ipv6-prefixes-64-56-48-explained/">/64, /56 and /48 explained</a>.</li>
+<li><strong>Check before you log in.</strong> Run a check on new proxies first; a green result means the website really sees the expected address.</li>
+</ol>
+
+<h2 id="import">Importing a list</h2>
+<ol>
+<li>In openv6, filter proxies by tag (for example <code>facebook</code>), select them and click <strong>Export</strong>.</li>
+<li>Pick your browser's preset. If the browser runs on another computer, choose how it connects: the LAN address, the public IP of a VPS, or a relay.</li>
+<li>Copy the list or download the file, then use the browser's bulk proxy import.</li>
+<li>Assign one proxy to each profile and run the browser's own proxy check.</li>
+</ol>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+<tbody>
+<tr><td>Proxy check fails in the browser, works in openv6</td><td>Wrong protocol or format selected in the profile; or the browser's machine can't reach the proxy port (firewall, VPN without LAN access).</td></tr>
+<tr><td>Some sites load, one site shows a 502 or never loads</td><td>That site has no IPv6.</td></tr>
+<tr><td>Proxies stop working after turning on a VPN</td><td>On the proxy machine, the VPN takes the default route. openv6 routes proxies around it; with an IPv6 kill switch, nothing can get through.</td></tr>
+<tr><td>Auth prompt appears in the browser</td><td>Username and password not imported; re-export with credentials.</td></tr>
+</tbody>
+</table>
+<p>Need proxies to start with? <a href="../static-ipv6-proxies-from-home-internet/">Turn your home internet into static IPv6 proxies</a>, or <a href="../ipv6-proxies-on-a-vps/">run them on a VPS</a>.</p>

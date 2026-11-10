@@ -1,0 +1,85 @@
+<!--
+{
+  "title": "How to Turn Your Home Internet Into Static IPv6 Proxies",
+  "description": "Step-by-step: turn the IPv6 /64 your home ISP already gives you into dozens or hundreds of fixed HTTP/SOCKS5 proxies with residential addresses, using a Windows, macOS or Linux machine.",
+  "order": 2,
+  "date": "2026-11-10",
+  "keywords": ["home IPv6 proxy", "residential IPv6 proxy", "self-hosted proxy", "static residential proxy", "IPv6 proxy server Windows"],
+  "tldr": "If your home connection has IPv6, it already has a /64 with about 18.4 quintillion addresses. Install openv6 on a PC or mini PC on that network, create proxies, and every device on your LAN can use them over IPv4, while websites see a residential IPv6 that stays fixed per proxy.",
+  "faq": [
+    ["Do I need a static IPv6 from my ISP?", "No. Most home ISPs hand out a prefix that can change, for example after a modem restart. openv6 detects the new prefix and moves every proxy to it, keeping the same port, password and address suffix."],
+    ["Can I use the proxies from another computer?", "Yes. Devices on your LAN connect to the proxy machine's LAN IP and port. From outside your home you can share through a relay on a cheap VPS, UPnP, or Tailscale."],
+    ["Will my own traffic change?", "No. openv6 marks the extra addresses so the machine does not use them for its own connections; only the proxies send traffic from them."],
+    ["Is a home IPv6 proxy residential?", "Yes. The address belongs to your home ISP, so websites see a residential connection, the same as your normal browsing."]
+  ]
+}
+-->
+<p>Most people already pay for something that proxy companies sell: a <strong>residential IP</strong>. If your home connection has IPv6, it even comes with a whole <strong>/64 network</strong>, enough for a fixed address per account for the rest of your life. This guide shows how to turn it into static HTTP/SOCKS5 proxies.</p>
+
+<h2 id="what-you-need">What you need</h2>
+<ul>
+<li>A home internet connection with IPv6. Most large ISPs enable it today; <a href="../check-if-your-isp-supports-ipv6/">check yours in two minutes</a>.</li>
+<li>One computer that stays on: a Windows 10/11 PC, a Mac, or a Linux box (Ubuntu, Debian, Zorin, a mini PC or a Raspberry Pi-class device).</li>
+<li>Your anti-detect browser or any app that accepts HTTP or SOCKS5 proxies.</li>
+</ul>
+
+<h2 id="how-it-works">How it works</h2>
+<p>Your router gives every device on the LAN addresses from the same /64. openv6 adds one more address from that /64 to the machine for every proxy, and binds each proxy's outgoing connections to it:</p>
+<pre><code>Anti-detect profile ──IPv4──► 192.168.1.10:10001 (user/pass)
+                               openv6 on your PC
+                               └─ leaves from 2001:db8:51c0::a41f ──► website</code></pre>
+<p>Your apps connect over plain IPv4 on the LAN, so nothing else on your network needs to change.</p>
+
+<h2 id="step-1">Step 1: Install openv6</h2>
+<p>Download the installer for your system from the <a href="../../#download">download section</a>, or use the one-line installer:</p>
+<pre><code># macOS / Linux (Terminal)
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
+
+# Windows (PowerShell as Administrator)
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex</code></pre>
+<p>openv6 runs as a background service, starts with the machine and puts an icon in the tray. The dashboard opens at <code>http://127.0.0.1:8080</code>; from another device use <code>http://&lt;machine-LAN-IP&gt;:8080</code>.</p>
+
+<h2 id="step-2">Step 2: Let it find your IPv6 prefix</h2>
+<p>On first start openv6 checks the network card, the IPv6 prefix and the default route, and tells you in plain words if something is missing (no IPv6 from the ISP, a VPN taking over the route, a firewall blocking ports). Most problems have a <strong>Fix</strong> button.</p>
+<p>If the machine has both Ethernet and Wi-Fi, you can choose which one the proxies use.</p>
+
+<h2 id="step-3">Step 3: Create proxies</h2>
+<p>Go to <strong>Proxies → Create proxies</strong> and choose:</p>
+<ul>
+<li><strong>How many</strong>, and a name prefix such as <code>FB</code> (you get <code>FB 01</code>, <code>FB 02</code>, …).</li>
+<li><strong>Authentication</strong>: a random username and password per proxy is the safe default.</li>
+<li><strong>IPv4 fallback</strong>: leave it <em>off</em> for account work (see below).</li>
+</ul>
+<p>Every proxy gets its own port, password and IPv6. The same port accepts both HTTP and SOCKS5.</p>
+
+<h2 id="step-4">Step 4: Check and export</h2>
+<p>Click <strong>Check all</strong>. openv6 asks an IP-echo service which address it sees through each proxy and compares it with the expected IPv6, so a green result means the website really sees that proxy's address. You also get the latency, country and ISP.</p>
+<p>Then click <strong>Export</strong> and pick your anti-detect browser. openv6 has presets for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower. More in <a href="../proxies-for-anti-detect-browsers/">our anti-detect setup guide</a>.</p>
+<p>Test one from any computer on the LAN:</p>
+<pre><code>curl -x http://USER:PASS@192.168.1.10:10001 https://api64.ipify.org
+curl --socks5-hostname USER:PASS@192.168.1.10:10001 https://api64.ipify.org</code></pre>
+<p>Both should print the proxy's IPv6.</p>
+
+<h2 id="prefix-changes">When your ISP changes the prefix</h2>
+<p>Home ISPs often rotate the prefix, for example after a power cut. openv6 stores each proxy as <em>prefix + suffix</em>, not as a full address. When the prefix changes, each proxy keeps its port, password and suffix and simply moves to the new prefix. Your profiles keep working; websites see a new address on the same ISP, which looks like a normal home reconnect.</p>
+<p>If you need addresses that never change at all, use a VPS: see <a href="../ipv6-proxies-on-a-vps/">IPv6 proxies on a VPS</a>.</p>
+
+<h2 id="outside">Using the proxies outside your home</h2>
+<p>Many home connections are behind CGNAT, so you cannot open a port from the internet. openv6 offers three ways out:</p>
+<table>
+<thead><tr><th>Method</th><th>When to use</th></tr></thead>
+<tbody>
+<tr><td>Relay through a VPS</td><td>Works everywhere, even behind CGNAT. The home machine connects out to a cheap VPS (encrypted); websites still see your home IPv6.</td></tr>
+<tr><td>UPnP</td><td>Your router has a public IPv4 and UPnP enabled.</td></tr>
+<tr><td>Tailscale</td><td>Only your own devices need access.</td></tr>
+</tbody>
+</table>
+
+<h2 id="tips">Tips for account work</h2>
+<ul>
+<li><strong>One profile, one proxy.</strong> Don't swap proxies between profiles.</li>
+<li><strong>Keep IPv4 fallback off</strong> for accounts: with it on, sites without IPv6 see your shared IPv4.</li>
+<li><strong>Same /64 = same household.</strong> All home proxies share your /64, so a platform may still group them. For stronger separation add a VPS with a /56 or /48; read <a href="../ipv6-prefixes-64-56-48-explained/">/64 vs /56 vs /48</a>.</li>
+<li><strong>Follow the rules</strong> of the platforms you use and of your ISP.</li>
+</ul>
+<p>openv6's Free version runs 3 proxies on 1 machine, enough to try all of this. <a href="../../#pricing">Pro</a> is a one-time payment for unlimited proxies and machines.</p>

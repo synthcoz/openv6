@@ -1,0 +1,67 @@
+<!--
+{
+  "title": "What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work",
+  "description": "An IPv6 proxy sends your traffic out from an IPv6 address instead of IPv4. Here is how IPv6 proxies work, why one fixed IPv6 per account matters, and when they beat IPv4 proxies.",
+  "order": 1,
+  "date": "2026-11-10",
+  "keywords": ["IPv6 proxy", "what is an IPv6 proxy", "static IPv6 proxy", "IPv6 vs IPv4 proxy", "proxy per account"],
+  "tldr": "An IPv6 proxy is a proxy server whose outgoing connections use an IPv6 address. Because a single /64 IPv6 network holds about 18.4 quintillion addresses, you can give every account its own fixed IP for free, as long as the website you visit supports IPv6.",
+  "faq": [
+    ["What is an IPv6 proxy?", "A proxy server that connects to websites from an IPv6 address. Your app talks to the proxy as usual (HTTP or SOCKS5, often over IPv4), and the website sees the proxy's IPv6 address instead of yours."],
+    ["Are IPv6 proxies static?", "They can be. A static IPv6 proxy keeps the same outgoing address until you change it. openv6 keeps each proxy's IPv6, port and password fixed, and on a home connection it follows the ISP when the prefix changes."],
+    ["Do all websites support IPv6?", "No. Large platforms such as Google, YouTube, Facebook, Instagram and Wikipedia serve IPv6, but many smaller sites are IPv4-only. A pure IPv6 proxy cannot open an IPv4-only site unless you enable an IPv4 fallback."],
+    ["Is an IPv6 proxy the same as a residential proxy?", "Not necessarily. An IPv6 proxy describes the address family. If the IPv6 comes from your home ISP it is residential; if it comes from a VPS provider it is a datacenter address."]
+  ]
+}
+-->
+<p>A <strong>proxy</strong> is a middleman: your browser connects to it, and it connects to the website for you. The website sees the proxy's IP address, not yours. An <strong>IPv6 proxy</strong> is simply a proxy whose outgoing connections leave from an <strong>IPv6 address</strong> instead of an IPv4 one.</p>
+
+<p>That small difference matters a lot if you run several accounts, because IPv6 addresses are practically unlimited. This guide explains how IPv6 proxies work, what "static" means, and when they are the right tool.</p>
+
+<h2 id="ipv4-vs-ipv6">IPv4 vs IPv6 in one minute</h2>
+<p>IPv4 addresses look like <code>203.0.113.7</code>. There are only about 4.3 billion of them, they ran out years ago, and they cost money. That is why IPv4 proxies are usually rented per IP, per month.</p>
+<p>IPv6 addresses look like <code>2001:db8:51c0:1e:2166:a92a:7d20:a41f</code>. Internet providers hand them out in blocks called <strong>prefixes</strong>. The smallest block a home or VPS normally gets is a <strong>/64</strong>, which contains 2<sup>64</sup> addresses: about <strong>18.4 quintillion</strong>. You will never run out.</p>
+
+<table>
+<thead><tr><th></th><th>IPv4 proxy</th><th>IPv6 proxy</th></tr></thead>
+<tbody>
+<tr><td>Address format</td><td><code>203.0.113.7</code></td><td><code>2001:db8::a41f</code></td></tr>
+<tr><td>Addresses you get</td><td>Usually one per rented proxy</td><td>A /64 = ~18.4 quintillion</td></tr>
+<tr><td>Typical cost</td><td>Paid per IP or per GB</td><td>Often free with your ISP or VPS</td></tr>
+<tr><td>Works on every website</td><td>Yes</td><td>Only on sites that support IPv6</td></tr>
+</tbody>
+</table>
+
+<h2 id="how-it-works">How an IPv6 proxy works</h2>
+<p>The trick is that your apps do <em>not</em> need IPv6 themselves. A typical setup looks like this:</p>
+<ol>
+<li>Your browser or anti-detect profile connects to the proxy over IPv4, for example <code>192.168.1.10:10001</code> with a username and password.</li>
+<li>The proxy machine binds a specific IPv6 address from its prefix to that proxy.</li>
+<li>When the browser asks for a website, the proxy opens the connection <em>from that IPv6 address</em>.</li>
+<li>The website sees <code>2001:db8:51c0::a41f</code>, not your real IP.</li>
+</ol>
+<p>Run many proxies on different ports, give each one a different IPv6, and every browser profile gets its own address, all from a single internet connection.</p>
+
+<h2 id="static">What makes an IPv6 proxy "static"</h2>
+<p>A <strong>static</strong> (or sticky) proxy keeps the same outgoing IP until you decide to change it. That is what you want for long-lived accounts: an account that logs in from the same IP every day looks normal, one that jumps between addresses does not.</p>
+<p>Rotating proxies do the opposite and change IP on every request or every few minutes. They are useful for scraping, not for account work.</p>
+<p>With <a href="../../">openv6</a> each proxy has a fixed port, username, password and IPv6. On a home connection, ISPs sometimes change the prefix after a modem restart; openv6 notices, moves every proxy to the new prefix and keeps the same port, password and address suffix, so your anti-detect profiles keep working without edits.</p>
+
+<h2 id="one-ip-per-account">Why one IP per account matters</h2>
+<p>Platforms link accounts that share signals: cookies, browser fingerprints and IP addresses. Anti-detect browsers such as Multilogin, GoLogin or Dolphin Anty separate the browser side. The IP is the other half: if twenty profiles share one IP, they still look related.</p>
+<p>IPv6 makes "one IP per account" cheap. But keep one detail in mind: many platforms treat a whole <strong>/64</strong> as one network, the way they treat one household. Twenty proxies inside the same /64 are better than one shared IPv4, but not as separated as twenty different /64s. Our guide to <a href="../ipv6-prefixes-64-56-48-explained/">/64, /56 and /48 prefixes</a> explains how to get more separation.</p>
+
+<h2 id="limits">Limits you should know</h2>
+<ul>
+<li><strong>IPv6-only reach.</strong> Google, YouTube, Facebook, Instagram, WhatsApp, Netflix and Wikipedia serve IPv6, as does any site behind Cloudflare with IPv6 enabled. Many smaller sites still don't. An IPv6 proxy cannot reach an IPv4-only site unless it falls back to IPv4, and then every profile shares the machine's IPv4.</li>
+<li><strong>You need IPv6 from your ISP or VPS.</strong> Most large ISPs and almost every VPS provider now include it. <a href="../check-if-your-isp-supports-ipv6/">Here is how to check</a>.</li>
+<li><strong>Same /64, same household.</strong> See above: for strong separation use more than one /64.</li>
+</ul>
+
+<h2 id="where-to-get">Where IPv6 proxies come from</h2>
+<p>You can rent IPv6 proxies, or run your own on hardware you already have:</p>
+<ul>
+<li><strong>Your home connection.</strong> A PC or mini PC on your home network can turn its /64 into hundreds of proxies with residential addresses. See <a href="../static-ipv6-proxies-from-home-internet/">How to turn your home internet into static IPv6 proxies</a>.</li>
+<li><strong>A VPS.</strong> Most providers give a /64 for free, some a routed /56 or /48. See <a href="../ipv6-proxies-on-a-vps/">IPv6 proxies on a VPS</a>.</li>
+</ul>
+<p>openv6 does both from one dashboard: it creates the proxies, keeps them static, checks them regularly and exports them in the format your anti-detect browser expects.</p>
