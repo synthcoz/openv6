@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>Proxy IPv6 tĩnh (HTTP + SOCKS5) từ chính mạng của bạn, quản lý trên một dashboard.</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">Trang chủ</a> · <a href="https://github.com/synthcoz/openv6/releases/latest">Tải về</a> · <a href="CHANGELOG.md">Nhật ký thay đổi</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Trang chủ</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">Tải về</a> · <a href="CHANGELOG.md">Nhật ký thay đổi</a></p>
 <p align="center"><a href="README.md">English</a> · <b>Tiếng Việt</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português</a></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,12 +20,12 @@ openv6 biến dải IPv6 mà nhà mạng hoặc nhà cung cấp VPS cấp cho b�
 
 | Hệ điều hành | Cách cài |
 |---|---|
-| **Windows 10/11** | Tải `openv6-setup-windows-amd64.exe` ở [Releases](https://github.com/synthcoz/openv6/releases/latest), bấm Next → Install. |
+| **Windows 10/11** | Tải `openv6-setup-windows-amd64.exe` ở [Releases](https://github.com/synthcoz/openv6-releases/releases/latest), bấm Next → Install. |
 | **macOS** (Intel và Apple silicon) | Tải `openv6-macos.pkg` ở Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | Lệnh bên dưới, hoặc file `.deb` ở Releases. |
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```
 
 openv6 chạy nền và tự khởi động cùng máy. Icon ở khay hệ thống cho biết trạng thái và mở dashboard.

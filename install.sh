@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # openv6 one-line installer (downloads the latest release from GitHub).
-#   panel + proxies on this machine:  curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
+#   panel + proxies on this machine:  curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 #   remote node:                      ... | sudo bash -s -- agent --panel URL --token TOKEN
 set -euo pipefail
-REPO="${OPENV6_REPO:-synthcoz/openv6}"
+REPO="${OPENV6_REPO:-synthcoz/openv6-releases}"
 VERSION="${OPENV6_VERSION:-latest}"
 if [ "$(id -u)" != "0" ]; then echo "Hãy chạy với sudo / run as root"; exit 1; fi
 if [ "$(uname -s)" != "Linux" ]; then echo "openv6 nodes require Linux"; exit 1; fi

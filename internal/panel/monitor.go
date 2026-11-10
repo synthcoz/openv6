@@ -173,7 +173,7 @@ func (s *Server) updateRepo() string {
 	if r := os.Getenv("OPENV6_UPDATE_REPO"); r != "" {
 		return r
 	}
-	return "synthcoz/openv6"
+	return "synthcoz/openv6-releases"
 }
 
 func (s *Server) checkForUpdate(ctx context.Context) {

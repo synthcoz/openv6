@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>Proxies IPv6 estáticos (HTTP + SOCKS5) a partir da sua própria rede, com um único painel web.</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">Site</a> · <a href="https://github.com/synthcoz/openv6/releases/latest">Baixar</a> · <a href="CHANGELOG.md">Novidades</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Site</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">Baixar</a> · <a href="CHANGELOG.md">Novidades</a></p>
 <p align="center"><a href="README.md">English</a> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.ru.md">Русский</a> · <b>Português</b></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,12 +20,12 @@ O openv6 transforma o prefixo IPv6 que o seu provedor de internet ou de VPS entr
 
 | Sistema | Como |
 |---|---|
-| **Windows 10/11** | Baixe `openv6-setup-windows-amd64.exe` em [Releases](https://github.com/synthcoz/openv6/releases/latest) e clique em Next → Install. |
+| **Windows 10/11** | Baixe `openv6-setup-windows-amd64.exe` em [Releases](https://github.com/synthcoz/openv6-releases/releases/latest) e clique em Next → Install. |
 | **macOS** (Intel e Apple silicon) | Baixe `openv6-macos.pkg` em Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | O comando abaixo, ou o arquivo `.deb` em Releases. |
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```
 
 O openv6 roda em segundo plano e inicia com a máquina. O ícone da bandeja mostra o status e abre o painel.
