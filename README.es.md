@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>Proxies IPv6 estáticos (HTTP + SOCKS5) desde tu propia red, con un solo panel web.</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">Sitio web</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">Descargar</a> · <a href="CHANGELOG.md">Cambios</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Sitio web</a> · <a href="https://github.com/thephux/openv6-releases/releases/latest">Descargar</a> · <a href="CHANGELOG.md">Cambios</a></p>
 <p align="center"><a href="README.md">English</a> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.zh-CN.md">简体中文</a> · <b>Español</b> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português</a></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,12 +20,20 @@ openv6 convierte el prefijo IPv6 que te da tu proveedor de internet o de VPS en 
 
 | Sistema | Cómo |
 |---|---|
-| **Windows 10/11** | Descarga `openv6-setup-windows-amd64.exe` de [Releases](https://github.com/synthcoz/openv6-releases/releases/latest) y pulsa Next → Install. |
+| **Windows 10/11** | Descarga `openv6-setup-windows-amd64.exe` de [Releases](https://github.com/thephux/openv6-releases/releases/latest) y pulsa Next → Install. |
 | **macOS** (Intel y Apple silicon) | Descarga `openv6-macos.pkg` de Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | El comando de abajo, o el archivo `.deb` de Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Terminal):
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 ```
 
 openv6 se ejecuta en segundo plano y arranca con el equipo. El icono de la bandeja muestra el estado y abre el panel.

@@ -13,7 +13,7 @@ env:
   # Installers and updates are published to a separate public repository, so
   # this source repository can stay private. RELEASES_TOKEN: fine-grained
   # token with Contents read/write on that repository only.
-  RELEASES_REPO: synthcoz/openv6-releases
+  RELEASES_REPO: thephux/openv6-releases
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -189,20 +189,24 @@ jobs:
           if [ -z "$GH_TOKEN" ]; then echo "::error::RELEASES_TOKEN is not set (token with Contents write on $RELEASES_REPO)"; exit 1; fi
           ls -la out
           cat > notes.md <<'EOF'
-          **Windows 10/11:** download `openv6-setup-windows-amd64.exe`, run it and click Next. If Windows shows "Unknown publisher", choose *More info → Run anyway*.
-
-          **macOS:** download `openv6-macos.pkg`. The first time, right-click → *Open*.
-
-          **Ubuntu / Debian / Zorin:**
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+          **Windows 10/11:** in PowerShell
+          ```powershell
+          irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
           ```
-          or download the `.deb` and run `sudo apt install ./openv6_*.deb`.
+          or download `openv6-setup-windows-amd64.exe`, run it and click Next. If Windows shows "Unknown publisher", choose *More info → Run anyway*.
+
+          **macOS and Ubuntu / Debian / Zorin:** in Terminal
+          ```bash
+          curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
+          ```
+          or download `openv6-macos.pkg` (macOS) or the `.deb` (`sudo apt install ./openv6_*.deb`).
 
           Website: https://thephuc.xyz/openv6/
           EOF
           gh release create "$TAG" out/* --repo "$RELEASES_REPO" --title "$TAG" --notes-file notes.md
-          # keep the one-line installer in the public repository in sync
-          SHA=$(gh api "repos/$RELEASES_REPO/contents/install.sh" --jq .sha 2>/dev/null || true)
-          gh api -X PUT "repos/$RELEASES_REPO/contents/install.sh" -f message="install.sh for $TAG" \
-            -f content="$(base64 -w0 install.sh)" ${SHA:+-f sha="$SHA"} >/dev/null
+          # keep the one-line installers in the public repository in sync
+          for f in install.sh install.ps1; do
+            SHA=$(gh api "repos/$RELEASES_REPO/contents/$f" --jq .sha 2>/dev/null || true)
+            gh api -X PUT "repos/$RELEASES_REPO/contents/$f" -f message="$f for $TAG" \
+              -f content="$(base64 -w0 $f)" ${SHA:+-f sha="$SHA"} >/dev/null
+          done

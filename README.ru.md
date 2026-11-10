@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>Статические IPv6-прокси (HTTP + SOCKS5) из вашей собственной сети с единой веб-панелью.</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">Сайт</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">Скачать</a> · <a href="CHANGELOG.md">Изменения</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Сайт</a> · <a href="https://github.com/thephux/openv6-releases/releases/latest">Скачать</a> · <a href="CHANGELOG.md">Изменения</a></p>
 <p align="center"><a href="README.md">English</a> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <b>Русский</b> · <a href="README.pt-BR.md">Português</a></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,12 +20,20 @@ openv6 превращает IPv6-префикс, который выдаёт в�
 
 | Система | Как |
 |---|---|
-| **Windows 10/11** | Скачайте `openv6-setup-windows-amd64.exe` в [Releases](https://github.com/synthcoz/openv6-releases/releases/latest) и нажмите Next → Install. |
+| **Windows 10/11** | Скачайте `openv6-setup-windows-amd64.exe` в [Releases](https://github.com/thephux/openv6-releases/releases/latest) и нажмите Next → Install. |
 | **macOS** (Intel и Apple silicon) | Скачайте `openv6-macos.pkg` в Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | Команда ниже или файл `.deb` в Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Терминал):
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 ```
 
 openv6 работает в фоне и запускается вместе с системой. Значок в трее показывает состояние и открывает панель.

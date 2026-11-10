@@ -1,7 +1,7 @@
 <p align="center"><img src="site/assets/logo-256.png" width="72" alt="openv6"></p>
 <h1 align="center">openv6</h1>
 <p align="center"><b>Static IPv6 proxies (HTTP + SOCKS5) from your own network, with one web dashboard.</b></p>
-<p align="center"><a href="https://thephuc.xyz/openv6/">Website</a> · <a href="https://github.com/synthcoz/openv6-releases/releases/latest">Download</a> · <a href="CHANGELOG.md">Changelog</a></p>
+<p align="center"><a href="https://thephuc.xyz/openv6/">Website</a> · <a href="https://github.com/thephux/openv6-releases/releases/latest">Download</a> · <a href="CHANGELOG.md">Changelog</a></p>
 <p align="center"><b>English</b> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.es.md">Español</a> · <a href="README.ru.md">Русский</a> · <a href="README.pt-BR.md">Português</a></p>
 
 ![openv6 dashboard](site/assets/shot-proxies.webp)
@@ -20,12 +20,20 @@ openv6 turns the IPv6 prefix your home ISP or VPS provider gives you into hundre
 
 | System | How |
 |---|---|
-| **Windows 10/11** | Download `openv6-setup-windows-amd64.exe` from [Releases](https://github.com/synthcoz/openv6-releases/releases/latest) and click Next → Install. |
+| **Windows 10/11** | Download `openv6-setup-windows-amd64.exe` from [Releases](https://github.com/thephux/openv6-releases/releases/latest) and click Next → Install. |
 | **macOS** (Intel and Apple silicon) | Download `openv6-macos.pkg` from Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | The command below, or the `.deb` file from Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/thephux/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Terminal):
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/thephux/openv6-releases/main/install.sh | sudo bash
 ```
 
 openv6 runs in the background and starts with the machine. The tray icon shows the status and opens the dashboard.
