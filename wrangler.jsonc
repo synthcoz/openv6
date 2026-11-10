@@ -8,5 +8,6 @@
     { "pattern": "thephuc.xyz/openv6", "zone_name": "thephuc.xyz" },
     { "pattern": "thephuc.xyz/openv6/*", "zone_name": "thephuc.xyz" }
   ],
-  "workers_dev": false
+  "workers_dev": false,
+  "preview_urls": true
 }
