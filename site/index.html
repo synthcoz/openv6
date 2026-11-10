@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
 <style>
 :root {
   --bg: #ffffff; --bg-2: #f7f7f7; --panel: #ffffff; --text: #171717; --text-2: #404040; --muted: #737373;
@@ -32,6 +33,13 @@
     color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+    --bg: #0a0a0a; --bg-2: #111111; --panel: #141414; --text: #ededed; --text-2: #d4d4d4; --muted: #8f8f8f;
+    --border: rgba(255,255,255,.08); --border-2: rgba(255,255,255,.14); --primary: #ededed; --primary-text: #141414;
+    --soft: rgba(255,255,255,.05); --ok: #34d399; --ok-soft: rgba(16,185,129,.14);
+    --shadow: 0 1px 0 rgba(255,255,255,.03), 0 30px 60px -20px rgba(0,0,0,.7);
+    color-scheme: dark;
+}
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; letter-spacing: -.005em; }
@@ -41,8 +49,16 @@ img { max-width: 100%; height: auto; display: block; }
 .mono { font-family: var(--mono); font-size: .88em; }
 
 /* nav */
-header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom: 1px solid var(--border); }
-.nav { display: flex; align-items: center; gap: 24px; height: 64px; }
+header { position: sticky; top: 0; z-index: 50; padding-top: 12px; pointer-events: none; }
+.nav { pointer-events: auto; display: flex; align-items: center; gap: 24px; height: 60px; padding: 0 10px 0 18px; border-radius: 16px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent); -webkit-backdrop-filter: blur(16px) saturate(1.6); backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.12); transition: box-shadow .2s, background .2s; }
+header.scrolled .nav { background: color-mix(in srgb, var(--bg) 84%, transparent); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 14px 36px -14px rgba(0,0,0,.28); }
+.icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.icon-btn:hover { color: var(--text); background: var(--soft); }
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn .sun, :root[data-theme="dark"] .icon-btn .moon { display: none; }
+:root[data-theme="dark"] .icon-btn .sun { display: block; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 18px; letter-spacing: -.02em; text-decoration: none; }
 .brand img { width: 30px; height: 30px; }
 .nav .links { display: flex; gap: 22px; margin-left: 12px; }
@@ -107,7 +123,7 @@ h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.035em; line-height: 1.
 .checks li::before { content: ''; flex: none; width: 18px; height: 18px; margin-top: 3px; border-radius: 50%; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/11px no-repeat; }
 
 /* paid notice (after a Polar checkout) */
-.paid{position:sticky;top:0;z-index:60;padding:12px 16px;text-align:center;font-weight:600;background:#16a34a;color:#fff}
+.paid{position:relative;z-index:60;padding:12px 16px;text-align:center;font-weight:600;background:#16a34a;color:#fff}
 /* pricing */
 .prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; align-items: stretch; }
 .price { position: relative; padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); display: flex; flex-direction: column; }
@@ -155,7 +171,7 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
   .feat .ic { margin-bottom: 12px; }
   section { padding: 56px 0; }
   .phone { display: block !important; position: static; width: min(280px, 78vw); margin: 0 auto; border-width: 8px; border-radius: 36px; }
-  .nav { gap: 12px; }
+  .nav { gap: 8px; padding: 0 8px 0 14px; }
   .nav .dl { display: none; }
   .cta .btn { width: 100%; }
 }
@@ -265,13 +281,14 @@ details p { animation: fIn .35s ease; }
 </style>
 </head>
 <body>
-<header><div class="wrap nav">
+<header id="hdr"><div class="wrap"><div class="nav">
   <a class="brand" href="#"><img src="assets/logo.svg" alt="" width="30" height="30">openv6</a>
-  <nav class="links"><a href="#how" data-i="nav_how"></a><a href="#features" data-i="nav_features"></a><a href="#pricing" data-i="nav_pricing"></a><a href="#faq" data-i="nav_faq"></a></nav>
+  <nav class="links"><a href="#how" data-i="nav_how"></a><a href="#features" data-i="nav_features"></a><a href="#pricing" data-i="nav_pricing"></a><a href="#faq" data-i="nav_faq"></a><a data-href="labs">Labs</a></nav>
   <div class="sp"></div>
   <div class="seg" id="lang"><button data-l="en">EN</button><button data-l="vi">VI</button></div>
+  <button class="icon-btn" id="theme" type="button" data-t="theme_toggle"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
   <a class="btn sm primary dl" data-href="download" data-i="cta_download"></a>
-</div></header>
+</div></div></header>
 
 <main>
 <div class="wrap hero">
@@ -286,8 +303,8 @@ details p { animation: fIn .35s ease; }
   <p class="fade" style="--d:.7s" data-i="platforms"></p>
   <div class="stage fade" style="--d:.8s" id="stage">
     <div class="frame"><div class="bar"><span></span><span></span><span></span><em>127.0.0.1:8080</em></div>
-      <picture><source srcset="assets/shot-proxies-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></picture></div>
-    <div class="phone"><img src="assets/shot-mobile.webp" width="1170" height="1992" alt="openv6 on a phone" loading="lazy"></div>
+      <img data-shot="shot-proxies" data-dark src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></div>
+    <div class="phone"><img data-shot="shot-mobile" src="assets/shot-mobile.webp" width="1170" height="1992" alt="openv6 on a phone" loading="lazy"></div>
   </div>
 </div>
 
@@ -359,7 +376,7 @@ details p { animation: fIn .35s ease; }
 <section><div class="wrap split">
   <div class="rv"><div class="kicker" data-i="copy_k"></div><h2 data-i="copy_h"></h2><p class="sub" data-i="copy_sub"></p>
     <ul class="checks"><li data-i="c1"></li><li data-i="c2"></li><li data-i="c3"></li><li data-i="c4"></li></ul></div>
-  <div class="frame rv" style="--d:.1s"><img src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details"></div>
+  <div class="frame rv" style="--d:.1s"><img data-shot="shot-drawer" src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details"></div>
 </div></section>
 
 <section id="pricing" style="background:var(--bg-2)"><div class="wrap">
@@ -396,7 +413,7 @@ details p { animation: fIn .35s ease; }
 <footer><div class="wrap">
   <a class="brand" href="#" style="font-size:15px"><img src="assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
   <span>© <span id="yr"></span> openv6</span><span class="sp" style="flex:1"></span>
-  <a data-href="github">GitHub</a><a data-href="download" data-i="f_releases"></a><a href="mailto:" id="contact" data-i="f_contact"></a>
+  <a data-href="labs">Labs</a><a data-href="github">GitHub</a><a data-href="download" data-i="f_releases"></a><a href="mailto:" id="contact" data-i="f_contact"></a>
 </div></footer>
 
 <script>
@@ -406,8 +423,9 @@ const LINKS = {
   github: 'https://github.com/thephux/openv6-releases',
   buy1: 'https://buy.polar.sh/polar_cl_AvvfX0pokfI5ymgstpQ6cqAKNAwLpCwRkqcNN2BBpfB', // Polar checkout link "openv6 Pro 1 máy"
   buy3: 'https://buy.polar.sh/polar_cl_UmLueNgzfXcsTkTnFdUPO6jQGGoLgpecZrj933a5MCj', // Polar checkout link "openv6 Pro 3 máy"
+  labs: 'https://labs.thephuc.xyz/',
 };
-const PRICES = { pro1: '$29', pro3: '$69' };
+const PRICES = { pro1: '$6', pro3: '$12' };
 const CONTACT = ''; // support e-mail shown in the footer (leave empty to hide)
 
 const T = {
@@ -449,6 +467,7 @@ const T = {
     try_k: 'Thử ngay', try_h: 'Mỗi tài khoản một IPv6 riêng', try_sub: 'Chọn nguồn mạng và xem openv6 cấp địa chỉ từ dải /64 của nó.',
     try_src: 'Nguồn mạng', src_home: 'Mạng nhà (ISP)', src_mini: 'Mini PC / máy bàn', try_count: 'Số proxy', try_fmt: 'Định dạng',
     copy_all: 'Sao chép', copied: 'Đã chép ✓', checking: 'đang kiểm tra', working: 'proxy đang chạy',
+    theme_toggle: 'Đổi giao diện sáng / tối',
     paid: 'Cảm ơn bạn đã mua openv6 Pro! License key đã được gửi tới email của bạn. Nhập key trong dashboard ở Cài đặt → Bản quyền.',
   },
   en: {
@@ -489,6 +508,7 @@ const T = {
     try_k: 'Try it', try_h: 'One IPv6 per account, live', try_sub: 'Pick a network source and watch openv6 assign addresses from its /64.',
     try_src: 'Network source', src_home: 'Home ISP', src_mini: 'Mini PC / desktop', try_count: 'Proxies', try_fmt: 'Format',
     copy_all: 'Copy', copied: 'Copied ✓', checking: 'checking', working: 'proxies working',
+    theme_toggle: 'Switch light / dark',
     paid: 'Thanks for buying openv6 Pro! Your license key is on its way to your e-mail. Enter it in the dashboard under Settings → License.',
   },
 };
@@ -501,9 +521,29 @@ function render() {
   for (const el of document.querySelectorAll('[data-href]')) el.href = LINKS[el.dataset.href];
   for (const el of document.querySelectorAll('[data-price]')) el.textContent = PRICES[el.dataset.price];
   for (const b of document.querySelectorAll('[data-l]')) b.classList.toggle('on', b.dataset.l === lang);
+  for (const el of document.querySelectorAll('[data-t]')) { el.title = T[lang][el.dataset.t]; el.setAttribute('aria-label', el.title); }
+  shots();
   document.title = 'openv6 — ' + T[lang].h1;
 }
 for (const b of document.querySelectorAll('[data-l]')) b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('ov6_lang', lang); } catch (e) { /* ignore */ } render(); splitH1(); if (typeof demoStarted !== 'undefined' && demoStarted) runDemo(); };
+// light / dark: follows the system until the visitor picks one (remembered)
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function theme() { return document.documentElement.dataset.theme || (darkMQ.matches ? 'dark' : 'light'); }
+function shots() { // dashboard screenshots in the page's language (and theme for the hero)
+  const sfx = lang === 'vi' ? '-vi' : '';
+  for (const img of document.querySelectorAll('[data-shot]')) {
+    const src = 'assets/' + img.dataset.shot + (img.hasAttribute('data-dark') && theme() === 'dark' ? '-dark' : '') + sfx + '.webp';
+    if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+  }
+}
+document.getElementById('theme').onclick = () => {
+  const t = theme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+  shots();
+};
+darkMQ.addEventListener('change', shots);
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
 document.getElementById('yr').textContent = new Date().getFullYear();
 const c = document.getElementById('contact'); if (CONTACT) c.href = 'mailto:' + CONTACT; else c.remove();
 render();
