@@ -15,7 +15,7 @@ Architecture: $DARCH
 Depends: iproute2
 Recommends: util-linux
 Maintainer: openv6 <noreply@users.noreply.github.com>
-Homepage: https://github.com/synthcoz/openv6
+Homepage: https://thephuc.xyz/openv6/
 Description: Static IPv6 proxies (HTTP + SOCKS5) with a web dashboard
  Turns the IPv6 prefix of a home network, VPS or homelab into static proxies.
  Includes a background service and a tray icon.

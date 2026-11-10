@@ -8,7 +8,12 @@ on:
   pull_request: # build every installer to validate it, never publish
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+env:
+  # Installers and updates are published to a separate public repository, so
+  # this source repository can stay private. RELEASES_TOKEN: fine-grained
+  # token with Contents read/write on that repository only.
+  RELEASES_REPO: synthcoz/openv6-releases
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -19,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: ver
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="$GITHUB_REF_NAME"
@@ -29,7 +34,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
-          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          elif gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -178,21 +183,26 @@ jobs:
           fi
       - name: Publish release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::error::RELEASES_TOKEN is not set (token with Contents write on $RELEASES_REPO)"; exit 1; fi
           ls -la out
           cat > notes.md <<'EOF'
-          **Windows 10/11:** tải `openv6-setup-windows-amd64.exe`, chạy và bấm Next. Windows có thể cảnh báo "Unknown publisher" (bộ cài chưa ký số): chọn *More info → Run anyway*.
+          **Windows 10/11:** download `openv6-setup-windows-amd64.exe`, run it and click Next. If Windows shows "Unknown publisher", choose *More info → Run anyway*.
 
-          **macOS:** tải `openv6-macos.pkg`. Lần đầu mở: bấm phải → *Open* (gói chưa được Apple ký số).
+          **macOS:** download `openv6-macos.pkg`. The first time, right-click → *Open*.
 
-          **Ubuntu / Zorin / Debian:**
+          **Ubuntu / Debian / Zorin:**
           ```bash
-          curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6/main/install.sh | sudo bash
+          curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
           ```
-          hoặc tải file `.deb` rồi `sudo apt install ./openv6_*.deb`.
+          or download the `.deb` and run `sudo apt install ./openv6_*.deb`.
 
-          Xem CHANGELOG.md để biết thay đổi.
+          Website: https://thephuc.xyz/openv6/
           EOF
-          gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+          gh release create "$TAG" out/* --repo "$RELEASES_REPO" --title "$TAG" --notes-file notes.md
+          # keep the one-line installer in the public repository in sync
+          SHA=$(gh api "repos/$RELEASES_REPO/contents/install.sh" --jq .sha 2>/dev/null || true)
+          gh api -X PUT "repos/$RELEASES_REPO/contents/install.sh" -f message="install.sh for $TAG" \
+            -f content="$(base64 -w0 install.sh)" ${SHA:+-f sha="$SHA"} >/dev/null

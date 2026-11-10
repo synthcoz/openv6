@@ -12,7 +12,7 @@ Cần thấy ít nhất một dòng có địa chỉ bắt đầu bằng `2` (v�
 
 ## 2. Cài đặt
 
-1. Tải **`openv6-setup-windows-amd64.exe`** ở trang [Releases](https://github.com/synthcoz/openv6/releases/latest).
+1. Tải **`openv6-setup-windows-amd64.exe`** ở trang [Releases](https://github.com/synthcoz/openv6-releases/releases/latest).
 2. Mở file. Bộ cài chưa được ký số nên Windows SmartScreen có thể hiện *"Windows protected your PC"*: bấm **More info → Run anyway**.
 3. Chấp nhận hộp thoại quyền Administrator (UAC), rồi bấm **Next → Install**.
 
