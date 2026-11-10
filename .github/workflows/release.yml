@@ -175,7 +175,7 @@ jobs:
           OPENV6_SIGNING_KEY: ${{ secrets.OPENV6_SIGNING_KEY }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
-          (cd out && { echo "# openv6 $TAG"; sha256sum *; } > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS && cat SHA256SUMS)
+          (cd out && { echo "# openv6 $TAG"; sha256sum *; } > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS && cat SHA256SUMS)
           if [ -n "$OPENV6_SIGNING_KEY" ]; then
             go run ./tools/sign out
           else
