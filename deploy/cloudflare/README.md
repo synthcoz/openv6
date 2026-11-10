@@ -1,7 +1,7 @@
 # Landing page on Cloudflare (thephuc.xyz/openv6)
 
 The landing in `site/` is served at **https://thephuc.xyz/openv6/** by the
-Worker `openv6-landing` (static assets only). Its routes run in front of the
+Worker `openv6-landing`; `build.sh` bundles the files into one script. Its routes run in front of the
 rest of thephuc.xyz, so the main site is untouched.
 
 ## Automatic deploys (Workers Builds, one-time setup)

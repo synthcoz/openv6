@@ -1,13 +1,9 @@
-// Landing page at https://thephuc.xyz/openv6/ (static assets only, no script).
+// Landing page at https://thephuc.xyz/openv6/ (site/ bundled into one script by build.sh).
 // Auto-deployed by Cloudflare Workers Builds from the repo root (deploy/cloudflare/README.md).
 {
   "name": "openv6-landing",
   "compatibility_date": "2026-11-01",
-  "assets": {
-    "directory": "./deploy/cloudflare/dist",
-    "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none"
-  },
+  "main": "./deploy/cloudflare/dist/worker.js",
   "routes": [
     { "pattern": "thephuc.xyz/openv6", "zone_name": "thephuc.xyz" },
     { "pattern": "thephuc.xyz/openv6/*", "zone_name": "thephuc.xyz" }
