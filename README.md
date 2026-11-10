@@ -24,6 +24,14 @@ openv6 turns the IPv6 prefix your home ISP or VPS provider gives you into hundre
 | **macOS** (Intel and Apple silicon) | Download `openv6-macos.pkg` from Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | The command below, or the `.deb` file from Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Terminal):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```

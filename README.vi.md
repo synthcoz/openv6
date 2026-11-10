@@ -24,6 +24,14 @@ openv6 biến dải IPv6 mà nhà mạng hoặc nhà cung cấp VPS cấp cho b�
 | **macOS** (Intel và Apple silicon) | Tải `openv6-macos.pkg` ở Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | Lệnh bên dưới, hoặc file `.deb` ở Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Terminal):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```

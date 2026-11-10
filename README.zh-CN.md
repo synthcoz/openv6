@@ -24,6 +24,14 @@ openv6 把家庭宽带或 VPS 服务商分配给你的 IPv6 前缀变成数百�
 | **macOS** （Intel 与 Apple 芯片） | 从 Releases 下载 `openv6-macos.pkg`。 |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | 使用下面的命令，或 Releases 中的 `.deb` 文件。 |
 
+**Windows**（PowerShell）：
+
+```powershell
+irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux**（终端）：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```

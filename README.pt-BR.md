@@ -24,6 +24,14 @@ O openv6 transforma o prefixo IPv6 que o seu provedor de internet ou de VPS entr
 | **macOS** (Intel e Apple silicon) | Baixe `openv6-macos.pkg` em Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | O comando abaixo, ou o arquivo `.deb` em Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Terminal):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```

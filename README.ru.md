@@ -24,6 +24,14 @@ openv6 превращает IPv6-префикс, который выдаёт в�
 | **macOS** (Intel и Apple silicon) | Скачайте `openv6-macos.pkg` в Releases. |
 | **Ubuntu / Debian / Zorin** (amd64, arm64, armhf) | Команда ниже или файл `.deb` в Releases. |
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.ps1 | iex
+```
+
+**macOS / Linux** (Терминал):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthcoz/openv6-releases/main/install.sh | sudo bash
 ```
