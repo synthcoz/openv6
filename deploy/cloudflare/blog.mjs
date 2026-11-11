@@ -100,8 +100,10 @@ addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), 
 `;
 }
 
-function card(p, up) {
-  return `<a class="pcard" href="${up}blog/${p.slug}/"><h3>${esc(p.title)}</h3><p>${esc(p.description)}</p><span class="pmeta">${fmtDate(p.date)} · ${p.minutes} min read</span></a>`;
+// h = heading level: h2 on the blog index (cards sit right under the h1),
+// h3 where the cards follow a section h2
+function card(p, up, h = "h3") {
+  return `<a class="pcard" href="${up}blog/${p.slug}/"><${h}>${esc(p.title)}</${h}><p>${esc(p.description)}</p><span class="pmeta">${fmtDate(p.date)} · ${p.minutes} min read</span></a>`;
 }
 
 function postPage(p, all) {
@@ -154,7 +156,7 @@ function indexPage(posts) {
   <nav class="crumbs" aria-label="Breadcrumb"><a href="../">openv6</a><span>›</span><span>Blog</span></nav>
   <h1>IPv6 proxies, explained</h1>
   <p class="lead">Guides on IPv6 proxies, anti-detect browsers and running your own static proxies at home or on a VPS.</p>
-  <div class="pgrid">${posts.map((p) => card(p, "../")).join("")}</div>
+  <div class="pgrid">${posts.map((p) => card(p, "../", "h2")).join("")}</div>
 </main>`;
   return page({ up: "../", title: "openv6 Blog: IPv6 Proxy Guides", description: "Guides on IPv6 proxies, anti-detect browsers and running your own static HTTP/SOCKS5 proxies at home or on a VPS.", canonical: url, image: SITE + "assets/og.jpg", main, ld });
 }

@@ -151,3 +151,33 @@ func TestLostKeyFailsClosed(t *testing.T) {
 		t.Fatalf("password not locked: %q", ps[0].AuthPass)
 	}
 }
+
+// Where the IP is (time zone, city, coordinates) is kept while the proxy
+// stays in its pool and forgotten when it moves to another prefix.
+func TestGeoClearedOnPoolChange(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "g.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, _ := st.CreateNode("n", "", true)
+	_ = st.CreatePool(&Pool{NodeID: n.ID, Name: "a", CIDR: "2001:db8:1::/64", Mode: "addr"})
+	_ = st.CreatePool(&Pool{NodeID: n.ID, Name: "b", CIDR: "2001:db8:2::/64", Mode: "addr"})
+	pools, _ := st.ListPools(n.ID)
+	_ = st.CreateProxies([]*Proxy{{NodeID: n.ID, PoolID: pools[0].ID, Port: 10001, Protocol: "both", Suffix: "::1", Enabled: true}})
+	ps, _ := st.ListProxies(ProxyFilter{})
+	p := ps[0]
+	if _, _, err := st.RecordCheck(p.ID, CheckRecord{At: 1, OK: true, Latency: 10, IP: "2001:db8:1::1"}, Geo{Country: "VN", Timezone: "Asia/Ho_Chi_Minh", City: "Hanoi", Loc: "21.0,105.8"}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = st.GetProxy(p.ID)
+	p.Note = "renamed"
+	_ = st.UpdateProxy(p)
+	if p, _ = st.GetProxy(p.ID); p.CheckTZ != "Asia/Ho_Chi_Minh" || p.CheckCity != "Hanoi" || p.CheckLoc != "21.0,105.8" {
+		t.Fatalf("geo lost on a plain edit: %q %q %q", p.CheckTZ, p.CheckCity, p.CheckLoc)
+	}
+	p.PoolID = pools[1].ID
+	_ = st.UpdateProxy(p)
+	if p, _ = st.GetProxy(p.ID); p.CheckTZ != "" || p.CheckCity != "" || p.CheckLoc != "" {
+		t.Fatalf("geo kept after moving to another pool: %q %q %q", p.CheckTZ, p.CheckCity, p.CheckLoc)
+	}
+}

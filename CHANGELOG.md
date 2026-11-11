@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Trang Cài đặt sắp xếp lại:** một cột dễ đọc, chia nhóm (Chung, Proxy, Thông báo, Tài khoản & bảo mật, Dữ liệu, Giao diện) với menu mục luôn hiện bên trái; trên điện thoại là thanh chip cuộn ngang. Các ô nhập ngắn đặt cạnh nhau, mỗi thẻ có nút Lưu ở cuối.
+- **Dropdown mới:** trên Chrome / Edge, menu thả xuống có viền bo, bóng, hiệu ứng mở và dấu ✓ ở mục đang chọn; trình duyệt khác giữ dropdown gốc đã làm đẹp.
+- **Sửa:** trang Tổng quan và Nhật ký không còn bị tràn ngang trên điện thoại nhỏ (320–360px). Đổi proxy sang dải IP khác thì xoá múi giờ / vị trí cũ cho tới lần kiểm tra sau.
+
 ## v0.7.1
 
 - **Cài đặt profile cho khớp IP** (chi tiết proxy): sau mỗi lần kiểm tra, dashboard cho biết múi giờ, ngôn ngữ và vị trí (vĩ độ, kinh độ) của IP proxy, có nút sao chép để đặt profile anti-detect cho khớp. File xuất CSV / JSON có thêm cột country, timezone, language, city, latitude, longitude.
