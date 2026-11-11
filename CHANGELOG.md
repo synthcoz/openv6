@@ -1,6 +1,6 @@
 # Changelog
 
-## Chưa phát hành
+## v0.7.1
 
 - **Chặn trang web:** *Cài đặt → Chặn trang web*, mỗi dòng một mục. `facebook.com` chặn cả trang và mọi tên miền con; `*.ads.com` chỉ chặn tên miền con; nhập được IP, dải IP, hoặc dán cả link. Áp dụng cho mọi proxy trên mọi máy. Trình duyệt nhận lỗi 403 (HTTP) hoặc “not allowed” (SOCKS5).
 - **DNS mã hoá dự phòng (mặc định bật):** khi DNS thường không trả về IPv6 (modem, nhà mạng hay VPN giấu bản ghi AAAA), proxy hỏi thêm Cloudflare / Google qua DNS-over-HTTPS bằng chính IPv6 của proxy. Không dùng IPv4, nhà mạng không thấy truy vấn.
