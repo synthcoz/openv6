@@ -23,7 +23,7 @@
 <meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og.jpg">
 <link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
 <link rel="apple-touch-icon" href="assets/logo-256.png">
-<link rel="preload" as="image" href="assets/shot-proxies.webp" fetchpriority="high" media="(min-width: 521px)">
+<link rel="preload" as="image" href="assets/shot-proxies.webp" fetchpriority="high">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -44,7 +44,7 @@
 <main>
 <div class="wrap hero">
   <div class="glow" aria-hidden="true"></div>
-  <span class="eyebrow fade" style="--d:0s"><i></i><span data-i="eyebrow"></span></span>
+  <a class="eyebrow fade" style="--d:0s" href="blog/match-timezone-language-geolocation-to-proxy/"><span class="tag" data-i="new_tag"></span><span data-i="eyebrow"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
   <h1 data-i="h1"></h1>
   <p class="lead fade" style="--d:.45s" data-i="lead"></p>
   <div class="cta fade" style="--d:.6s">
@@ -52,11 +52,11 @@
     <a class="btn" href="#pricing" data-i="cta_pro"></a>
   </div>
   <p class="fade" style="--d:.7s"><span data-i="platforms"></span> · <a href="#download" class="ul" data-i="dl_other"></a></p>
-  <div class="stage fade" style="--d:.8s" id="stage">
+  <div class="stage rise" id="stage">
     <div class="live" id="live" aria-hidden="true"></div>
     <div class="frame"><div class="bar"><span></span><span></span><span></span><em>127.0.0.1:8080</em></div>
       <img data-shot="shot-proxies" data-dark src="assets/shot-proxies.webp" width="2560" height="1600" alt="openv6 dashboard" fetchpriority="high"></div>
-    <div class="phone device" style="--sb:#f7f7f7;--sbd:#0a0a0a"><div class="screen"><div class="sb"><b>9:41</b><i class="island"></i><span class="sbi"><svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.3 6.7a6.6 6.6 0 0 1 9.4 0l-1.5 1.5a4.5 4.5 0 0 0-6.4 0zM1 4.4a9.9 9.9 0 0 1 14 0L13.5 6a7.8 7.8 0 0 0-11 0z"/></svg><svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="16" height="8" rx="2"/><path d="M24.5 4v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><img data-shot="shot-mobile" data-dark src="assets/shot-mobile.webp" width="1170" height="2316" alt="openv6 on a phone" loading="lazy"></div></div>
+    <div class="phone device" style="--sb:#f7f7f7;--sbd:#0a0a0a"><div class="screen"><div class="sb"><b>9:41</b><i class="island"></i><span class="sbi"><svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.3 6.7a6.6 6.6 0 0 1 9.4 0l-1.5 1.5a4.5 4.5 0 0 0-6.4 0zM1 4.4a9.9 9.9 0 0 1 14 0L13.5 6a7.8 7.8 0 0 0-11 0z"/></svg><svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="16" height="8" rx="2"/><path d="M24.5 4v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><img data-shot="shot-mobile" data-dark src="assets/shot-mobile.webp" width="1170" height="2316" alt="openv6 on a phone" decoding="async"></div></div>
   </div>
 </div>
 
@@ -162,8 +162,8 @@
 <section><div class="wrap split">
   <div class="rv"><div class="kicker" data-i="copy_k"></div><h2 data-i="copy_h"></h2><p class="sub" data-i="copy_sub"></p>
     <ul class="checks"><li data-i="c1"></li><li data-i="c2"></li><li data-i="c3"></li><li data-i="c4"></li></ul></div>
-  <div class="frame shotd rv" style="--d:.1s"><img data-shot="shot-drawer" data-dark src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details" loading="lazy"></div>
-  <div class="device shotm rv" style="--d:.1s;--sb:#ffffff;--sbd:#141414"><div class="screen"><div class="sb"><b>9:41</b><i class="island"></i><span class="sbi"><svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.3 6.7a6.6 6.6 0 0 1 9.4 0l-1.5 1.5a4.5 4.5 0 0 0-6.4 0zM1 4.4a9.9 9.9 0 0 1 14 0L13.5 6a7.8 7.8 0 0 0-11 0z"/></svg><svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="16" height="8" rx="2"/><path d="M24.5 4v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><img data-shot="shot-drawer-m" data-dark src="assets/shot-drawer-m.webp" width="1170" height="2316" alt="openv6 proxy details on a phone" loading="lazy"></div></div>
+  <div class="frame shotd rv" style="--d:.1s"><img data-shot="shot-drawer" data-dark src="assets/shot-drawer.webp" width="2560" height="1600" alt="openv6 proxy details" loading="lazy" decoding="async"></div>
+  <div class="device shotm rv" style="--d:.1s;--sb:#ffffff;--sbd:#141414"><div class="screen"><div class="sb"><b>9:41</b><i class="island"></i><span class="sbi"><svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.3 6.7a6.6 6.6 0 0 1 9.4 0l-1.5 1.5a4.5 4.5 0 0 0-6.4 0zM1 4.4a9.9 9.9 0 0 1 14 0L13.5 6a7.8 7.8 0 0 0-11 0z"/></svg><svg viewBox="0 0 27 12"><rect x=".5" y=".5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="16" height="8" rx="2"/><path d="M24.5 4v4a2 2 0 0 0 0-4z" opacity=".45"/></svg></span></div><img data-shot="shot-drawer-m" data-dark src="assets/shot-drawer-m.webp" width="1170" height="2316" alt="openv6 proxy details on a phone" loading="lazy" decoding="async"></div></div>
 </div></section>
 
 <section id="pricing" style="background:var(--bg-2)"><div class="wrap">
@@ -225,7 +225,7 @@ const CONTACT = ''; // support e-mail shown in the footer (leave empty to hide)
 const T = {
   vi: {
     nav_how: 'Cách dùng', nav_features: 'Tính năng', nav_pricing: 'Bảng giá', nav_faq: 'Hỏi đáp',
-    live_ok: 'Proxy sẵn sàng', cta_download: 'Tải miễn phí', cta_pro: 'Xem bản Pro', eyebrow: 'Proxy IPv6 cho trình duyệt anti-detect',
+    live_ok: 'Proxy sẵn sàng', cta_download: 'Tải miễn phí', cta_pro: 'Xem bản Pro', new_tag: 'Mới', eyebrow: 'Múi giờ, ngôn ngữ và vị trí khớp IP',
     h1: 'Proxy IPv6 tĩnh từ chính mạng của bạn',
     lead: 'Biến dải IPv6 của mạng nhà, VPS hay mini PC thành hàng trăm proxy HTTP / SOCKS5 cố định. Mỗi tài khoản một IP riêng, không thuê proxy theo tháng.',
     platforms: 'Windows 10/11 · macOS · Ubuntu / Zorin / Debian — chạy nền, tự khởi động, có icon khay',
@@ -275,7 +275,7 @@ const T = {
   },
   en: {
     nav_how: 'How it works', nav_features: 'Features', nav_pricing: 'Pricing', nav_faq: 'FAQ',
-    live_ok: 'Proxy ready', cta_download: 'Download free', cta_pro: 'See Pro', eyebrow: 'IPv6 proxies for anti-detect browsers',
+    live_ok: 'Proxy ready', cta_download: 'Download free', cta_pro: 'See Pro', new_tag: 'New', eyebrow: 'Time zone, language and location per IP',
     h1: 'Static IPv6 proxies from your own network',
     lead: 'Turn the IPv6 prefix of your home network, VPS or mini PC into hundreds of fixed HTTP / SOCKS5 proxies. One IP per account, no monthly proxy bills.',
     platforms: 'Windows 10/11 · macOS · Ubuntu / Debian — runs in the background, starts with the machine, tray icon',
@@ -424,7 +424,10 @@ if (new URLSearchParams(location.search).has('paid')) location.replace('thanks/'
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function splitH1() {
   const h = document.querySelector('.hero h1'); const words = h.textContent.split(' ');
-  h.textContent = ''; words.forEach((w, i) => { const sp = document.createElement('span'); sp.className = /IPv6/.test(w) ? 'w hl' : 'w'; sp.style.setProperty('--i', i); sp.textContent = w; h.append(sp, ' '); });
+  h.textContent = ''; words.forEach((w, i) => {
+    const sp = document.createElement('span'); sp.className = 'w' + (/IPv6/.test(w) ? ' hl' : '') + (i >= 3 ? ' mu' : ''); sp.style.setProperty('--i', i); sp.textContent = w;
+    h.append(sp, ' '); if (i === 2) h.append(Object.assign(document.createElement('br'), { className: 'hb' }));
+  });
 }
 const io = 'IntersectionObserver' in window ? new IntersectionObserver((es) => {
   for (const e of es) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); if (e.target.dataset.count !== undefined) count(e.target); }
@@ -441,6 +444,11 @@ document.getElementById('mrow1').innerHTML = r1 + r1; document.getElementById('m
 for (const r of document.querySelectorAll('#works .mrow')) r.innerHTML += r.innerHTML; // the static first half stays for crawlers
 for (const r of document.querySelectorAll('.mrow')) for (const c of [...r.children].slice(r.children.length / 2)) c.setAttribute('aria-hidden', 'true');
 
+// infinite animations below the fold run only while visible
+if ('IntersectionObserver' in window) {
+  const vis = new IntersectionObserver((es) => { for (const e of es) e.target.classList.toggle('off', !e.isIntersecting); }, { rootMargin: '100px 0px' });
+  for (const el of document.querySelectorAll('.marquee, .term')) { el.classList.add('off'); vis.observe(el); }
+}
 // counters
 function count(el) {
   const big = el.dataset.fmt === 'quint', target = big ? 18.4 : Number(el.dataset.count), pre = el.dataset.prefix || '', suf = el.dataset.suffix || '';
@@ -470,7 +478,7 @@ if (live && !reduce) {
     live.append(el);
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
     const shown = live.querySelectorAll('.lt:not(.out)');
-    if (shown.length > (innerWidth <= 520 ? 1 : 3)) { const o = shown[0]; o.classList.add('out'); setTimeout(() => o.remove(), 600); }
+    if (shown.length > (innerWidth <= 520 ? 1 : 2)) { const o = shown[0]; o.classList.add('out'); setTimeout(() => o.remove(), 600); }
   };
   setTimeout(() => { push(); setInterval(push, 2600); }, 1500);
 }
