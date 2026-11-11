@@ -459,9 +459,12 @@ func (s *Store) CreateProxies(ps []*Proxy) error {
 }
 
 func (s *Store) UpdateProxy(p *Proxy) error {
-	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=?,owner_id=?,iface=? WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE proxies SET pool_id=?,port=?,protocol=?,auth_user=?,auth_pass=?,subnet=?,suffix=?,ipv4_fallback=?,enabled=?,note=?,tag=?,expires_at=?,label=?,scope=?,max_conns=?,rate_kbps=?,relay_node_id=?,relay_port=?,owner_id=?,iface=?,`+
+		// moving to another pool usually means another prefix (another ISP or
+		// country): forget where the old IP was until the next check
+		`check_tz=CASE WHEN pool_id=? THEN check_tz ELSE '' END,check_city=CASE WHEN pool_id=? THEN check_city ELSE '' END,check_loc=CASE WHEN pool_id=? THEN check_loc ELSE '' END WHERE id=?`,
 		p.PoolID, p.Port, p.Protocol, p.AuthUser, s.enc(p.AuthPass), int64(p.Subnet), p.Suffix, b2i(p.IPv4Fallback), b2i(p.Enabled), p.Note, p.Tag, p.ExpiresAt, p.Label, p.Scope,
-		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.Iface, p.ID)
+		p.MaxConns, p.RateKBps, p.RelayNodeID, p.RelayPort, p.OwnerID, p.Iface, p.PoolID, p.PoolID, p.PoolID, p.ID)
 	return err
 }
 

@@ -752,8 +752,9 @@ function profileGeo(p) {
   const row = (label, v) => v ? `<div class="copy-line"><span class="lbl">${esc(label)}</span><code>${esc(v)}</code>
       <button class="small" data-copyline="${esc(v)}">${icon('copy', 'sm')}</button></div>` : '';
   const [lat, lon] = (p.check_loc || '').split(',');
+  const where = [p.check_city, p.check_country].filter(Boolean).join(', ');
   return `<h3>${t('geo_title')}</h3>
-    <p class="hint" style="margin-top:0">${t('geo_hint', { where: esc([p.check_city, p.check_country].filter(Boolean).join(', ')) })}</p>
+    <p class="hint" style="margin-top:0">${where ? t('geo_hint', { where: esc(where) }) : t('geo_hint_nowhere')}</p>
     ${row(t('geo_tz'), p.check_tz)}${row(t('geo_lang'), p.check_lang)}${row(t('geo_loc'), lat && lon ? `${lat.trim()}, ${lon.trim()}` : '')}`;
 }
 
@@ -1585,12 +1586,19 @@ async function pageEvents() {
 async function pageSettings() {
   const [s, u] = await Promise.all([api('GET', '/api/settings'), api('GET', '/api/update').catch(() => ({}))]);
   const tog = (k) => `<label class="check"><input type="checkbox" name="${k}" ${s[k] === '1' ? 'checked' : ''}> ${t(k)}</label>`;
-  $('#page').innerHTML = `<h1>${t('nav_settings')}</h1>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
-
-    <div class="card" id="licCard"><h2>${t('license')}</h2><div id="licBox"><div class="skel"></div></div></div>
-
-    <div class="card" id="upd"><h2>${t('updates')}</h2>
+  // Settings: one readable column, grouped by topic, with a section menu that
+  // stays in view (a strip of chips on phones).
+  const GROUPS = [
+    ['general', [['licCard', 'license'], ['upd', 'updates']]],
+    ['proxy', [['opf', 'operation'], ['blkf', 'block_title']]],
+    ['notify', [['tgf', 'telegram']]],
+    ['security', [['setAcc', 'accounts'], ['setTok', 'api_tokens'], ['pf', 'change_password']]],
+    ['data', [['setBak', 'backup']]],
+    ['look', [['setLook', 'appearance_lang']]],
+  ];
+  const sec = {
+    licCard: `<div class="card" id="licCard"><h2>${t('license')}</h2><div id="licBox"><div class="skel"></div></div></div>`,
+    upd: `<div class="card" id="upd"><h2>${t('updates')}</h2>
       <div class="kv"><div>${t('current_version')}</div><div>v${esc(u.current || '')}</div>
         <div>${t('latest_version')}</div><div>${u.latest ? esc(u.latest) : (u.error ? `<span class="muted">${esc(u.error)}</span>` : '—')}</div></div>
       ${u.newer ? `<div class="alert info" style="margin-top:12px">${t('update_available', { v: esc(u.latest) })}</div>` : `<p class="small muted">${u.latest ? t('up_to_date') : ''}</p>`}
@@ -1601,33 +1609,23 @@ async function pageSettings() {
         ${(u.outdated_nodes || []).length ? `<button id="btnUpdNodes">${t('update_nodes')}</button>` : ''}
         <button id="btnUpdCheck">${t('check_updates')}</button>
         ${u.url ? `<a class="btn" href="${esc(u.url)}" target="_blank" rel="noopener">${t('release_notes')}</a>` : ''}
-      </div></div>
-
-    <form class="card" id="tgf"><h2>${t('telegram')}</h2>
-      <p class="hint" style="margin-top:0">${t('telegram_hint')}</p>
-      <label class="field">${t('telegram_token')}<input name="telegram_token" autocomplete="off" placeholder="${s.telegram_token_set ? t('telegram_token_saved') : '123456:ABC…'}"></label>
-      <label class="field" style="margin-top:8px">${t('telegram_chat')}<input name="telegram_chat" value="${esc(s.telegram_chat)}" placeholder="123456789"></label>
-      <h3>${t('notify_when')}</h3>
-      <div style="display:grid;gap:6px">${tog('notify_node_offline')}${tog('notify_proxy_fail')}${tog('notify_prefix_change')}${tog('notify_update')}</div>
-      <div class="row" style="margin-top:12px"><button class="primary" type="submit">${t('save')}</button><button type="button" id="tgTest">${t('send_test')}</button></div></form>
-
-    <form class="card" id="opf"><h2>${t('operation')}</h2>
-      <label class="field">${t('check_interval')}<select name="check_interval_min">
+      </div></div>`,
+    opf: `<form class="card" id="opf"><h2>${t('operation')}</h2>
+      <div class="form-grid"><div><label class="field">${t('check_interval')}<select name="check_interval_min">
         ${[0, 5, 10, 15, 30, 60].map((v) => `<option value="${v}" ${String(v) === s.check_interval_min ? 'selected' : ''}>${v ? t('every_n_min', { n: v }) : t('off')}</option>`).join('')}</select></label>
-      <p class="hint">${t('check_interval_hint')}</p>
-      <label class="check" style="margin-top:8px"><input type="checkbox" name="auto_firewall" ${s.auto_firewall === '1' ? 'checked' : ''}> ${t('auto_firewall')}</label>
-      <p class="hint">${t('auto_firewall_hint')}</p>
-      <label class="field" style="margin-top:8px">${t('instance_name')}<input name="instance_name" value="${esc(s.instance_name)}" placeholder="${t('instance_name_ph')}"></label>
-      <label class="field" style="margin-top:8px">${t('panel_url')}<input name="panel_url" value="${esc(s.panel_url)}" placeholder="${esc(s.detected_url)}"></label>
+      <p class="hint">${t('check_interval_hint')}</p></div>
+      <div><label class="field">${t('instance_name')}<input name="instance_name" value="${esc(s.instance_name)}" placeholder="${t('instance_name_ph')}"></label></div></div>
+      <label class="field" style="margin-top:14px">${t('panel_url')}<input name="panel_url" value="${esc(s.panel_url)}" placeholder="${esc(s.detected_url)}"></label>
       <p class="hint">${t('panel_url_hint')}</p>
-      <button class="primary" type="submit">${t('save')}</button></form>
-
-    <form class="card" id="blkf"><h2>${t('block_title')}</h2>
-      <h3 style="margin-top:0">${t('block_sub')}</h3>
+      <label class="check" style="margin-top:6px"><input type="checkbox" name="auto_firewall" ${s.auto_firewall === '1' ? 'checked' : ''}> ${t('auto_firewall')}</label>
+      <p class="hint">${t('auto_firewall_hint')}</p>
+      <div class="card-foot"><button class="primary" type="submit">${t('save')}</button></div></form>`,
+    blkf: `<form class="card" id="blkf"><h2>${t('block_title')}</h2>
+      <div class="subsec"><h3>${t('block_sub')}</h3>
       <p class="hint" style="margin-top:0">${t('block_hint')}</p>
       <textarea name="block_sites" rows="6" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="facebook.com&#10;*.doubleclick.net&#10;203.0.113.0/24">${esc(s.block_sites || '')}</textarea>
-      <p class="hint">${t('block_rules_help')}</p>
-      <h3>${t('v4_title')}</h3>
+      <p class="hint">${t('block_rules_help')}</p></div>
+      <div class="subsec"><h3>${t('v4_title')}</h3>
       <p class="hint" style="margin-top:0">${t('v4_intro')}</p>
       <div class="v4opts">
         <label class="v4opt"><input type="radio" name="ipv4_mode" value="off" ${s.ipv4_mode === 'off' ? 'checked' : ''}>
@@ -1639,48 +1637,95 @@ async function pageSettings() {
           <div><b>${t('v4_direct')}</b> <span class="badge warn">${t('v4_leaks')}</span><p>${t('v4_direct_desc')}</p></div></label>
       </div>
       <div id="v4sees" style="margin-top:10px"></div>
-      <h3>${t('v4sites_title')}</h3>
+      <h4>${t('v4sites_title')}</h4>
       <p class="hint" style="margin-top:0">${t('v4sites_hint')}</p>
-      <textarea name="ipv4_sites" rows="3" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="check.example.com">${esc(s.ipv4_sites || '')}</textarea>
-      <h3>${t('secure_dns_title')}</h3>
+      <textarea name="ipv4_sites" rows="3" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="check.example.com">${esc(s.ipv4_sites || '')}</textarea></div>
+      <div class="subsec"><h3>${t('secure_dns_title')}</h3>
       <label class="check"><input type="checkbox" name="secure_dns" ${s.secure_dns === '1' ? 'checked' : ''}> ${t('secure_dns')}</label>
-      <p class="hint">${t('secure_dns_hint')}</p>
-      <button class="primary" type="submit">${t('save')}</button></form>
-
-    <div class="card"><h2>${t('backup')}</h2>
-      <p class="small muted" style="margin-top:0">${t('backup_hint')}</p>
-      <div class="row"><a class="btn primary" href="/api/backup" download>${t('download_backup')}</a>
-        <label class="btn">${t('restore')}<input type="file" id="restoreFile" accept=".json,application/json" hidden></label></div></div>
-
-    <div class="card"><h2>${t('accounts')}</h2>
+      <p class="hint">${t('secure_dns_hint')}</p></div>
+      <div class="card-foot"><button class="primary" type="submit">${t('save')}</button></div></form>`,
+    tgf: `<form class="card" id="tgf"><h2>${t('telegram')}</h2>
+      <p class="hint" style="margin-top:0">${t('telegram_hint')}</p>
+      <div class="form-grid"><label class="field">${t('telegram_token')}<input name="telegram_token" autocomplete="off" placeholder="${s.telegram_token_set ? t('telegram_token_saved') : '123456:ABC…'}"></label>
+      <label class="field">${t('telegram_chat')}<input name="telegram_chat" value="${esc(s.telegram_chat)}" placeholder="123456789"></label></div>
+      <h3>${t('notify_when')}</h3>
+      <div class="check-grid">${tog('notify_node_offline')}${tog('notify_proxy_fail')}${tog('notify_prefix_change')}${tog('notify_update')}</div>
+      <div class="row card-foot"><button class="primary" type="submit">${t('save')}</button><button type="button" id="tgTest">${t('send_test')}</button></div></form>`,
+    setAcc: `<div class="card" id="setAcc"><h2>${t('accounts')}</h2>
       <p class="small muted" style="margin-top:0">${t('accounts_hint')}</p>
       <div id="userList"><div class="skel"></div></div>
-      <form class="row" id="userf" style="margin-top:10px;align-items:flex-end">
+      <form class="row" id="userf" style="margin-top:12px;align-items:flex-end">
         <input name="username" placeholder="${t('username')}" style="flex:1;min-width:120px" required>
         <input name="password" type="password" placeholder="${t('password')}" minlength="8" style="flex:1;min-width:120px" required autocomplete="new-password">
         <select name="role"><option value="customer">${t('role_customer')}</option><option value="admin">${t('role_admin')}</option></select>
-        <button type="submit">${icon('plus', 'sm')} ${t('add_account')}</button></form></div>
-
-    <div class="card"><h2>${t('api_tokens')}</h2>
+        <button type="submit">${icon('plus', 'sm')} ${t('add_account')}</button></form></div>`,
+    setTok: `<div class="card" id="setTok"><h2>${t('api_tokens')}</h2>
       <p class="small muted" style="margin-top:0">${t('api_tokens_hint')}</p>
       <div id="tokList"><div class="skel"></div></div>
-      <form class="row" id="tokf" style="margin-top:10px"><input name="name" placeholder="${t('token_name_ph')}" style="flex:1;min-width:160px">
-        <button type="submit">${icon('plus', 'sm')} ${t('create_token')}</button></form></div>
-
-    <form class="card" id="pf"><h2>${t('change_password')}</h2>
-      <label class="field">${t('current_password')}<input name="current" type="password" autocomplete="current-password" required></label>
-      <label class="field" style="margin-top:8px">${t('new_password')}<input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
-      <div style="margin-top:12px"><button class="primary" type="submit">${t('save')}</button></div></form>
-
-    <div class="card"><h2>${t('language')}</h2>
-      <div class="row"><button id="lvi" class="${LANG === 'vi' ? 'primary' : ''}">Tiếng Việt</button><button id="len" class="${LANG === 'en' ? 'primary' : ''}">English</button></div>
-      <h3>${t('theme')}</h3>
-      <div class="seg" id="setTheme">${['light', 'system', 'dark'].map((m) => `<button data-th2="${m}" class="${themeMode() === m ? 'on' : ''}">${icon({ light: 'sun', system: 'monitor', dark: 'moon' }[m], 'sm')} ${t('theme_' + m)}</button>`).join('')}</div>
-      <h3>${t('accent')}</h3>
-      <div class="seg" id="setAccent">${[['panel', '#171717'], ['moon', '#6366f1'], ['grass', '#10b981']].map(([m, c]) => `<button data-ac="${m}" class="${accentMode() === m ? 'on' : ''}"><span class="swatch" style="background:${c}"></span> ${t('accent_' + m)}</button>`).join('')}</div>
+      <form class="row" id="tokf" style="margin-top:12px"><input name="name" placeholder="${t('token_name_ph')}" style="flex:1;min-width:160px">
+        <button type="submit">${icon('plus', 'sm')} ${t('create_token')}</button></form></div>`,
+    pf: `<form class="card" id="pf"><h2>${t('change_password')}</h2>
+      <div class="form-grid"><label class="field">${t('current_password')}<input name="current" type="password" autocomplete="current-password" required></label>
+      <label class="field">${t('new_password')}<input name="new" type="password" minlength="8" autocomplete="new-password" required></label></div>
+      <div class="card-foot"><button class="primary" type="submit">${t('save')}</button></div></form>`,
+    setBak: `<div class="card" id="setBak"><h2>${t('backup')}</h2>
+      <p class="small muted" style="margin-top:0">${t('backup_hint')}</p>
+      <div class="row"><a class="btn primary" href="/api/backup" download>${icon('download', 'sm')} ${t('download_backup')}</a>
+        <label class="btn">${t('restore')}<input type="file" id="restoreFile" accept=".json,application/json" hidden></label></div></div>`,
+    setLook: `<div class="card" id="setLook"><h2>${t('appearance_lang')}</h2>
+      <div class="set-rows">
+        <div class="set-row"><span>${t('language')}</span><div class="seg"><button id="lvi" class="${LANG === 'vi' ? 'on' : ''}">Tiếng Việt</button><button id="len" class="${LANG === 'en' ? 'on' : ''}">English</button></div></div>
+        <div class="set-row"><span>${t('theme_label')}</span><div class="seg" id="setTheme">${['light', 'system', 'dark'].map((m) => `<button data-th2="${m}" class="${themeMode() === m ? 'on' : ''}">${icon({ light: 'sun', system: 'monitor', dark: 'moon' }[m], 'sm')} ${t('theme_' + m)}</button>`).join('')}</div></div>
+        <div class="set-row"><span>${t('accent')}</span><div class="seg" id="setAccent">${[['panel', '#171717'], ['moon', '#6366f1'], ['grass', '#10b981']].map(([m, c]) => `<button data-ac="${m}" class="${accentMode() === m ? 'on' : ''}"><span class="swatch" style="background:${c}"></span> ${t('accent_' + m)}</button>`).join('')}</div></div>
+      </div>
       <h3>${t('shortcuts')}</h3><p class="small muted">${t('shortcuts_text')}</p>
-      <h3>${t('about')}</h3><p class="small muted">${t('about_text')}</p></div>
+      <h3>${t('about')}</h3><p class="small muted" style="margin-bottom:0">${t('about_text')}</p></div>`,
+  };
+  $('#page').innerHTML = `<h1>${t('nav_settings')}</h1>
+    <div class="settings">
+      <nav class="set-nav" aria-label="${t('nav_settings')}">${GROUPS.map(([g, items]) => `<div class="set-nav-group"><div class="set-nav-label">${t('setg_' + g)}</div>
+        ${items.map(([id, key]) => `<button type="button" data-goto="${id}">${t(key)}</button>`).join('')}</div>`).join('')}</nav>
+      <div class="set-body">${GROUPS.map(([g, items]) => `<section class="set-group" aria-label="${t('setg_' + g)}"><div class="set-group-label">${t('setg_' + g)}</div>
+        ${items.map(([id]) => sec[id]).join('')}</section>`).join('')}</div>
     </div>`;
+  {
+    const links = $$('.set-nav [data-goto]');
+    let cur = '', pinned = '', pinTimer = 0;
+    const mark = (id) => {
+      if (id === cur) return;
+      cur = id;
+      for (const b of links) b.classList.toggle('on', b.dataset.goto === id);
+      // phones: keep the active chip in view by scrolling the strip itself
+      // (scrollIntoView here would cancel the page's own smooth scroll)
+      const on = links.find((b) => b.dataset.goto === id), nav = $('.set-nav');
+      if (on && nav && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: on.offsetLeft - (nav.clientWidth - on.offsetWidth) / 2, behavior: 'smooth' });
+    };
+    for (const b of links) b.onclick = () => {
+      const el = document.getElementById(b.dataset.goto); if (!el) return;
+      // a card near the end may never reach the top: keep the clicked one lit
+      pinned = b.dataset.goto; mark(pinned); clearTimeout(pinTimer); pinTimer = setTimeout(() => { pinned = ''; }, 1200);
+      el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    };
+    // the active section is the last one whose top has passed under the
+    // sticky header (+ the chip strip on phones)
+    const ids = GROUPS.flatMap(([, items]) => items.map(([id]) => id));
+    let raf = 0;
+    const onScroll = () => {
+      if (!document.contains(links[0])) { removeEventListener('scroll', onScroll); return; }
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (pinned) { clearTimeout(pinTimer); pinTimer = setTimeout(() => { pinned = ''; }, 250); return; }
+        const line = innerWidth <= 860 ? 130 : 110;
+        let at = ids[0];
+        for (const id of ids) { const el = document.getElementById(id); if (el && el.getBoundingClientRect().top <= line) at = id; }
+        if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) at = ids[ids.length - 1];
+        mark(at);
+      });
+    };
+    addEventListener('scroll', onScroll, { passive: true });
+    mark('licCard');
+  }
   const save = async (body) => { try { await api('PUT', '/api/settings', body); toast(t('saved')); } catch (err) { toast(err.message, true); } };
   $('#tgf').onsubmit = (e) => {
     e.preventDefault(); const f = e.target;

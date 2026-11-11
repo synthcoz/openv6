@@ -132,7 +132,7 @@ h3 { font-size: 13px; margin: 18px 0 8px; color: var(--muted); text-transform: u
 .card-head h2 { margin: 0; }
 .card-head .spacer { flex: 1; }
 .grid { display: grid; gap: 14px; }
-.cols-2 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+.cols-2 { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
 .cols-4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
@@ -501,7 +501,7 @@ table { contain: layout paint; }
   .nav a { padding: 6px 4px; min-width: 56px; border-radius: 10px; font-size: 10.5px; color: var(--muted); }
   .nav a.active { background: transparent; box-shadow: none; color: var(--text); }
   .nav a.active .ic { color: var(--accent-ink); }
-  .main { padding: 14px 14px calc(96px + env(safe-area-inset-bottom)); }
+  .main { padding: 14px 14px calc(96px + env(safe-area-inset-bottom)); --gut: 14px; }
   .page-head { gap: 10px; margin-bottom: 14px; }
   .page-head h1 { font-size: 22px; }
   .page-head > .row, .page-head > div:last-child { width: 100%; }
@@ -621,3 +621,85 @@ label.field > select, label.field > input { width: 100%; min-width: 0; }
 .v4opt input[type=radio] { margin-top: 3px; }
 .v4opt p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .v4opt .field { margin-top: 8px; }
+
+/* ---------- settings: section menu + one readable column ---------- */
+.settings { display: grid; grid-template-columns: 200px minmax(0, 820px); gap: 32px; align-items: start; margin-top: 20px; }
+.set-nav { position: sticky; top: 76px; display: grid; gap: 14px; }
+.set-nav-group { display: grid; gap: 1px; }
+.set-nav-label, .set-group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.set-nav-label { padding: 0 10px 4px; }
+.set-nav button { border: 0; background: transparent; box-shadow: none; justify-content: flex-start; padding: 6px 10px; border-radius: 8px;
+  font-weight: 500; font-size: 13.5px; color: var(--text-2); width: 100%; transition: background .15s var(--ease), color .15s var(--ease); }
+.set-nav button:hover { background: var(--inset); color: var(--text); }
+.set-nav button.on { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--border), var(--shadow-sm); }
+.set-body { display: grid; gap: 28px; min-width: 0; }
+.set-group { display: grid; gap: 14px; }
+.set-group-label { padding-left: 2px; }
+.set-group > .card { scroll-margin-top: 84px; }
+.settings .card { padding: 20px 22px; }
+.settings .card > h2 { margin-bottom: 14px; }
+.settings .hint { margin: 6px 0 0; }
+.card-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.subsec + .subsec { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.subsec > h3 { margin: 0 0 4px; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); }
+.subsec h4 { margin: 18px 0 4px; font-size: 13px; font-weight: 600; }
+.subsec textarea { margin-top: 8px; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 16px; }
+.set-rows { display: grid; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.set-row:first-child { padding-top: 0; }
+.set-row > span { font-weight: 550; }
+@media (max-width: 1100px) { .settings { grid-template-columns: 170px minmax(0, 1fr); gap: 22px; } }
+@media (max-width: 860px) {
+  .settings { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .set-nav { top: 54px; z-index: 15; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: -4px calc(-1 * var(--gut, 16px)) 0; padding: 8px var(--gut, 16px);
+    background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .set-nav::-webkit-scrollbar { display: none; }
+  .set-nav-group { display: contents; }
+  .set-nav-label { display: none; }
+  .set-nav button { width: auto; flex: none; border-radius: 999px; padding: 6px 12px; font-size: 13px; background: var(--panel); box-shadow: 0 0 0 1px var(--border); }
+  .set-nav button.on { background: var(--primary); color: var(--primary-text); box-shadow: none; }
+  .set-group > .card { scroll-margin-top: 110px; }
+  .settings .card { padding: 16px; }
+  .set-body { gap: 22px; }
+}
+
+/* ---------- dropdowns ---------- */
+select { transition: border-color .15s var(--ease), box-shadow .15s var(--ease), background-color .15s var(--ease); }
+select:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 22%, var(--border-2)); }
+select:disabled { opacity: .6; cursor: not-allowed; }
+select option { background: var(--panel); color: var(--text); }
+/* Customizable select (Chromium): our own menu with motion and a check mark;
+   other browsers keep the styled native control above. */
+@supports (appearance: base-select) {
+  select, ::picker(select) { appearance: base-select; }
+  select { background-image: none; padding: 8px 10px 8px 12px; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; }
+  select::picker-icon { content: ""; width: 14px; height: 14px; flex: none; margin-left: auto; background: currentColor; color: var(--muted);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: rotate .2s var(--ease); }
+  select:open::picker-icon { rotate: 180deg; }
+  select:open { border-color: color-mix(in srgb, var(--accent) 55%, var(--border-2)); box-shadow: var(--focus); }
+  ::picker(select) { border: 1px solid var(--border-2); border-radius: 12px; padding: 4px; margin-block: 6px; background: var(--panel); color: var(--text);
+    box-shadow: var(--shadow-lg); max-height: min(340px, 60vh); overflow-y: auto; scrollbar-width: thin;
+    opacity: 0; translate: 0 -4px; scale: .98; transform-origin: top center;
+    transition: opacity .16s var(--ease), translate .16s var(--ease), scale .16s var(--ease), display .16s allow-discrete, overlay .16s allow-discrete; }
+  select:open::picker(select) { opacity: 1; translate: 0 0; scale: 1; }
+  @starting-style { select:open::picker(select) { opacity: 0; translate: 0 -4px; scale: .98; } }
+  select option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 14px; cursor: pointer; background: transparent;
+    transition: background-color .12s var(--ease); white-space: nowrap; }
+  select option:hover, select option:focus-visible { background: var(--inset); outline: 0; }
+  select option:checked { font-weight: 600; background: var(--accent-soft); color: var(--accent-ink); }
+  select option::checkmark { order: 1; margin-left: auto; content: "✓"; font-size: 13px; font-weight: 700; color: var(--accent-ink); }
+  select option:disabled { opacity: .45; cursor: not-allowed; }
+  select optgroup { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px 2px; }
+}
+@media (prefers-reduced-motion: reduce) { ::picker(select), select::picker-icon { transition: none; } }
+
+/* small phones: grid items and event rows may shrink instead of widening the page */
+.grid > * { min-width: 0; }
+.timeline .ev > div:not(.when) { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 420px) {
+  .timeline .ev { flex-direction: column; gap: 2px; }
+  .timeline .when { min-width: 0; }
+}
