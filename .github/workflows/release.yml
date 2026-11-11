@@ -12,6 +12,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# One release at a time: a second trigger for the same ref waits instead of
+# racing the first one to publish the same tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 env:
   # Installers and updates are published to a separate public repository, so
   # this source repository can stay private. RELEASES_TOKEN: fine-grained
