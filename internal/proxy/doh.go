@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -48,8 +49,51 @@ type DoH struct {
 	Servers []DoHServer
 	Timeout time.Duration
 
-	clients sync.Map // "src|if" -> *http.Client
+	clients sync.Map // "src|if|server" -> *dohClient
 	cache   sync.Map // "type|host" -> dohEntry
+	nCache  atomic.Int64
+	nClient atomic.Int64
+}
+
+type dohClient struct {
+	*http.Client
+	used atomic.Int64 // unix seconds
+}
+
+// Limits keep memory bounded when clients look up many random names or the
+// proxies' addresses change often (new IPv6, rotating pools).
+const (
+	dohMaxCache   = 4096
+	dohMaxClients = 128
+)
+
+// sweep drops expired answers and idle clients once a map grows too large.
+func (d *DoH) sweep() {
+	if d.nCache.Load() > dohMaxCache {
+		now := time.Now()
+		d.cache.Range(func(k, v any) bool {
+			if now.After(v.(dohEntry).exp) {
+				d.cache.Delete(k)
+				d.nCache.Add(-1)
+			}
+			return true
+		})
+		if d.nCache.Load() > dohMaxCache { // still full of live entries: start over
+			d.cache.Range(func(k, _ any) bool { d.cache.Delete(k); return true })
+			d.nCache.Store(0)
+		}
+	}
+	if d.nClient.Load() > dohMaxClients {
+		idle := time.Now().Add(-5 * time.Minute).Unix()
+		d.clients.Range(func(k, v any) bool {
+			if c := v.(*dohClient); c.used.Load() < idle {
+				c.CloseIdleConnections()
+				d.clients.Delete(k)
+				d.nClient.Add(-1)
+			}
+			return true
+		})
+	}
 }
 
 type dohEntry struct {
@@ -62,7 +106,9 @@ func NewDoH() *DoH { return &DoH{Servers: DefaultDoH, Timeout: 5 * time.Second} 
 func (d *DoH) client(s DoHServer, src netip.Addr, ifIndex int) *http.Client {
 	key := fmt.Sprintf("%s|%d|%s", src, ifIndex, s.Name)
 	if c, ok := d.clients.Load(key); ok {
-		return c.(*http.Client)
+		dc := c.(*dohClient)
+		dc.used.Store(time.Now().Unix())
+		return dc.Client
 	}
 	var local net.Addr
 	if src.IsValid() && src.Is6() {
@@ -81,9 +127,14 @@ func (d *DoH) client(s DoHServer, src netip.Addr, ifIndex int) *http.Client {
 		TLSHandshakeTimeout: d.Timeout,
 		Proxy:               nil,
 	}
-	c := &http.Client{Transport: tr, Timeout: d.Timeout + 2*time.Second}
-	actual, _ := d.clients.LoadOrStore(key, c)
-	return actual.(*http.Client)
+	c := &dohClient{Client: &http.Client{Transport: tr, Timeout: d.Timeout + 2*time.Second}}
+	c.used.Store(time.Now().Unix())
+	actual, loaded := d.clients.LoadOrStore(key, c)
+	if !loaded {
+		d.nClient.Add(1)
+		d.sweep()
+	}
+	return actual.(*dohClient).Client
 }
 
 // Lookup returns the addresses of one record type (TypeA or TypeAAAA). src is
@@ -91,8 +142,12 @@ func (d *DoH) client(s DoHServer, src netip.Addr, ifIndex int) *http.Client {
 func (d *DoH) Lookup(ctx context.Context, host string, qtype uint16, src netip.Addr, ifIndex int) ([]netip.Addr, error) {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	key := fmt.Sprintf("%d|%s", qtype, host)
-	if e, ok := d.cache.Load(key); ok && time.Now().Before(e.(dohEntry).exp) {
-		return e.(dohEntry).addrs, nil
+	if e, ok := d.cache.Load(key); ok {
+		if time.Now().Before(e.(dohEntry).exp) {
+			return e.(dohEntry).addrs, nil
+		}
+		d.cache.Delete(key)
+		d.nCache.Add(-1)
 	}
 	q, err := dnsQuery(host, qtype)
 	if err != nil {
@@ -109,7 +164,10 @@ func (d *DoH) Lookup(ctx context.Context, host string, qtype uint16, src netip.A
 			continue
 		}
 		ttl = min(max(ttl, 30), 600)
-		d.cache.Store(key, dohEntry{addrs: addrs, exp: time.Now().Add(time.Duration(ttl) * time.Second)})
+		if _, loaded := d.cache.Swap(key, dohEntry{addrs: addrs, exp: time.Now().Add(time.Duration(ttl) * time.Second)}); !loaded {
+			d.nCache.Add(1)
+			d.sweep()
+		}
 		return addrs, nil
 	}
 	return nil, lastErr

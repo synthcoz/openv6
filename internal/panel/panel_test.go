@@ -649,6 +649,9 @@ func TestBlockedSitesAndSiteTest(t *testing.T) {
 	var list []struct{ ID int64 }
 	e.call("GET", "/api/proxies", nil, &list, 200)
 	e.call("POST", fmt.Sprintf("/api/proxies/%d/test-site", list[0].ID), map[string]string{"host": "not a site"}, nil, 400)
+	for _, h := range []string{"::1", "127.0.0.1", "fd00::5", "[fe80::1%25eth0]"} { // names only: no probing the node's network
+		e.call("POST", fmt.Sprintf("/api/proxies/%d/test-site", list[0].ID), map[string]string{"host": h}, nil, 400)
+	}
 	var cmd struct{ ID, Type string }
 	e.call("POST", fmt.Sprintf("/api/proxies/%d/test-site", list[0].ID), map[string]string{"host": "https://Example.com/x"}, &cmd, 200)
 	if cmd.Type != "test_site" || cmd.ID == "" {
@@ -722,13 +725,20 @@ func TestIPv4ModeSafeDefault(t *testing.T) {
 	if st["ipv4_mode"] != "off" { // fresh install: nothing can reach IPv4
 		t.Fatalf("default mode %v", st["ipv4_mode"])
 	}
-	// an install that already uses IPv4 fallback keeps working as before
+	// turning on fallback for one proxy later must not switch the mode
 	var list []struct{ ID int64 }
 	e.call("GET", "/api/proxies", nil, &list, 200)
 	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID}, "action": "fallback_on"}, nil, 200)
 	e.call("GET", "/api/settings", nil, &st, 200)
-	if st["ipv4_mode"] != "direct" {
-		t.Fatalf("mode with a fallback proxy %v", st["ipv4_mode"])
+	if st["ipv4_mode"] != "off" {
+		t.Fatalf("mode changed by a fallback proxy: %v", st["ipv4_mode"])
+	}
+	// an upgraded install (no mode stored yet) that already uses fallback
+	// keeps working as before, and that decision is stored
+	_ = e.srv.Store.SetSetting("ipv4_mode", "")
+	e.call("GET", "/api/settings", nil, &st, 200)
+	if st["ipv4_mode"] != "direct" || e.srv.Store.GetSetting("ipv4_mode", "") != "direct" {
+		t.Fatalf("upgrade with a fallback proxy: %v", st["ipv4_mode"])
 	}
 	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "nat64"}, nil, 400) // no prefix yet
 	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "sometimes"}, nil, 400)

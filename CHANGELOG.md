@@ -10,6 +10,14 @@
 - **Trang được đi bằng IPv4:** danh sách trang chỉ có IPv4 vẫn mở được qua mọi proxy, kể cả khi “Dự phòng IPv4” đang tắt.
 - **Cổng NAT64:** điền prefix /96 thì trang chỉ có IPv4 đi qua NAT64 (ví dụ trên VPS của bạn), không dùng IPv4 nhà. Xem `docs/NAT64.md`.
 - **Một lựa chọn rõ ràng cho trang chỉ có IPv4** (*Cài đặt → Truy cập trang web*): *Không cho đi IPv4* (an toàn nhất, mặc định cho bản cài mới), *Đi qua cổng NAT64* (nên dùng nếu cần IPv4) hoặc *Dùng IPv4 của máy này* (lộ IP thật, phải xác nhận). Mỗi lựa chọn ghi rõ trang sẽ thấy IP nào. Ô “Dự phòng IPv4” giải thích đúng tác dụng theo lựa chọn đang dùng. Proxy đang lộ IPv4 thật có nhãn ⚠ trong danh sách. Chọn NAT64 mà prefix sai hoặc thiếu thì node tắt IPv4 chứ không quay về IPv4 của máy. Bản đang có proxy bật dự phòng giữ hành vi cũ cho tới khi bạn đổi.
+- **Rà soát bảo mật trước khi phát hành:**
+  - Proxy không còn đi vòng qua NAT64 để vào địa chỉ nội bộ (loopback, LAN, metadata của VPS). Địa chỉ NAT64 được xét theo IPv4 nằm bên trong.
+  - Đích IPv4 (dự phòng hoặc danh sách IPv4) luôn bị chặn nếu là địa chỉ nội bộ.
+  - Địa chỉ IPv6 có zone (`%`) bị từ chối, nên không thể lách qua quy tắc chặn theo dải IP.
+  - “Kiểm tra một trang web” chỉ nhận tên miền và theo đúng các quy tắc trên, nên không dùng để dò mạng nội bộ được.
+  - Chế độ IPv4 được lưu một lần: bật dự phòng cho một proxy không còn tự chuyển mọi proxy sang IPv4 của máy.
+  - Cache DNS mã hoá và các kết nối DoH có giới hạn bộ nhớ.
+  - Icon khay không còn tranh chấp dữ liệu giữa các luồng, và mục menu không bị ẩn/hiện mỗi 4 giây khi dịch vụ dừng.
 - **CI tốn ít phút GitHub Actions hơn:** PR chỉ chạy job Linux, gồm test và build chéo mọi nền tảng. Windows, macOS và script cài chạy khi ra bản. Không build bộ cài ở mỗi PR nữa.
 - **Thoát từ icon khay luôn tắt hẳn openv6:** gửi lệnh tắt cả khi lần kiểm tra trước thất bại, thử lại nếu cần, rồi chờ dịch vụ dừng hẳn mới đóng icon.
 

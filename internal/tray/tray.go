@@ -231,13 +231,12 @@ func onReady() {
 		switch {
 		case !curOK:
 			st, line = icon.StateError, tr(diagKey)
-			setShown(mStart, false)
-			setShown(mInstall, false)
+			setShown(mInstall, diagKey == "diag_not_installed")
 			switch diagKey {
-			case "diag_not_installed":
-				setShown(mInstall, true)
 			case "diag_stopped", "diag_no_answer", "diag_no_info", "diag_unknown":
 				setShown(mStart, true)
+			default:
+				setShown(mStart, false)
 			}
 		case cur.Paused:
 			st, line = icon.StatePaused, tr("paused", cur.Total)
@@ -311,7 +310,10 @@ func onReady() {
 			case <-mStatus.ClickedCh:
 				openDashboard("")
 			case <-mProblem.ClickedCh:
-				if curOK {
+				mu.Lock()
+				ok := curOK
+				mu.Unlock()
+				if ok {
 					openDashboard("nodes")
 				} else {
 					go report()
@@ -323,7 +325,10 @@ func onReady() {
 			case <-mInstall.ClickedCh:
 				go func() { _ = installElevated(); time.Sleep(5 * time.Second); refresh() }()
 			case <-mPause.ClickedCh:
-				if cur.Paused {
+				mu.Lock()
+				paused := cur.Paused
+				mu.Unlock()
+				if paused {
 					action("resume")
 				} else {
 					action("pause")
@@ -344,12 +349,16 @@ func onReady() {
 					}
 				}
 			case <-mLangVI.ClickedCh:
+				mu.Lock()
 				lang = "vi"
+				mu.Unlock()
 				mLangVI.Check()
 				mLangEN.Uncheck()
 				action("lang-vi")
 			case <-mLangEN.ClickedCh:
+				mu.Lock()
 				lang = "en"
+				mu.Unlock()
 				mLangEN.Check()
 				mLangVI.Uncheck()
 				action("lang-en")

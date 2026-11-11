@@ -1456,13 +1456,18 @@ func (s *Server) ipv4Mode() string {
 	if v := s.Store.GetSetting("ipv4_mode", ""); v != "" {
 		return v
 	}
+	// decided once and stored: turning on fallback for one proxy later must
+	// never switch every proxy to the machine's IPv4
+	mode := "off"
 	ps, _ := s.Store.ListProxies(store.ProxyFilter{})
 	for _, p := range ps {
 		if p.IPv4Fallback {
-			return "direct"
+			mode = "direct"
+			break
 		}
 	}
-	return "off"
+	_ = s.Store.SetSetting("ipv4_mode", mode)
+	return mode
 }
 
 // blockRules is the saved blocked-sites list as sent to the nodes.
@@ -1498,8 +1503,10 @@ func (s *Server) handleTestSite(w http.ResponseWriter, r *http.Request) {
 	}
 	host := proxy.NormalizeRule(b.Host)
 	host = strings.TrimPrefix(host, "*.")
-	if host == "" || strings.Contains(host, "/") {
-		fail(w, 400, "enter a website, for example example.com")
+	if _, err := netip.ParseAddr(host); err == nil || host == "" || strings.ContainsAny(host, "/%") {
+		// names only: an IP literal would let the test probe the node's own
+		// network (loopback, LAN) from the proxy's address
+		fail(w, 400, "enter a website name, for example example.com")
 		return
 	}
 	st := s.queueCommand(p.NodeID, proto.Command{Type: "test_site", ProxyID: p.ID, Host: host})
