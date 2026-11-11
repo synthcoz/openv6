@@ -1,0 +1,67 @@
+<!--
+{
+  "title": "Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers",
+  "description": "A profile whose time zone or language disagrees with its proxy IP stands out. Which settings to match, where to find the right values, and how to fill them for many profiles at once.",
+  "order": 9,
+  "date": "2026-11-11",
+  "keywords": ["anti-detect browser timezone", "match timezone to proxy", "browser language proxy", "geolocation spoofing proxy", "WebRTC leak", "proxy location mismatch"],
+  "tldr": "Set each anti-detect profile's time zone, browser language and geolocation to the location of its proxy IP, and keep WebRTC from showing your real address. Get the values from an IP lookup made through the proxy itself. openv6 shows them for every proxy after a check and includes them in the CSV/JSON export.",
+  "faq": [
+    ["Do I have to match the browser language exactly?", "Matching the country's usual language (for example vi-VN for Vietnam, de-DE for Germany) is the safe default. Plenty of real users have another language, so a mismatch alone is not proof of anything, but it adds to the score together with other signals."],
+    ["Where do I get the right time zone for a proxy?", "Look the IP up through the proxy itself, not from your own connection. openv6's check does that and shows the IANA time zone, such as Asia/Ho_Chi_Minh, which is the format anti-detect browsers use."],
+    ["Most anti-detect browsers can fill these automatically. Do I still need this?", "Automatic mode works when the browser can look the IP up through the proxy. If its lookup fails, it may fall back to your real location, so check the values once, especially for new proxies."],
+    ["Does the geolocation need to be exact?", "No. Use the city coordinates the IP lookup returns. Websites only see geolocation if they ask for permission, and they compare it with the IP's rough location, not with a street address."]
+  ]
+}
+-->
+<p>An anti-detect browser makes each profile look like a different device. A proxy makes each profile come from a different IP. But the profile also tells websites <em>where</em> it thinks it is: its time zone, its language, sometimes its GPS position. When those disagree with the IP, the profile tells two different stories, and that is easy to spot.</p>
+<p>A typical example: an IP in Vietnam, a browser clock on <code>America/New_York</code>, and <code>en-US</code> as the only language. Any site can read all three with a few lines of JavaScript.</p>
+
+<h2 id="what-to-match">What to match</h2>
+<table>
+<thead><tr><th>Setting</th><th>What websites read</th><th>Match it to</th></tr></thead>
+<tbody>
+<tr><td><strong>Time zone</strong></td><td><code>Intl.DateTimeFormat().resolvedOptions().timeZone</code>, the clock offset</td><td>The IANA time zone of the proxy IP, e.g. <code>Europe/Berlin</code></td></tr>
+<tr><td><strong>Language</strong></td><td><code>navigator.languages</code> and the <code>Accept-Language</code> header</td><td>The usual language of the IP's country, e.g. <code>de-DE</code></td></tr>
+<tr><td><strong>Geolocation</strong></td><td>The Geolocation API (only after the user allows it)</td><td>The latitude and longitude of the IP's city</td></tr>
+<tr><td><strong>WebRTC</strong></td><td>Local and public addresses exposed by WebRTC</td><td>The proxy IP, or disabled. Never your real IP.</td></tr>
+</tbody>
+</table>
+<p>Other locale details (date format, number format, fonts) follow the language in most anti-detect browsers. Screen size, GPU and similar fingerprint values are about the device, not the location, so they don't need to match the proxy.</p>
+
+<h2 id="get-values">Get the right values</h2>
+<p>The values must come from the IP the website will see, so look it up <strong>through the proxy</strong>. A lookup from your own connection gives your own location.</p>
+<p>By hand:</p>
+<pre><code>curl -x socks5h://user:pass@host:port https://ipinfo.io/json</code></pre>
+<p>The answer has <code>timezone</code>, <code>country</code>, <code>city</code> and <code>loc</code> (latitude, longitude). The language you pick from the country.</p>
+<p>In <a href="../../">openv6</a>, every proxy check does this lookup through the proxy. Open the proxy and the <strong>Profile settings to match this IP</strong> section shows the time zone, the suggested language and the location, each with a copy button. Before the first check it tells you to run one.</p>
+
+<h2 id="many-profiles">Doing it for many profiles</h2>
+<p>Copying three values into fifty profiles is tedious and error-prone. Two ways around it:</p>
+<ol>
+<li><strong>Let the browser fill them from the IP.</strong> Most anti-detect browsers have an "auto from IP" or "based on proxy" option for time zone, language and geolocation. It works when the browser can reach its own IP-lookup service through the proxy. Check one profile after the first launch: if the lookup failed, some browsers silently fall back to your real location.</li>
+<li><strong>Import the values with the proxies.</strong> openv6's CSV and JSON export include <code>country</code>, <code>timezone</code>, <code>language</code>, <code>city</code>, <code>latitude</code> and <code>longitude</code> next to each proxy. Use them in a spreadsheet, a script, or your browser's API to set each profile.</li>
+</ol>
+<p>If the browser's own IP lookup keeps failing with IPv6 proxies, its lookup service is probably IPv4-only. See <a href="../websites-that-fail-over-ipv6-proxies/">why some sites fail over IPv6 proxies</a> for a fix that doesn't expose your IPv4.</p>
+
+<h2 id="language">Picking the language</h2>
+<p>Use the country's most common browser language as the first entry, for example:</p>
+<table>
+<thead><tr><th>Country</th><th>Language</th><th>Country</th><th>Language</th></tr></thead>
+<tbody>
+<tr><td>United States</td><td><code>en-US</code></td><td>Vietnam</td><td><code>vi-VN</code></td></tr>
+<tr><td>United Kingdom</td><td><code>en-GB</code></td><td>Japan</td><td><code>ja-JP</code></td></tr>
+<tr><td>Germany</td><td><code>de-DE</code></td><td>Brazil</td><td><code>pt-BR</code></td></tr>
+<tr><td>France</td><td><code>fr-FR</code></td><td>Indonesia</td><td><code>id-ID</code></td></tr>
+</tbody>
+</table>
+<p>Adding English as a second language (<code>vi-VN, en-US</code>) is normal and common. What stands out is a language list that has nothing to do with the IP's country at all.</p>
+
+<h2 id="checklist">Checklist</h2>
+<ol>
+<li>One profile, one fixed proxy (<a href="../proxies-for-anti-detect-browsers/">why</a>).</li>
+<li>Check the proxy, then set time zone, language and geolocation from that check.</li>
+<li>Set WebRTC to use the proxy IP, or disable it.</li>
+<li>Open an IP-check page inside the profile once and confirm everything shows the same country.</li>
+<li>If you ever replace the proxy, run the check again and update the profile: a new address can be in another city.</li>
+</ol>

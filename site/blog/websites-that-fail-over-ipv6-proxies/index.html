@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4) | openv6</title>
+<meta name="description" content="A site fails through your IPv6 proxy. Is it DNS hiding the IPv6 record, an IPv4-only site, or a site refusing your range? How to tell, and fixes that keep your real IPv4 hidden.">
+<link rel="canonical" href="https://thephuc.xyz/openv6/blog/websites-that-fail-over-ipv6-proxies/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="openv6">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4) | openv6">
+<meta property="og:description" content="A site fails through your IPv6 proxy. Is it DNS hiding the IPv6 record, an IPv4-only site, or a site refusing your range? How to tell, and fixes that keep your real IPv4 hidden.">
+<meta property="og:url" content="https://thephuc.xyz/openv6/blog/websites-that-fail-over-ipv6-proxies/">
+<meta property="og:image" content="https://thephuc.xyz/openv6/assets/og/websites-that-fail-over-ipv6-proxies.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4) | openv6">
+<meta name="twitter:description" content="A site fails through your IPv6 proxy. Is it DNS hiding the IPv6 record, an IPv4-only site, or a site refusing your range? How to tell, and fixes that keep your real IPv4 hidden.">
+<meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og/websites-that-fail-over-ipv6-proxies.jpg">
+<meta property="article:published_time" content="2026-11-11">
+<meta property="article:modified_time" content="2026-11-11">
+<meta name="keywords" content="IPv6 proxy website not loading, IPv4-only website, AAAA record missing, DNS over HTTPS IPv6, NAT64 proxy, IPv4 leak proxy">
+<link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
+<link rel="icon" href="../../assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
+<link rel="stylesheet" href="../../assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4)","description":"A site fails through your IPv6 proxy. Is it DNS hiding the IPv6 record, an IPv4-only site, or a site refusing your range? How to tell, and fixes that keep your real IPv4 hidden.","image":"https://thephuc.xyz/openv6/assets/og/websites-that-fail-over-ipv6-proxies.jpg","datePublished":"2026-11-11","dateModified":"2026-11-11","author":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"publisher":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"mainEntityOfPage":"https://thephuc.xyz/openv6/blog/websites-that-fail-over-ipv6-proxies/","keywords":"IPv6 proxy website not loading, IPv4-only website, AAAA record missing, DNS over HTTPS IPv6, NAT64 proxy, IPv4 leak proxy","wordCount":1070,"inLanguage":"en","about":{"@type":"SoftwareApplication","name":"openv6","url":"https://thephuc.xyz/openv6/"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"openv6","item":"https://thephuc.xyz/openv6/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://thephuc.xyz/openv6/blog/"},{"@type":"ListItem","position":3,"name":"Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4)","item":"https://thephuc.xyz/openv6/blog/websites-that-fail-over-ipv6-proxies/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why does a site open in my normal browser but not through the IPv6 proxy?","acceptedAnswer":{"@type":"Answer","text":"Your normal browser falls back to IPv4 silently. An IPv6 proxy has no IPv4 to fall back to unless you give it one, so an IPv4-only site, or a site whose IPv6 record your DNS hides, fails."}},{"@type":"Question","name":"Is turning on IPv4 fallback safe?","acceptedAnswer":{"@type":"Answer","text":"Not for account work. Fallback sends IPv4-only sites out through the proxy machine's real IPv4, which every proxy with fallback shares. The sites then see your home IP and can link the accounts."}},{"@type":"Question","name":"What is NAT64 and why is it safer?","acceptedAnswer":{"@type":"Answer","text":"A NAT64 gateway turns an IPv6 connection into an IPv4 one. Run it on a cheap VPS and IPv4-only sites see the VPS's IPv4, never your home IP, while the proxy itself still only speaks IPv6."}},{"@type":"Question","name":"Does encrypted DNS leak anything?","acceptedAnswer":{"@type":"Answer","text":"openv6 sends DNS-over-HTTPS queries to Cloudflare or Google from the proxy's own IPv6. No IPv4 is used, and your ISP cannot see which names are looked up."}}]}</script>
+</head>
+<body>
+<header id="hdr"><div class="wrap"><div class="nav">
+  <a class="brand" href="../../"><img src="../../assets/logo.svg" alt="" width="30" height="30">openv6</a>
+  <nav class="links"><a href="../../#how">How it works</a><a href="../../#pricing">Pricing</a><a href="../../blog/">Blog</a><a href="../../#faq">FAQ</a></nav>
+  <div class="sp"></div>
+  <button class="icon-btn" id="theme" type="button" title="Switch light / dark" aria-label="Switch light / dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="btn sm primary dl" href="../../#download">Download</a>
+</div></div></header>
+<main class="wrap post">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">openv6</a><span>›</span><a href="../">Blog</a></nav>
+  <article>
+    <h1>Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4)</h1>
+    <p class="pmeta"><time datetime="2026-11-11">November 11, 2026</time> · 5 min read</p>
+    <div class="tldr"><b>In short</b><p>A site fails through an IPv6 proxy for one of three reasons: your DNS hides its IPv6 record, the site has no IPv6 at all, or the site refuses connections from your IPv6 range. Fix the first with encrypted DNS lookups, the second with a NAT64 gateway on a VPS (not your home IPv4), and the third with a proxy on another network. openv6's “Test a website” tells you which one it is.</p></div>
+    <nav class="toc" aria-label="Contents"><b>Contents</b><ol><li><a href="#three-causes">The three causes</a></li><li><a href="#diagnose">Find out which one it is</a></li><li><a href="#fix-dns">Fix 1: DNS hides IPv6, use encrypted DNS</a></li><li><a href="#fix-ipv4-only">Fix 2: IPv4-only sites, use NAT64, not your home IPv4</a></li><li><a href="#fix-refused">Fix 3: The site refuses your IPv6</a></li><li><a href="#blocked">Bonus: the site is blocked on purpose</a></li><li><a href="#summary">Summary</a></li></ol></nav>
+    <div class="prose">
+<p>You set up IPv6 proxies, most sites work, and then one site simply won't load: a timeout, a 502, or the anti-detect browser saying the connection failed. The same site opens fine in your normal browser. What's going on?</p>
+<p>Your normal browser has both IPv4 and IPv6 and quietly uses whichever works. A pure IPv6 proxy has only IPv6. So when a site fails, it is almost always one of three things, and each has a different fix. Some "fixes" you will find online expose your real IPv4, which defeats the point of using separate proxies at all. This guide sticks to fixes that don't.</p>
+
+<h2 id="three-causes">The three causes</h2>
+<div class="tbl"><table>
+<thead><tr><th>Cause</th><th>What happens</th><th>How common</th></tr></thead>
+<tbody>
+<tr><td><strong>DNS hides the IPv6 record</strong></td><td>The site has IPv6, but your router, ISP or VPN DNS does not return its <code>AAAA</code> record, so the proxy thinks there is no IPv6.</td><td>Common on some home routers and VPN DNS</td></tr>
+<tr><td><strong>The site is IPv4-only</strong></td><td>The site has no IPv6 address at all. No IPv6 proxy can reach it directly.</td><td>Common: many smaller sites, some APIs, some proxy-check services</td></tr>
+<tr><td><strong>The site refuses your IPv6</strong></td><td>The site has IPv6 but blocks your range, or the IPv6 path to it is broken.</td><td>Rare, mostly anti-bot systems and some hosting providers</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="diagnose">Find out which one it is</h2>
+<p>You can check by hand. Ask a public resolver directly whether the site has IPv6:</p>
+<pre><code>nslookup -type=AAAA example.com 1.1.1.1</code></pre>
+<p>Then ask your normal DNS the same question (drop the <code>1.1.1.1</code>). If the public resolver returns an IPv6 address and your own DNS doesn't, it is cause 1. If neither returns one, it is cause 2. If both return an address but this still fails:</p>
+<pre><code>curl -6 -I https://example.com</code></pre>
+<p>then the site is refusing your IPv6 or the path is broken: cause 3.</p>
+<p>In <a href="../../">openv6</a> you don't have to do this by hand. Open a proxy, go to <strong>Test a website</strong>, type the domain, and click <strong>Test</strong>. The proxy machine runs the checks above, from the proxy's own IPv6, and shows the verdict with the addresses it found and the fix.</p>
+
+<h2 id="fix-dns">Fix 1: DNS hides IPv6, use encrypted DNS</h2>
+<p>When the router or VPN DNS strips <code>AAAA</code> records, the site is reachable over IPv6; the proxy just can't find the address. The fix is to look the name up somewhere that tells the truth.</p>
+<p>openv6 does this automatically with <strong>Encrypted DNS fallback</strong> (<em>Settings → Website access</em>, on by default). When normal DNS returns no IPv6, the proxy asks Cloudflare or Google over DNS-over-HTTPS, connecting to them over the proxy's own IPv6. Nothing goes over IPv4, and the ISP does not see the query. The site then opens over IPv6 like any other.</p>
+<p>If you run your own proxy software instead, point its resolver at a public DNS server that returns <code>AAAA</code> records, and make sure that lookup goes over IPv6 too.</p>
+
+<h2 id="fix-ipv4-only">Fix 2: IPv4-only sites, use NAT64, not your home IPv4</h2>
+<p>An IPv4-only site needs an IPv4 address on the other end. You have three choices, and they differ a lot in what the site sees:</p>
+<div class="tbl"><table>
+<thead><tr><th>Choice (openv6 setting)</th><th>What the site sees</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><strong>Never use IPv4</strong> (default)</td><td>Nothing. The site does not open.</td><td>Safest. Fine if you don't need those sites.</td></tr>
+<tr><td><strong>Through a NAT64 gateway</strong></td><td>The IPv4 of your NAT64 gateway, usually a cheap VPS.</td><td>Recommended when you need IPv4. Your home IP stays hidden.</td></tr>
+<tr><td><strong>This machine's IPv4</strong></td><td>The real IPv4 of the proxy machine: your home IP, shared by every proxy that uses it.</td><td>Avoid for account work. It links every account to one IP.</td></tr>
+</tbody>
+</table></div>
+<p>The last option is what most "IPv4 fallback" switches do, and it is the leak to watch for. Every profile that reaches an IPv4-only site through it shows up from the <em>same</em> address: your real one. Anti-fraud systems link accounts on exactly that.</p>
+<p><strong>NAT64</strong> avoids it. A NAT64 gateway takes connections to a special IPv6 prefix (a <code>/96</code>, such as <code>64:ff9b::/96</code>) and forwards them to the IPv4 address embedded in it. Run one on a VPS (Jool is the usual choice on Linux), enter its prefix in openv6, and IPv4-only sites go out over IPv6 to the VPS, which connects to them over its own IPv4. The site sees the VPS. The proxy machine never uses its own IPv4. If the gateway is down or the prefix is wrong, those sites fail to open; they never fall back to your home IP.</p>
+<p>Two things to keep in mind:</p>
+<ul>
+<li>Every proxy that reaches IPv4-only sites through the gateway shares the gateway's IPv4. That is fine for things like a proxy-check service or a CDN, but don't log in to accounts on IPv4-only sites from many profiles through one gateway.</li>
+<li>You don't have to send every IPv4-only site through it. openv6's <strong>Sites allowed over IPv4</strong> list lets you name just the ones you need (for example the IP-check service of your anti-detect browser), while <em>IPv4 fallback</em> stays off on the proxies themselves.</li>
+</ul>
+<p>The setup steps are in <code>docs/NAT64.md</code> in the openv6 repository.</p>
+
+<h2 id="fix-refused">Fix 3: The site refuses your IPv6</h2>
+<p>If the site has IPv6 and a direct <code>curl -6</code> fails or returns 403, the site (or its CDN) doesn't like your range, or the route to it is broken. Your options:</p>
+<ul>
+<li>Get a new address inside your prefix (openv6: <strong>New IPv6</strong>). If the site blocks a single address, this helps; if it blocks the whole /64, it won't.</li>
+<li>Use a proxy on another network: another ISP at home, or a <a href="../ipv6-proxies-on-a-vps/">VPS with its own IPv6 range</a>.</li>
+<li>Check the network. A VPN or firewall with an IPv6 kill switch on the proxy machine can break IPv6 to some destinations only.</li>
+</ul>
+
+<h2 id="blocked">Bonus: the site is blocked on purpose</h2>
+<p>If you added the site to openv6's <strong>Blocked sites</strong> list, the proxy refuses it with a 403 (HTTP) or "not allowed" (SOCKS5). "Test a website" says so explicitly, so you don't waste time looking for a network problem.</p>
+
+<h2 id="summary">Summary</h2>
+<ol>
+<li>Test the site from the proxy and find out which of the three causes it is.</li>
+<li>Hidden IPv6 record: turn on encrypted DNS lookups.</li>
+<li>IPv4-only site: send it through a NAT64 gateway on a VPS, and only the sites you need. Don't use the machine's own IPv4.</li>
+<li>Refused IPv6: new address, or a proxy on another network.</li>
+</ol>
+<p>New to IPv6 proxies? Start with <a href="../what-is-an-ipv6-proxy/">what an IPv6 proxy is</a> and <a href="../proxies-for-anti-detect-browsers/">how to set them up in anti-detect browsers</a>.</p>
+    </div>
+    <section class="faqs" id="faq"><h2>Frequently asked questions</h2><details><summary>Why does a site open in my normal browser but not through the IPv6 proxy?</summary><p>Your normal browser falls back to IPv4 silently. An IPv6 proxy has no IPv4 to fall back to unless you give it one, so an IPv4-only site, or a site whose IPv6 record your DNS hides, fails.</p></details><details><summary>Is turning on IPv4 fallback safe?</summary><p>Not for account work. Fallback sends IPv4-only sites out through the proxy machine's real IPv4, which every proxy with fallback shares. The sites then see your home IP and can link the accounts.</p></details><details><summary>What is NAT64 and why is it safer?</summary><p>A NAT64 gateway turns an IPv6 connection into an IPv4 one. Run it on a cheap VPS and IPv4-only sites see the VPS's IPv4, never your home IP, while the proxy itself still only speaks IPv6.</p></details><details><summary>Does encrypted DNS leak anything?</summary><p>openv6 sends DNS-over-HTTPS queries to Cloudflare or Google from the proxy's own IPv6. No IPv4 is used, and your ISP cannot see which names are looked up.</p></details></section>
+  </article>
+  <aside class="cta-card">
+    <div><h2>Run your own static IPv6 proxies</h2><p>openv6 turns your home ISP or VPS IPv6 into fixed HTTP + SOCKS5 proxies for anti-detect browsers. Windows, macOS and Linux. Free for 3 proxies.</p></div>
+    <div class="cta"><a class="btn primary" href="../../#download">Download free</a><a class="btn" href="../../#pricing">See Pro</a></div>
+  </aside>
+  <section class="related"><h2>Keep reading</h2><div class="pgrid"><a class="pcard" href="../../blog/what-is-an-ipv6-proxy/"><h3>What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work</h3><p>An IPv6 proxy sends your traffic out from an IPv6 address instead of IPv4. Here is how IPv6 proxies work, why one fixed IPv6 per account matters, and when they beat IPv4 proxies.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/proxies-for-anti-detect-browsers/"><h3>Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser</h3><p>Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/ipv6-proxies-on-a-vps/"><h3>IPv6 Proxies on a VPS: Turn One /64 (or a /48) Into Hundreds of Proxies</h3><p>How to run your own static IPv6 proxies on a cheap VPS: on-link /64 vs routed /56 and /48 prefixes, one /64 per proxy, firewall ports, and managing several servers from one dashboard.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a></div></section>
+</main>
+<footer><div class="wrap">
+  <div class="fl"><a class="brand" href="../../" style="font-size:15px"><img src="../../assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© 2026 openv6</span></div>
+  <nav class="fr"><a href="../../blog/">Blog</a><a href="https://labs.thephuc.xyz/">Labs</a><a href="https://github.com/thephux/openv6-releases">GitHub</a><a href="../../#download">Downloads</a></nav>
+</div></footer>
+<script>
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+};
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
+</body>
+</html>
