@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.2
 
 - **Trang Cài đặt sắp xếp lại:** một cột dễ đọc, chia nhóm (Chung, Proxy, Thông báo, Tài khoản & bảo mật, Dữ liệu, Giao diện) với menu mục luôn hiện bên trái; trên điện thoại là thanh chip cuộn ngang. Các ô nhập ngắn đặt cạnh nhau, mỗi thẻ có nút Lưu ở cuối.
 - **Dropdown mới:** trên Chrome / Edge, menu thả xuống có viền bo, bóng, hiệu ứng mở và dấu ✓ ở mục đang chọn; trình duyệt khác giữ dropdown gốc đã làm đẹp.
