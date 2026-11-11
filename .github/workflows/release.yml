@@ -29,7 +29,7 @@ jobs:
       tag: ${{ steps.ver.outputs.tag }}
       exists: ${{ steps.ver.outputs.exists }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: ver
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
@@ -53,8 +53,8 @@ jobs:
     if: needs.plan.outputs.exists == 'false'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: go vet ./... && go test ./...
@@ -64,7 +64,7 @@ jobs:
           cd dist
           for a in amd64 arm64 arm; do ../packaging/linux/build-deb.sh "${{ needs.plan.outputs.tag }}" $a openv6-linux-$a; done
           ls -la
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux
           path: |
@@ -76,8 +76,8 @@ jobs:
     if: needs.plan.outputs.exists == 'false'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Build
@@ -133,7 +133,7 @@ jobs:
           & "${{ steps.sign.outputs.signtool }}" sign /f "$env:RUNNER_TEMP\cert.pfx" /p "$env:CERT_PASSWORD" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "openv6 setup" dist\openv6-setup-windows-amd64.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Remove-Item "$env:RUNNER_TEMP\cert.pfx" -ErrorAction SilentlyContinue
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: windows
           path: dist/*
@@ -143,8 +143,8 @@ jobs:
     if: needs.plan.outputs.exists == 'false'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Build (cgo for the tray)
@@ -160,7 +160,7 @@ jobs:
           V="${{ needs.plan.outputs.tag }}"
           pkgbuild --root pkgroot --scripts packaging/macos/scripts --identifier com.openv6.pkg \
             --version "${V#v}" --install-location / dist/openv6-macos.pkg
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: macos
           path: dist/*
@@ -170,11 +170,11 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: out
           merge-multiple: true
