@@ -275,6 +275,8 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 		UPnP:      node.UPnP,
 		Block:     s.blockRules(),
 		SecureDNS: s.Store.GetSetting("secure_dns", "1") == "1",
+		IPv4Sites: func() []string { r, _ := cleanBlockRules(s.Store.GetSetting("ipv4_sites", "")); return r }(),
+		NAT64:     s.Store.GetSetting("nat64_prefix", ""),
 		Pools:     []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
 	for _, p := range pools {
 		pm[p.ID] = p

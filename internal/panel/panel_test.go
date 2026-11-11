@@ -666,3 +666,41 @@ func TestBlockedSitesAndSiteTest(t *testing.T) {
 	}
 	e.call("POST", "/api/proxies/999/test-site", map[string]string{"host": "example.com"}, nil, 404)
 }
+
+func TestIPv4SitesNAT64AndConnLog(t *testing.T) {
+	e := newEnv(t)
+	var node struct{ ID int64 }
+	e.call("POST", "/api/nodes", map[string]string{"name": "home"}, &node, 200)
+	var inst struct{ Token string }
+	e.call("GET", fmt.Sprintf("/api/nodes/%d/install", node.ID), nil, &inst, 200)
+	net := homeNet("2405:4802:1:2::/64")
+	e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", node.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random"}, nil, 200)
+
+	e.call("PUT", "/api/settings", map[string]string{"nat64_prefix": "2001:db8::/64"}, nil, 400)
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_sites": "a b c"}, nil, 400)
+	var st map[string]any
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_sites": "https://check.example.com/ip\n198.51.100.0/24", "nat64_prefix": " 2001:db8:64:64:0:0:1:2/96 "}, &st, 200)
+	if st["ipv4_sites"] != "check.example.com\n198.51.100.0/24" || st["nat64_prefix"] != "2001:db8:64:64::/96" {
+		t.Fatalf("saved %q %q", st["ipv4_sites"], st["nat64_prefix"])
+	}
+	resp := e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if len(resp.IPv4Sites) != 2 || resp.NAT64 != "2001:db8:64:64::/96" {
+		t.Fatalf("desired %+v %q", resp.IPv4Sites, resp.NAT64)
+	}
+	e.call("PUT", "/api/settings", map[string]string{"nat64_prefix": ""}, nil, 200)
+	if resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net}); resp.NAT64 != "" {
+		t.Fatalf("NAT64 not cleared: %q", resp.NAT64)
+	}
+
+	var list []struct{ ID int64 }
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	var cmd struct{ ID, Type string }
+	e.call("POST", fmt.Sprintf("/api/proxies/%d/conn-log", list[0].ID), nil, &cmd, 200)
+	resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if cmd.Type != "conn_log" || len(resp.Commands) == 0 || resp.Commands[0].Type != "conn_log" || resp.Commands[0].ProxyID != list[0].ID {
+		t.Fatalf("conn_log command %+v %+v", cmd, resp.Commands)
+	}
+}

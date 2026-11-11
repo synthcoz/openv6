@@ -745,6 +745,27 @@ async function pollCommand(id) {
   return { done: true, ok: false, output: 'timeout' };
 }
 
+// Recent connection attempts of a proxy, with what each failure means.
+function connReport(c, p) {
+  let list;
+  try { list = JSON.parse(c.output); } catch (e) { return alertBox('err', esc(c.output === 'timeout' ? t('site_timeout') : c.output || t('site_timeout'))); }
+  if (!list.length) return alertBox('info', t('conn_empty'));
+  const hostOf = (tg) => (tg || '').replace(/^\[(.*)\]:\d+$/, '$1').replace(/:\d+$/, '');
+  const label = (r) => I18N[LANG]['conn_res_' + r] || I18N[LANG]['err_' + r] || r;
+  const tips = new Set();
+  const rows = list.map((e) => {
+    const ok = e.result === 'ok';
+    if (!ok && I18N[LANG]['conn_tip_' + e.result]) tips.add(e.result);
+    const host = hostOf(e.target);
+    const allow = e.result === 'no_ipv6_target' && host ? ` <button class="small" data-allow4="${esc(host)}">${t('conn_allow4')}</button>` : '';
+    return `<div class="ev"><div class="when">${fmtTime(e.at)}<div class="small">${esc(e.client)} · ${esc(e.proto)}</div></div>
+      <div class="wrap">${ok ? `<span style="color:var(--ok)">${icon('check', 'sm')}</span>` : `<span style="color:var(--err)">${icon('x', 'sm')}</span>`}
+        <span class="mono">${esc(e.target || '—')}</span> · ${esc(label(e.result))}${ok && e.via ? ` · ${esc(t('via_' + e.via))}` : ''}${ok && e.ms ? ` <span class="muted">${e.ms} ms</span>` : ''}${allow}</div></div>`;
+  }).join('');
+  const tipHtml = [...tips].map((k) => alertBox(k === 'auth_missing' ? 'info' : 'warn', t('conn_tip_' + k, { scope: esc(p.scope || 'lan') }))).join('');
+  return `${tipHtml}<div class="timeline small">${rows}</div>`;
+}
+
 // Result of a "test a website" command: verdict, what to do, and the details.
 function siteReport(c) {
   let r;
@@ -948,6 +969,10 @@ async function openProxyDrawer(id, tab = 'info') {
           <div style="flex:1">${checkCell(p)}</div><button class="small" id="dTest">${icon('pulse', 'sm')} ${t('test')}</button></div>
         <div class="bars" id="dBars"></div>
         <div id="dHist" class="timeline small" style="margin-top:12px"><div class="skel"></div></div>
+        <h3>${t('conn_title')}</h3>
+        <p class="hint" style="margin-top:0">${t('conn_hint')}</p>
+        <button type="button" class="small" id="connBtn">${icon('pulse', 'sm')} ${t('conn_load')}</button>
+        <div id="connRes" style="margin-top:10px"></div>
         <h3>${t('site_test')}</h3>
         <p class="hint" style="margin-top:0">${t('site_test_hint')}</p>
         <form class="row" id="stf"><input name="host" placeholder="example.com" autocomplete="off" spellcheck="false" style="flex:1;min-width:160px" required>
@@ -1010,6 +1035,25 @@ async function openProxyDrawer(id, tab = 'info') {
       try {
         const c = await api('POST', `/api/proxies/${p.id}/test-site`, { host: e.target.host.value });
         out.innerHTML = siteReport(await pollCommand(c.id));
+      } catch (err) { out.innerHTML = alertBox('err', esc(err.message)); }
+      btn.disabled = false;
+    };
+    $('#connBtn', d).onclick = async (e) => {
+      const btn = e.currentTarget, out = $('#connRes', d);
+      btn.disabled = true;
+      out.innerHTML = `<p class="small muted"><span class="dot pending"></span> ${t('site_testing')}</p>`;
+      try {
+        const c = await pollCommand((await api('POST', `/api/proxies/${p.id}/conn-log`, {})).id);
+        out.innerHTML = connReport(c, p);
+        for (const b of $$('[data-allow4]', out)) b.onclick = async () => {
+          try {
+            const st = await api('GET', '/api/settings');
+            const list = (st.ipv4_sites || '').split('\n').filter(Boolean);
+            if (!list.includes(b.dataset.allow4)) list.push(b.dataset.allow4);
+            await api('PUT', '/api/settings', { ipv4_sites: list.join('\n') });
+            b.disabled = true; b.textContent = t('conn_added'); toast(t('conn_added_toast', { host: b.dataset.allow4 }));
+          } catch (err) { toast(err.message, true); }
+        };
       } catch (err) { out.innerHTML = alertBox('err', esc(err.message)); }
       btn.disabled = false;
     };
@@ -1558,9 +1602,16 @@ async function pageSettings() {
       <button class="primary" type="submit">${t('save')}</button></form>
 
     <form class="card" id="blkf"><h2>${t('block_title')}</h2>
+      <h3 style="margin-top:0">${t('block_sub')}</h3>
       <p class="hint" style="margin-top:0">${t('block_hint')}</p>
       <textarea name="block_sites" rows="6" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="facebook.com&#10;*.doubleclick.net&#10;203.0.113.0/24">${esc(s.block_sites || '')}</textarea>
       <p class="hint">${t('block_rules_help')}</p>
+      <h3>${t('v4sites_title')}</h3>
+      <p class="hint" style="margin-top:0">${t('v4sites_hint')}</p>
+      <textarea name="ipv4_sites" rows="3" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="check.example.com">${esc(s.ipv4_sites || '')}</textarea>
+      <h3>${t('nat64_title')}</h3>
+      <label class="field">${t('nat64_prefix')}<input name="nat64_prefix" value="${esc(s.nat64_prefix || '')}" placeholder="2001:db8:64:64::/96" spellcheck="false"></label>
+      <p class="hint">${t('nat64_hint')}</p>
       <h3>${t('secure_dns_title')}</h3>
       <label class="check"><input type="checkbox" name="secure_dns" ${s.secure_dns === '1' ? 'checked' : ''}> ${t('secure_dns')}</label>
       <p class="hint">${t('secure_dns_hint')}</p>
@@ -1620,8 +1671,8 @@ async function pageSettings() {
   $('#blkf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target;
     try {
-      const r = await api('PUT', '/api/settings', { block_sites: f.block_sites.value, secure_dns: f.secure_dns.checked ? '1' : '0' });
-      f.block_sites.value = r.block_sites || '';
+      const r = await api('PUT', '/api/settings', { block_sites: f.block_sites.value, secure_dns: f.secure_dns.checked ? '1' : '0', ipv4_sites: f.ipv4_sites.value, nat64_prefix: f.nat64_prefix.value });
+      f.block_sites.value = r.block_sites || ''; f.ipv4_sites.value = r.ipv4_sites || ''; f.nat64_prefix.value = r.nat64_prefix || '';
       toast(t('saved'));
     } catch (err) { toast(err.message, true); }
   };

@@ -6,6 +6,10 @@
 - **DNS mã hoá dự phòng (mặc định bật):** khi DNS thường không trả về IPv6 (modem, nhà mạng hay VPN giấu bản ghi AAAA), proxy hỏi thêm Cloudflare / Google qua DNS-over-HTTPS bằng chính IPv6 của proxy. Không dùng IPv4, nhà mạng không thấy truy vấn.
 - **Kiểm tra một trang web** (chi tiết proxy → *Kiểm tra*): cho biết trang vào được không và vì sao. Các kết luận: trang chỉ có IPv4, DNS giấu IPv6, trang không nhận kết nối từ IPv6 này, trang trả 403, hoặc trang đang bị chặn. Kèm IP từ DNS thường và DNS mã hoá, kết quả kết nối IPv6 và cách sửa.
 - **Icon khay Windows không còn nhấp nháy:** icon, chú thích và menu chỉ được vẽ lại khi trạng thái thật sự đổi. Một lần dịch vụ trả lời chậm không còn làm icon đổi màu.
+- **Kết nối gần đây** (chi tiết proxy → *Kiểm tra*): 60 kết nối mới nhất của proxy, gồm IP nguồn, giao thức, đích, kết quả và đi bằng IPv6, IPv4 hay NAT64. Lỗi nào cũng kèm cách sửa: ngoài phạm vi chia sẻ (ví dụ Multilogin kiểm tra proxy từ máy chủ của họ), thiếu hoặc sai mật khẩu, trang chỉ có IPv4. Dòng trang chỉ có IPv4 có nút *Cho đi IPv4*.
+- **Trang được đi bằng IPv4:** danh sách trang chỉ có IPv4 vẫn mở được qua mọi proxy, kể cả khi “Dự phòng IPv4” đang tắt.
+- **Cổng NAT64:** điền prefix /96 thì trang chỉ có IPv4 đi qua NAT64 (ví dụ trên VPS của bạn), không dùng IPv4 nhà. Xem `docs/NAT64.md`.
+- **CI tốn ít phút GitHub Actions hơn:** PR chỉ chạy job Linux, gồm test và build chéo mọi nền tảng. Windows, macOS và script cài chạy khi ra bản. Không build bộ cài ở mỗi PR nữa.
 - **Thoát từ icon khay luôn tắt hẳn openv6:** gửi lệnh tắt cả khi lần kiểm tra trước thất bại, thử lại nếu cần, rồi chờ dịch vụ dừng hẳn mới đóng icon.
 
 ## v0.7.0 — bản thương mại

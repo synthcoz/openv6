@@ -301,6 +301,11 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	var cfgs []proxy.Config
 	specs := map[int64]proto.ProxySpec{}
 	block := proxy.ParseBlocklist(r.Block)
+	v4sites := proxy.ParseBlocklist(r.IPv4Sites)
+	var nat64 netip.Prefix
+	if p, err := netip.ParsePrefix(r.NAT64); err == nil && p.Addr().Is6() && p.Bits() == 96 {
+		nat64 = p.Masked()
+	}
 	var doh *proxy.DoH
 	if r.SecureDNS {
 		doh = a.doh
@@ -331,7 +336,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
 			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps,
-			Block: block, DoH: doh}
+			Block: block, DoH: doh, IPv4Sites: v4sites, NAT64: nat64}
 		if len(r.DNS) > 0 {
 			c.Resolver = proxy.NewResolver(r.DNS, ip, pBind)
 		}
@@ -577,6 +582,17 @@ func (a *Agent) runCommand(c proto.Command) {
 			log.Printf("agent: site test %s via proxy %d: %s", rep.Host, c.ProxyID, rep.Verdict)
 		}
 		<-a.testSem
+	case "conn_log": // recent connection attempts of one proxy (why can't an app use it?)
+		if !a.proxyRunning(c.ProxyID) {
+			res.Output, res.Code = "proxy not running on this node", "not_running"
+			break
+		}
+		events := a.proxies.ConnLog(c.ProxyID)
+		if events == nil {
+			events = []proxy.ConnEvent{}
+		}
+		b, _ := json.Marshal(events)
+		res.OK, res.Output = true, string(b)
 	case "test_v6":
 		info, err := CheckIP(netip.Addr{}, 0, 10*time.Second)
 		if err != nil {
@@ -814,4 +830,11 @@ func selfUpdate(url, version string, insecure bool) error {
 		return err
 	}
 	return update.Install(tmp, dst, version)
+}
+
+func (a *Agent) proxyRunning(id int64) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := a.pcfgs[id]
+	return ok
 }

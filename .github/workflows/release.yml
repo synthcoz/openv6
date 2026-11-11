@@ -1,11 +1,14 @@
 name: release
 # Builds every platform and publishes a GitHub Release when main contains a
 # version (internal/proto/proto.go) that has no release yet, or a v* tag is pushed.
+# Runs only when there may be something to publish: a v* tag, a version bump on
+# main, or by hand (it no longer builds every installer on every pull request,
+# which used up the Actions minutes).
 on:
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request: # build every installer to validate it, never publish
+    paths: ["internal/proto/proto.go", ".github/workflows/release.yml", "packaging/**"]
   workflow_dispatch:
 permissions:
   contents: read

@@ -109,6 +109,12 @@ type SyncResponse struct {
 	// SecureDNS: when a site's normal DNS answer has no IPv6 address, ask
 	// DNS-over-HTTPS over IPv6 too (ISP/VPN resolvers that drop AAAA).
 	SecureDNS bool `json:"secure_dns"`
+	// IPv4Sites may be reached over IPv4 even when a proxy's IPv4 fallback
+	// is off (domains, IPs, CIDRs; same syntax as Block).
+	IPv4Sites []string `json:"ipv4_sites,omitempty"`
+	// NAT64 is a /96 prefix of a NAT64 gateway: IPv4 destinations are then
+	// reached through it over IPv6 instead of the node's own IPv4.
+	NAT64 string `json:"nat64,omitempty"`
 	// RelayServer is set on a public node that relays proxies of NAT'ed nodes.
 	RelayServer *RelayServerSpec `json:"relay_server,omitempty"`
 	// RelayClients are public nodes this node publishes proxies through.
@@ -176,7 +182,7 @@ type UPnPState struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// Command types: test_proxy | test_v6 | test_site | update | restart | fix | reapply
+// Command types: test_proxy | test_v6 | test_site | conn_log | update | restart | fix | reapply
 type Command struct {
 	ID      string `json:"id"`
 	Type    string `json:"type"` // test_proxy | test_v6 | update

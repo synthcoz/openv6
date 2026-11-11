@@ -1,8 +1,20 @@
 name: ci
+# GitHub Actions minutes are limited on a private repository, and macOS runners
+# count 10x, Windows 2x. Pull requests and pushes run only the Linux job (unit
+# tests, a real-kernel network test, cross-compiling every platform). The
+# Windows, macOS and installer jobs run for release tags and on demand
+# (Actions → ci → Run workflow).
 on:
   push:
     branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["site/**", "blog/**", "docs/**", "deploy/**", "*.md", "wrangler.jsonc", "build.sh"]
   pull_request:
+    paths-ignore: ["site/**", "blog/**", "docs/**", "deploy/**", "*.md", "wrangler.jsonc", "build.sh"]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,6 +34,7 @@ jobs:
           done
 
   windows:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +79,7 @@ jobs:
           if (Get-Service openv6 -ErrorAction SilentlyContinue) { exit 1 }
 
   macos:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +102,7 @@ jobs:
 
   # The one-line installers, end to end, against the latest published release.
   install-scripts:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
