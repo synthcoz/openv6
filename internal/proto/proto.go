@@ -3,7 +3,7 @@
 // works as long as it can reach the panel.
 package proto
 
-const Version = "0.7.0"
+const Version = "0.7.1"
 
 // SyncRequest is sent by an agent every few seconds.
 type SyncRequest struct {
