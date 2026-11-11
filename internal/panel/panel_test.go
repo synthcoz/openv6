@@ -615,3 +615,54 @@ func TestCustomerAccounts(t *testing.T) {
 		t.Fatal("owner kept after account deletion")
 	}
 }
+
+func TestBlockedSitesAndSiteTest(t *testing.T) {
+	e := newEnv(t)
+	var node struct{ ID int64 }
+	e.call("POST", "/api/nodes", map[string]string{"name": "home"}, &node, 200)
+	var inst struct{ Token string }
+	e.call("GET", fmt.Sprintf("/api/nodes/%d/install", node.ID), nil, &inst, 200)
+	net := homeNet("2405:4802:1:2::/64")
+	e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", node.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random"}, nil, 200)
+
+	// defaults: nothing blocked, encrypted DNS fallback on
+	resp := e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if len(resp.Block) != 0 || !resp.SecureDNS {
+		t.Fatalf("defaults %+v %v", resp.Block, resp.SecureDNS)
+	}
+	// unreadable entries are refused with their text
+	e.call("PUT", "/api/settings", map[string]string{"block_sites": "facebook.com\nnot a site"}, nil, 400)
+	var st map[string]any
+	e.call("PUT", "/api/settings", map[string]string{"block_sites": "https://www.Facebook.com/login\n# work\n*.ads.example.com, 203.0.113.0/24\nfacebook.com\nwww.facebook.com", "secure_dns": "0"}, &st, 200)
+	if st["block_sites"] != "www.facebook.com\n*.ads.example.com\n203.0.113.0/24\nfacebook.com" {
+		t.Fatalf("saved list %q", st["block_sites"])
+	}
+	resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if len(resp.Block) != 4 || resp.SecureDNS {
+		t.Fatalf("desired %+v %v", resp.Block, resp.SecureDNS)
+	}
+
+	// site test: queued for the proxy's node with the cleaned host name
+	var list []struct{ ID int64 }
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	e.call("POST", fmt.Sprintf("/api/proxies/%d/test-site", list[0].ID), map[string]string{"host": "not a site"}, nil, 400)
+	var cmd struct{ ID, Type string }
+	e.call("POST", fmt.Sprintf("/api/proxies/%d/test-site", list[0].ID), map[string]string{"host": "https://Example.com/x"}, &cmd, 200)
+	if cmd.Type != "test_site" || cmd.ID == "" {
+		t.Fatalf("command %+v", cmd)
+	}
+	resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	found := false
+	for _, c := range resp.Commands {
+		if c.ID == cmd.ID && c.Type == "test_site" && c.Host == "example.com" && c.ProxyID == list[0].ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("command not delivered: %+v", resp.Commands)
+	}
+	e.call("POST", "/api/proxies/999/test-site", map[string]string{"host": "example.com"}, nil, 404)
+}

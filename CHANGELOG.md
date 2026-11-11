@@ -1,5 +1,13 @@
 # Changelog
 
+## Chưa phát hành
+
+- **Chặn trang web:** *Cài đặt → Chặn trang web*, mỗi dòng một mục. `facebook.com` chặn cả trang và mọi tên miền con; `*.ads.com` chỉ chặn tên miền con; nhập được IP, dải IP, hoặc dán cả link. Áp dụng cho mọi proxy trên mọi máy. Trình duyệt nhận lỗi 403 (HTTP) hoặc “not allowed” (SOCKS5).
+- **DNS mã hoá dự phòng (mặc định bật):** khi DNS thường không trả về IPv6 (modem, nhà mạng hay VPN giấu bản ghi AAAA), proxy hỏi thêm Cloudflare / Google qua DNS-over-HTTPS bằng chính IPv6 của proxy. Không dùng IPv4, nhà mạng không thấy truy vấn.
+- **Kiểm tra một trang web** (chi tiết proxy → *Kiểm tra*): cho biết trang vào được không và vì sao. Các kết luận: trang chỉ có IPv4, DNS giấu IPv6, trang không nhận kết nối từ IPv6 này, trang trả 403, hoặc trang đang bị chặn. Kèm IP từ DNS thường và DNS mã hoá, kết quả kết nối IPv6 và cách sửa.
+- **Icon khay Windows không còn nhấp nháy:** icon, chú thích và menu chỉ được vẽ lại khi trạng thái thật sự đổi. Một lần dịch vụ trả lời chậm không còn làm icon đổi màu.
+- **Thoát từ icon khay luôn tắt hẳn openv6:** gửi lệnh tắt cả khi lần kiểm tra trước thất bại, thử lại nếu cần, rồi chờ dịch vụ dừng hẳn mới đóng icon.
+
 ## v0.7.0 — bản thương mại
 
 - **openv6 Pro, bản quyền mua một lần** qua Polar. Nhập key ở *Cài đặt → Bản quyền*; có gói 1 máy và 3 máy.

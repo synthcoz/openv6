@@ -141,6 +141,8 @@ func writeSocksReply(w io.Writer, rep byte) {
 
 func socksErrCode(err error) byte {
 	switch {
+	case errors.Is(err, ErrBlockedByRule), errors.Is(err, ErrBlocked):
+		return repNotAllow
 	case errors.Is(err, ErrNoIPv6):
 		return repHostUnr
 	case errors.Is(err, syscall.ECONNREFUSED):

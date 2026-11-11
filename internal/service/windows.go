@@ -247,6 +247,8 @@ func Status() string {
 		return "starting"
 	case windows.SERVICE_STOPPED:
 		return "stopped"
+	case windows.SERVICE_STOP_PENDING:
+		return "stopping"
 	}
 	return "unknown"
 }

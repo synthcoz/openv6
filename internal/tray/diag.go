@@ -71,7 +71,7 @@ func diagnose(callErr error) (key, detail string) {
 	switch service.Status() {
 	case "not_installed":
 		return "diag_not_installed", ""
-	case "stopped":
+	case "stopped", "stopping":
 		return "diag_stopped", ""
 	case "starting":
 		return "diag_starting", ""

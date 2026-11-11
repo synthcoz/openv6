@@ -157,6 +157,9 @@ func splitHostPort(hp string, def int) (string, int, error) {
 }
 
 func httpErrStatus(err error) int {
+	if errors.Is(err, ErrBlockedByRule) {
+		return http.StatusForbidden
+	}
 	if errors.Is(err, ErrNoIPv6) {
 		return http.StatusBadGateway
 	}

@@ -289,6 +289,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; c
 .alert.err { background: var(--err-soft); color: var(--err); }
 .alert.warn { background: var(--warn-soft); color: var(--warn); }
 .alert.info { background: var(--accent-soft); color: var(--accent); }
+.alert.ok { background: var(--ok-soft); color: var(--ok); }
 .alert > div { color: var(--text); }
 .alert a { font-weight: 600; }
 .toasts { position: fixed; bottom: 22px; right: 22px; display: flex; flex-direction: column; gap: 8px; z-index: 100; align-items: flex-end; }

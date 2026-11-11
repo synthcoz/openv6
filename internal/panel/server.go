@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	a("POST /api/proxies/bulk", s.handleBulkCreate)
 	a("PUT /api/proxies/{id}", s.handleUpdateProxy)
 	a("POST /api/proxies/action", s.handleProxyAction)
+	a("POST /api/proxies/{id}/test-site", s.handleTestSite)
 	a("POST /api/proxies/export", s.handleExport)
 	a("GET /api/commands/{id}", s.handleGetCommand)
 	a("GET /api/events", s.handleEvents)
