@@ -62,7 +62,7 @@
 
 <section class="center" style="padding-top:80px">
   <div class="wrap"><div class="kicker rv" data-i="works_k"></div>
-    <div class="works rv"><span>Multilogin</span><span>GoLogin</span><span>Dolphin {Anty}</span><span>ixBrowser</span><span>Linken Sphere 2</span><span>AdsPower</span><span>MoreLogin</span></div></div>
+    <div class="works marquee rv" id="works"><div class="mrow"><span class="chip"><i></i>Multilogin</span><span class="chip"><i></i>GoLogin</span><span class="chip"><i></i>Dolphin {Anty}</span><span class="chip"><i></i>AdsPower</span><span class="chip"><i></i>ixBrowser</span><span class="chip"><i></i>Linken Sphere 2</span><span class="chip"><i></i>MoreLogin</span><span class="chip"><i></i>Incogniton</span><span class="chip"><i></i>Kameleo</span><span class="chip"><i></i>Octo Browser</span><span class="chip"><i></i>Undetectable</span></div><div class="mrow rev"><span class="chip"><i></i>VMLogin</span><span class="chip"><i></i>Lalicat</span><span class="chip"><i></i>BitBrowser</span><span class="chip"><i></i>Hidemium</span><span class="chip"><i></i>GenLogin</span><span class="chip"><i></i>Nstbrowser</span><span class="chip"><i></i>Hubstudio</span><span class="chip"><i></i>Vision</span><span class="chip"><i></i>MuLogin</span><span class="chip"><i></i>ClonBrowser</span><span class="chip"><i></i>Ghost Browser</span></div></div></div>
 </section>
 
 <section class="center" id="sources" style="padding-top:88px"><div class="wrap">
@@ -190,6 +190,7 @@
     <details><summary data-i="q4"></summary><p data-i="a4"></p></details>
     <details><summary data-i="q5"></summary><p data-i="a5"></p></details>
     <details><summary data-i="q6"></summary><p data-i="a6"></p></details>
+    <details><summary data-i="q7"></summary><p data-i="a7"></p></details>
   </div>
 </div></section>
 
@@ -228,7 +229,7 @@ const T = {
     h1: 'Proxy IPv6 tĩnh từ chính mạng của bạn',
     lead: 'Biến dải IPv6 của mạng nhà, VPS hay mini PC thành hàng trăm proxy HTTP / SOCKS5 cố định. Mỗi tài khoản một IP riêng, không thuê proxy theo tháng.',
     platforms: 'Windows 10/11 · macOS · Ubuntu / Zorin / Debian — chạy nền, tự khởi động, có icon khay',
-    works_k: 'Dán thẳng vào',
+    works_k: 'Dùng được với mọi trình duyệt anti-detect',
     how_k: 'Cách dùng', how_h: 'Từ cài đặt tới proxy chạy được: 3 phút', how_sub: 'Không cần dòng lệnh, không cần biết IPv6 là gì.',
     s1_h: 'Cài đặt', s1_p: 'Mở file cài, bấm Next. openv6 chạy nền và tự bật cùng máy.',
     s2_h: 'Tạo proxy', s2_p: 'Chọn số lượng và đặt tên theo tài khoản. Mỗi proxy nhận một IPv6 riêng từ mạng của bạn.',
@@ -246,6 +247,7 @@ const T = {
     p_free_once: 'mãi mãi', pf1: '3 proxy', pf2: '1 máy', pf3: 'HTTP + SOCKS5, xuất cho anti-detect', pf4: 'Tự kiểm tra & sửa lỗi',
     popular: 'Phổ biến nhất', p1_h: 'Pro · 1 máy', p3_h: 'Pro · 3 máy', once: 'trả một lần', buy: 'Mua license',
     pp1: 'Không giới hạn proxy', pp2: 'Nhiều máy chạy proxy (VPS, mini PC)', pp3: 'Relay qua VPS, UPnP, Tailscale', pp4: 'API, tài khoản khách, Telegram', pp5: 'Card mạng riêng từng proxy', pp3m: 'Kích hoạt trên 3 máy chạy dashboard',
+    q7: 'openv6 dùng được với trình duyệt anti-detect nào?', a7: 'Mọi trình duyệt anti-detect nhận proxy HTTP hoặc SOCKS5, gồm Multilogin, GoLogin, Dolphin {Anty}, AdsPower, ixBrowser, Linken Sphere 2, MoreLogin, Incogniton, Kameleo, Octo Browser, Undetectable, VMLogin, Lalicat, BitBrowser, Hidemium, GenLogin, Nstbrowser, Hubstudio, Vision, MuLogin, ClonBrowser và Ghost Browser. Phần Xuất danh sách có sẵn định dạng cho Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere và AdsPower; trình duyệt khác dùng host:port:user:pass hoặc URL socks5://.',
     faq_k: 'Hỏi đáp', faq_h: 'Câu hỏi thường gặp',
     q1: 'Tôi cần gì để dùng openv6?', a1: 'Một máy (Windows, macOS hoặc Linux) nối vào mạng có IPv6. Viettel, FPT, VNPT và hầu hết nhà mạng trên thế giới (Comcast, AT&T, BT, Deutsche Telekom…) đều đã cấp IPv6; VPS (Hetzner, Vultr, DigitalOcean, OVHcloud, Linode…) gần như đều có sẵn một dải /64.',
     q2: 'Website không hỗ trợ IPv6 thì sao?', a2: 'Google, YouTube, Facebook, Instagram, WhatsApp… đều chạy IPv6, nhưng nhiều site nhỏ thì chưa. Với site chỉ có IPv4, bạn có thể bật "dự phòng IPv4" cho proxy, nhưng các proxy đó sẽ dùng chung IPv4 của máy.',
@@ -277,7 +279,7 @@ const T = {
     h1: 'Static IPv6 proxies from your own network',
     lead: 'Turn the IPv6 prefix of your home network, VPS or mini PC into hundreds of fixed HTTP / SOCKS5 proxies. One IP per account, no monthly proxy bills.',
     platforms: 'Windows 10/11 · macOS · Ubuntu / Debian — runs in the background, starts with the machine, tray icon',
-    works_k: 'Paste straight into',
+    works_k: 'Works with every anti-detect browser',
     how_k: 'How it works', how_h: 'From install to working proxies in 3 minutes', how_sub: 'No command line, no IPv6 knowledge needed.',
     s1_h: 'Install', s1_p: 'Run the installer and click Next. openv6 runs in the background and starts with the machine.',
     s2_h: 'Create proxies', s2_p: 'Pick how many and name them after your accounts. Each one gets its own IPv6 from your network.',
@@ -295,6 +297,7 @@ const T = {
     p_free_once: 'forever', pf1: '3 proxies', pf2: '1 machine', pf3: 'HTTP + SOCKS5, anti-detect export', pf4: 'Self-check & fix',
     popular: 'Most popular', p1_h: 'Pro · 1 machine', p3_h: 'Pro · 3 machines', once: 'one-time payment', buy: 'Buy license',
     pp1: 'Unlimited proxies', pp2: 'Multiple proxy machines (VPS, mini PC)', pp3: 'Relay via VPS, UPnP, Tailscale', pp4: 'API, customer accounts, Telegram', pp5: 'Network card per proxy', pp3m: 'Activate on 3 dashboard machines',
+    q7: 'Which anti-detect browsers does openv6 work with?', a7: 'Any anti-detect browser that accepts HTTP or SOCKS5 proxies, including Multilogin, GoLogin, Dolphin {Anty}, AdsPower, ixBrowser, Linken Sphere 2, MoreLogin, Incogniton, Kameleo, Octo Browser, Undetectable, VMLogin, Lalicat, BitBrowser, Hidemium, GenLogin, Nstbrowser, Hubstudio, Vision, MuLogin, ClonBrowser and Ghost Browser. Export has ready-made formats for Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere and AdsPower; for the others use host:port:user:pass or a socks5:// URL.',
     faq_k: 'FAQ', faq_h: 'Frequently asked questions',
     q1: 'What do I need?', a1: 'A Windows, macOS or Linux machine on a network with IPv6. Comcast, AT&T, Verizon, Spectrum, BT, Deutsche Telekom, Orange, Viettel, FPT, VNPT and most other home ISPs hand out IPv6 today, and nearly every VPS (Hetzner, Vultr, DigitalOcean, OVHcloud, Linode…) comes with a /64.',
     q2: 'What about sites without IPv6?', a2: 'Google, YouTube, Facebook, Instagram, WhatsApp… all run IPv6, many smaller sites don\'t yet. For IPv4-only sites you can enable "IPv4 fallback" per proxy, which shares the machine\'s IPv4.',
@@ -435,6 +438,7 @@ function chips(list, vps) { return list.map((x) => `<span class="chip${vps ? ' v
 const half = Math.ceil(ISP.length / 2);
 const r1 = chips(ISP.slice(0, half), false) + chips(VPS.slice(0, 9), true), r2 = chips(VPS.slice(9), true) + chips(ISP.slice(half), false);
 document.getElementById('mrow1').innerHTML = r1 + r1; document.getElementById('mrow2').innerHTML = r2 + r2;
+for (const r of document.querySelectorAll('#works .mrow')) r.innerHTML += r.innerHTML; // the static first half stays for crawlers
 for (const r of document.querySelectorAll('.mrow')) for (const c of [...r.children].slice(r.children.length / 2)) c.setAttribute('aria-hidden', 'true');
 
 // counters
@@ -447,14 +451,6 @@ function count(el) {
 }
 for (const el of document.querySelectorAll('[data-count]')) io ? io.observe(el) : count(el);
 
-// hero tilt
-const stage = document.getElementById('stage');
-if (!reduce && matchMedia('(hover: hover) and (min-width: 901px)').matches) {
-  addEventListener('scroll', () => stage.classList.toggle('flat', scrollY > 120), { passive: true });
-  stage.addEventListener('pointermove', (e) => { const r = stage.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
-    stage.style.setProperty('--ry', (x * 6).toFixed(2) + 'deg'); stage.style.setProperty('--rx', (scrollY > 120 ? 0 : 6) - y * 4 + 'deg'); });
-  stage.addEventListener('pointerleave', () => { stage.style.removeProperty('--ry'); stage.style.removeProperty('--rx'); });
-}
 // hero animations pause while the hero is off screen (no repaints for nothing)
 let heroIdle = false;
 const heroEl = document.querySelector('.hero');
@@ -474,7 +470,7 @@ if (live && !reduce) {
     live.append(el);
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
     const shown = live.querySelectorAll('.lt:not(.out)');
-    if (shown.length > (innerWidth <= 520 ? 2 : 3)) { const o = shown[0]; o.classList.add('out'); setTimeout(() => o.remove(), 600); }
+    if (shown.length > (innerWidth <= 520 ? 1 : 3)) { const o = shown[0]; o.classList.add('out'); setTimeout(() => o.remove(), 600); }
   };
   setTimeout(() => { push(); setInterval(push, 2600); }, 1500);
 }

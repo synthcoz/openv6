@@ -206,6 +206,7 @@ const FACTS = `openv6 turns the IPv6 prefix that a home internet connection or a
 - Runs on Windows 10/11, macOS (Intel and Apple silicon) and Linux (Ubuntu, Debian, Zorin; amd64, arm64, armhf) as a background service with a tray icon. Several machines (nodes) are managed from one web dashboard.
 - Regular IP checks (latency, country, ISP), plain-language error causes with one-click fixes, Telegram alerts, works with a VPN on, sharing outside the LAN through a relay on a VPS, UPnP or Tailscale, JSON API, customer accounts for reselling.
 - Exports proxy lists in the formats of Multilogin, GoLogin, Dolphin Anty, ixBrowser, Linken Sphere 2 and AdsPower, plus host:port:user:pass, URLs, CSV and JSON.
+- Works with any anti-detect browser that accepts HTTP or SOCKS5 proxies: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser, Linken Sphere, MoreLogin, Incogniton, Kameleo, Octo Browser, Undetectable, VMLogin, Lalicat, BitBrowser, Hidemium, GenLogin, Nstbrowser, Hubstudio, Vision, MuLogin, ClonBrowser and Ghost Browser.
 - Pricing: Free = 3 proxies on 1 machine. Pro = one-time payment, $6 for 1 dashboard machine or $12 for 3, unlimited proxies and nodes, no subscription. Licenses are sold through Polar.
 - Download: ${SITE}#download (Windows .exe, macOS .pkg, Linux install command). Releases: https://github.com/thephux/openv6-releases/releases/latest`;
 

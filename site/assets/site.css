@@ -93,8 +93,9 @@ h2 { font-size: clamp(28px, 4vw, 42px); letter-spacing: -.035em; line-height: 1.
 .sub { color: var(--muted); max-width: 620px; font-size: 17.5px; margin: 0; }
 .center { text-align: center; } .center .sub { margin: 0 auto; }
 
-.works { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 30px; }
-.works span { padding: 8px 16px; border: 1px solid var(--border); border-radius: 10px; font-weight: 600; color: var(--text-2); font-size: 15px; background: var(--panel); }
+.works { margin-top: 26px; }
+.works .chip { font-size: 15px; padding: 9px 16px; }
+@media (max-width: 520px) { .works .chip { font-size: 13.5px; padding: 7px 12px; } }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 44px; }
 .step { padding: 26px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); }
@@ -198,11 +199,12 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 }
 @media (max-width: 520px) {
   .wrap { padding-left: 16px; padding-right: 16px; }
-  .stage .frame { display: none; }
   .feat, .step, .price { padding: 20px; }
   .feat .ic { margin-bottom: 12px; }
   section { padding: 56px 0; }
-  .phone.device { --r: 40px; --p: 6px; display: block !important; position: relative; right: auto; bottom: auto; width: min(250px, 66vw); margin: 0 auto; }
+  .stage { margin-top: 40px; } .frame .bar { height: 24px; } .frame .bar em { font-size: 10px; }
+  .phone.device { --r: 18px; --p: 3px; display: block !important; right: -4px; bottom: -26px; width: 29vw; }
+  .phone.device .screen::after { display: none; }
   .nav { gap: 8px; padding: 0 8px 0 14px; }
   .nav .dl { display: none; }
   .cta .btn { width: 100%; }
@@ -216,19 +218,15 @@ footer a { text-decoration: none; } footer a:hover { color: var(--text); }
 .hero { position: relative; }
 .glow { position: absolute; inset: -80px 0 auto; height: 720px; z-index: -1; pointer-events: none; overflow: hidden;
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%); }
-.glow::before { content: ''; position: absolute; inset: -40px; background-image: radial-gradient(var(--border-2) 1px, transparent 1px); background-size: 22px 22px; animation: drift 40s linear infinite; }
+.glow::before { content: ''; position: absolute; inset: -40px; background-image: radial-gradient(var(--border-2) 1px, transparent 1px); background-size: 22px 22px; }
 .glow::after { content: ''; position: absolute; left: 50%; top: 80px; width: 680px; height: 380px; margin-left: -340px; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(16,185,129,.16), transparent); filter: blur(10px); animation: breathe 9s ease-in-out infinite; }
-@keyframes drift { to { transform: translate(22px, 22px); } }
-@keyframes breathe { 50% { transform: scale(1.12); opacity: .7; } }
+  background: radial-gradient(closest-side, rgba(16,185,129,.16), transparent); filter: blur(10px); animation: breathe 9s ease-in-out infinite; will-change: opacity; }
+@keyframes breathe { 50% { opacity: .55; } }
 .hero h1 .w { display: inline-block; opacity: 0; transform: translateY(14px); filter: blur(6px); animation: wIn .7s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i) * 70ms + 80ms); }
 @keyframes wIn { to { opacity: 1; transform: none; filter: none; } }
 .fade { opacity: 0; animation: fIn .8s ease forwards; animation-delay: var(--d, .4s); }
 @keyframes fIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.stage { perspective: 1600px; }
-.stage .frame { transform: rotateX(var(--rx, 6deg)) rotateY(var(--ry, 0deg)); transform-origin: 50% 0; transition: transform .5s cubic-bezier(.2,.7,.2,1); }
-.stage.flat .frame { --rx: 0deg; }
-.phone { animation: float 6s ease-in-out infinite; }
+.phone { animation: float 6s ease-in-out infinite; will-change: transform; }
 @keyframes float { 50% { transform: translateY(-10px); } }
 .rv { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); transition-delay: var(--d, 0s); }
 .rv.in { opacity: 1; transform: none; }
@@ -302,7 +300,6 @@ details p { animation: fIn .35s ease; }
 @media (max-width: 900px) {
   .demo { grid-template-columns: 1fr; }
   .stats { grid-template-columns: 1fr; }
-  .stage .frame { transform: none; }
 }
 @media (max-width: 520px) {
   .row { grid-template-columns: 1fr auto; gap: 4px 10px; }
@@ -316,18 +313,17 @@ details p { animation: fIn .35s ease; }
   animation: wIn .7s cubic-bezier(.2,.7,.2,1) forwards, sheen 7s ease-in-out infinite alternate; animation-delay: calc(var(--i) * 70ms + 80ms), 0s; }
 :root[data-theme="dark"] .hero h1 .w.hl { background-image: linear-gradient(100deg, #34d399, #6ee7b7 25%, #22d3ee 50%, #a5b4fc 75%, #34d399); }
 @keyframes sheen { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
-/* hero: a light that runs around the dashboard frame */
-@property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+/* hero: a light sweeping along the top of the dashboard frame (transform only, no repaint) */
 .stage .frame { position: relative; }
-.stage .frame::after { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 3;
-  background: conic-gradient(from var(--ang), transparent 0 70%, rgba(16,185,129,.0) 72%, rgba(16,185,129,.9) 84%, rgba(34,211,238,.95) 90%, transparent 97%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: orbit 7s linear infinite; }
-@keyframes orbit { to { --ang: 360deg; } }
+.stage .frame::after { content: ''; position: absolute; top: 0; left: 0; width: 40%; height: 2px; z-index: 3; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(16,185,129,.85) 45%, rgba(34,211,238,.95) 62%, transparent);
+  transform: translateX(-100%); animation: sweep 6s cubic-bezier(.45,0,.25,1) infinite; will-change: transform; }
+@keyframes sweep { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(260%); } }
 .hero.idle *, .hero.idle *::before, .hero.idle *::after { animation-play-state: paused !important; }
 /* hero: live "proxy ready" notifications */
 .live { position: absolute; left: -40px; bottom: 56px; z-index: 4; width: 318px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; pointer-events: none; }
-.lt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; text-align: left; background: color-mix(in srgb, var(--panel) 88%, transparent);
-  border: 1px solid var(--border-2); box-shadow: 0 18px 40px -16px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.05); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+.lt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; text-align: left; background: var(--panel);
+  border: 1px solid var(--border-2); box-shadow: 0 18px 40px -16px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.05);
   opacity: 0; transform: translateY(14px) scale(.96); transition: opacity .45s ease, transform .55s cubic-bezier(.2,.8,.2,1), margin .5s ease; }
 .lt.in { opacity: 1; transform: none; }
 .lt.out { opacity: 0; transform: translateY(-10px) scale(.96); margin-top: -62px; }
@@ -341,7 +337,7 @@ details p { animation: fIn .35s ease; }
 .lt .lat { flex: none; display: grid; justify-items: end; gap: 2px; font: 600 11.5px var(--mono); color: var(--ok); }
 .lt .lat em { font: 650 10px var(--sans); font-style: normal; color: var(--muted); border: 1px solid var(--border-2); border-radius: 4px; padding: 0 4px; letter-spacing: .04em; }
 @media (max-width: 900px) { .live { left: 12px; bottom: 40px; width: 300px; } }
-@media (max-width: 520px) { .live { left: 50%; bottom: 22px; width: min(296px, 86vw); margin-left: calc(min(296px, 86vw) / -2 - 34px); } .lt { padding: 8px 10px; } .lt.out { margin-top: -54px; } }
+@media (max-width: 520px) { .live { left: -6px; bottom: -34px; width: min(236px, 62vw); } .lt { padding: 7px 9px; gap: 8px; } .lt b { font-size: 12px; } .lt code { font-size: 10.5px; } .lt .ok { width: 22px; height: 22px; } .lt.out { margin-top: -50px; } .hero { padding-bottom: 64px; } }
 
 @media (prefers-reduced-motion: reduce) {
   .live { display: none; }
