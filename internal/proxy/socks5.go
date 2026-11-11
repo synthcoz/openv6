@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"syscall"
+	"time"
 )
 
 const (
@@ -48,6 +50,11 @@ func (l *listener) serveSOCKS5(c *bufConn, cfg *Config) {
 		}
 	}
 	if !found {
+		res := "auth_missing" // client offered no username/password
+		if want == methodNone {
+			res = "protocol"
+		}
+		l.log.add(ConnEvent{Client: clientIP(c.RemoteAddr()), Proto: "socks5", Result: res})
 		_, _ = c.Write([]byte{socksVer, methodNoAcc})
 		return
 	}
@@ -71,6 +78,7 @@ func (l *listener) serveSOCKS5(c *bufConn, cfg *Config) {
 			return
 		}
 		if !cfg.checkAuth(string(u), string(p)) {
+			l.log.add(ConnEvent{Client: clientIP(c.RemoteAddr()), Proto: "socks5", Result: "auth"})
 			_, _ = c.Write([]byte{0x01, 0x01})
 			return
 		}
@@ -90,7 +98,9 @@ func (l *listener) serveSOCKS5(c *bufConn, cfg *Config) {
 		writeSocksReply(c, repCmdNotSup)
 		return
 	}
-	target, err := l.dial(context.Background(), cfg, host, port)
+	start := time.Now()
+	target, via, err := l.dialVia(context.Background(), cfg, host, port)
+	l.record(c.RemoteAddr(), "socks5", net.JoinHostPort(host, strconv.Itoa(port)), via, start, err)
 	if err != nil {
 		writeSocksReply(c, socksErrCode(err))
 		return

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -187,5 +188,69 @@ func TestResolveFallsBackToDoH(t *testing.T) {
 	cfg.DoH = nil // disabled: the resolver error comes back
 	if _, err := m.resolve(context.Background(), cfg, "site.invalid"); err == nil {
 		t.Fatal("expected the resolver error without DoH")
+	}
+}
+
+func TestNAT64Addr(t *testing.T) {
+	got := nat64Addr(netip.MustParsePrefix("64:ff9b::/96"), netip.MustParseAddr("192.0.2.33"))
+	if got != netip.MustParseAddr("64:ff9b::c000:221") {
+		t.Fatalf("well-known prefix: %s", got)
+	}
+	got = nat64Addr(netip.MustParsePrefix("2001:db8:64:64::/96"), netip.MustParseAddr("203.0.113.5"))
+	if got != netip.MustParseAddr("2001:db8:64:64::cb00:7105") {
+		t.Fatalf("custom prefix: %s", got)
+	}
+}
+
+// An IPv6 proxy reaches an IPv4-only site only when the site is on the
+// IPv4 list (or fallback is on), and the connection log says how it left.
+func TestIPv4SitesAndConnLog(t *testing.T) {
+	ts := target(t)
+	ap := netip.MustParseAddrPort(ts.Listener.Addr().String())
+	m := NewManager()
+	m.SetAllow([]netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")})
+	cfg := Config{ID: 7, Protocol: "both", User: "u", Pass: "p", Port: freePort(t), OutIP: netip.MustParseAddr("::1")}
+	if errs := m.Apply([]Config{cfg}); len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	t.Cleanup(m.Close)
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
+	get := func(user string) int {
+		pu, _ := url.Parse("http://" + user + "@" + addr)
+		cl := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}, Timeout: 5 * time.Second}
+		res, err := cl.Get(ts.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if code := get("u:p"); code != http.StatusBadGateway {
+		t.Fatalf("IPv4-only target without exception: want 502, got %d", code)
+	}
+	cfg.IPv4Sites = ParseBlocklist([]string{ap.Addr().String()})
+	m.Apply([]Config{cfg})
+	if code := get("u:p"); code != 200 {
+		t.Fatalf("IPv4 exception: want 200, got %d", code)
+	}
+	get("u:wrong")
+	log := m.ConnLog(7)
+	if len(log) < 3 || log[0].Result != "auth" || log[1].Result != "ok" || log[1].Via != "ipv4" || log[2].Result != "no_ipv6_target" {
+		t.Fatalf("connection log %+v", log)
+	}
+	if log[1].Client != "127.0.0.1" || log[1].Proto != "http" || log[1].Target != ap.String() {
+		t.Fatalf("event fields %+v", log[1])
+	}
+	// outside the sharing scope: the refusal is logged with the source
+	l := m.listeners[cfg.Port]
+	if m.clientAllowed(l.cfg.Load(), &net.TCPAddr{IP: net.ParseIP("203.0.113.9"), Port: 1}) {
+		t.Fatal("public source allowed on a LAN proxy")
+	}
+	var cl connLog
+	for i := 0; i < connLogSize+5; i++ {
+		cl.add(ConnEvent{Result: fmt.Sprint(i)})
+	}
+	if got := cl.list(); len(got) != connLogSize || got[0].Result != fmt.Sprint(connLogSize+4) {
+		t.Fatalf("ring buffer: %d events, newest %s", len(got), got[0].Result)
 	}
 }

@@ -46,6 +46,13 @@ type Config struct {
 	// DoH, when set, is asked for the IPv6 address of a site whose normal
 	// DNS answer has none (ISP/VPN resolvers that drop AAAA records).
 	DoH *DoH
+	// IPv4Sites may use IPv4 even with IPv4Fallback off (e.g. the IPv4-only
+	// "check proxy" endpoint of an anti-detect browser).
+	IPv4Sites *Blocklist
+	// NAT64, when valid (a /96), carries IPv4-only destinations over IPv6
+	// through a NAT64 gateway instead of this machine's IPv4: the site sees
+	// the gateway's IPv4 (e.g. your VPS), never your own.
+	NAT64 netip.Prefix
 }
 
 // Dialer returns a net.Dialer for this proxy's outbound connections.
@@ -108,6 +115,7 @@ type listener struct {
 	conns    sync.Map // net.Conn -> struct{}
 	upLim    atomic.Pointer[rate.Limiter]
 	downLim  atomic.Pointer[rate.Limiter]
+	log      connLog
 }
 
 func (l *listener) setLimits(c *Config) {
@@ -245,9 +253,12 @@ func (l *listener) handle(c net.Conn) {
 	}()
 	cfg := l.cfg.Load()
 	if !l.m.clientAllowed(cfg, c.RemoteAddr()) {
-		return // silently drop: outside the proxy's sharing scope
+		// silently drop: outside the proxy's sharing scope
+		l.log.add(ConnEvent{Client: clientIP(c.RemoteAddr()), Proto: "?", Result: "scope", Detail: "scope " + cfg.Scope})
+		return
 	}
 	if cfg.MaxConns > 0 && l.counters.Active.Load() > int64(cfg.MaxConns) {
+		l.log.add(ConnEvent{Client: clientIP(c.RemoteAddr()), Proto: "?", Result: "conn_limit"})
 		return // over the connection limit
 	}
 	_ = c.SetReadDeadline(time.Now().Add(30 * time.Second))
@@ -325,10 +336,25 @@ func filterTargets(out netip.Addr, addrs []netip.Addr) ([]netip.Addr, bool) {
 }
 
 func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int) (net.Conn, error) {
+	c, _, err := l.dialVia(ctx, cfg, host, port)
+	return c, err
+}
+
+// nat64Addr embeds an IPv4 address in a NAT64 /96 prefix (RFC 6052).
+func nat64Addr(p netip.Prefix, v4 netip.Addr) netip.Addr {
+	b := p.Addr().As16()
+	a4 := v4.As4()
+	copy(b[12:], a4[:])
+	return netip.AddrFrom16(b)
+}
+
+// dialVia connects to host:port the way this proxy may and also reports how
+// the connection left: "ipv6", "ipv4" (this machine's IPv4) or "nat64".
+func (l *listener) dialVia(ctx context.Context, cfg *Config, host string, port int) (net.Conn, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if cfg.Block.Host(host) {
-		return nil, ErrBlockedByRule
+		return nil, "", ErrBlockedByRule
 	}
 	var addrs []netip.Addr
 	if a, err := netip.ParseAddr(host); err == nil {
@@ -336,17 +362,17 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 	} else {
 		var err error
 		if addrs, err = l.m.resolve(ctx, cfg, host); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 	for _, a := range addrs {
 		if cfg.Block.Addr(a) {
-			return nil, ErrBlockedByRule
+			return nil, "", ErrBlockedByRule
 		}
 	}
 	addrs, dropped := filterTargets(cfg.OutIP, addrs)
 	if len(addrs) == 0 && dropped {
-		return nil, ErrBlocked
+		return nil, "", ErrBlocked
 	}
 	// Primary family = family of the configured outbound IP (normally IPv6).
 	// An IPv4 outbound IP is supported too (multi-IPv4 servers, tests).
@@ -363,25 +389,42 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 		netw = "tcp4"
 	}
 	var lastErr error = ErrNoIPv6
+	via := "ipv6"
+	if cfg.OutIP.Is4() {
+		via = "ipv4"
+	}
 	for _, a := range primary {
 		d := cfg.Dialer(&net.TCPAddr{IP: cfg.OutIP.AsSlice()})
 		c, err := d.DialContext(ctx, netw, netip.AddrPortFrom(a, uint16(port)).String())
 		if err == nil {
-			return c, nil
+			return c, via, nil
 		}
 		lastErr = err
 	}
-	if cfg.IPv4Fallback && cfg.OutIP.Is6() {
+	v4ok := cfg.IPv4Fallback || cfg.IPv4Sites.Host(host)
+	if cfg.OutIP.Is6() {
 		for _, a := range other {
-			var d net.Dialer
-			c, err := d.DialContext(ctx, "tcp4", netip.AddrPortFrom(a, uint16(port)).String())
+			if !a.Is4() || !(v4ok || cfg.IPv4Sites.Addr(a)) {
+				continue
+			}
+			var c net.Conn
+			var err error
+			if cfg.NAT64.IsValid() { // IPv4 site through the NAT64 gateway, still from the proxy's IPv6
+				d := cfg.Dialer(&net.TCPAddr{IP: cfg.OutIP.AsSlice()})
+				c, err = d.DialContext(ctx, "tcp6", netip.AddrPortFrom(nat64Addr(cfg.NAT64, a), uint16(port)).String())
+				via = "nat64"
+			} else {
+				var d net.Dialer
+				c, err = d.DialContext(ctx, "tcp4", netip.AddrPortFrom(a, uint16(port)).String())
+				via = "ipv4"
+			}
 			if err == nil {
-				return c, nil
+				return c, via, nil
 			}
 			lastErr = err
 		}
 	}
-	return nil, lastErr
+	return nil, "", lastErr
 }
 
 // resolve looks a host up with the proxy's resolver. When the answer has no

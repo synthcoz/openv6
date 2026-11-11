@@ -7,7 +7,7 @@ import (
 )
 
 // ErrBlockedByRule: the destination is on the dashboard's blocked-sites list.
-var ErrBlockedByRule = errors.New("this site is blocked on this proxy (Settings → Blocked sites)")
+var ErrBlockedByRule = errors.New("this site is blocked on this proxy (Settings → Website access)")
 
 // Blocklist matches destinations against the dashboard's blocked-sites list.
 //

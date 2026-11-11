@@ -31,6 +31,11 @@ func (l *listener) serveHTTP(c *bufConn, cfg *Config) {
 		if cfg.authRequired() {
 			u, p, ok := proxyBasicAuth(req)
 			if !ok || !cfg.checkAuth(u, p) {
+				res := "auth"
+				if !ok {
+					res = "auth_missing" // normal for the first request of some clients
+				}
+				l.log.add(ConnEvent{Client: clientIP(c.RemoteAddr()), Proto: "http", Target: req.Host, Result: res})
 				writeSimple(c, http.StatusProxyAuthRequired, "Proxy-Authenticate: Basic realm=\"proxy\"\r\n", "proxy authentication required")
 				_, _ = io.Copy(io.Discard, req.Body)
 				if req.Close {
@@ -45,7 +50,9 @@ func (l *listener) serveHTTP(c *bufConn, cfg *Config) {
 				writeSimple(c, http.StatusBadRequest, "", "bad CONNECT target")
 				return
 			}
-			target, err := l.dial(context.Background(), cfg, host, port)
+			start := time.Now()
+			target, via, err := l.dialVia(context.Background(), cfg, host, port)
+			l.record(c.RemoteAddr(), "connect", net.JoinHostPort(host, strconv.Itoa(port)), via, start, err)
 			if err != nil {
 				writeSimple(c, httpErrStatus(err), "", err.Error())
 				return
@@ -66,7 +73,9 @@ func (l *listener) serveHTTP(c *bufConn, cfg *Config) {
 					if err != nil {
 						return nil, err
 					}
-					cc, err := l.dial(ctx, l.cfg.Load(), h, p)
+					start := time.Now()
+					cc, via, err := l.dialVia(ctx, l.cfg.Load(), h, p)
+					l.record(c.RemoteAddr(), "http", net.JoinHostPort(h, strconv.Itoa(p)), via, start, err)
 					if err != nil {
 						return nil, err
 					}

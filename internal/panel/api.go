@@ -1333,7 +1333,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
 	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name",
-	"block_sites", "secure_dns"}
+	"block_sites", "secure_dns", "ipv4_sites", "nat64_prefix"}
 
 var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
 	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
@@ -1360,6 +1360,26 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "check interval must be 0..1440 minutes")
 			return
 		}
+	}
+	if v, ok := b["ipv4_sites"]; ok {
+		rules, bad := cleanBlockRules(v)
+		if len(bad) > 0 {
+			fail(w, 400, "not a domain, IP or IP range: "+strings.Join(bad, ", "))
+			return
+		}
+		b["ipv4_sites"] = strings.Join(rules, "\n")
+	}
+	if v, ok := b["nat64_prefix"]; ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			p, err := netip.ParsePrefix(v)
+			if err != nil || !p.Addr().Is6() || p.Bits() != 96 {
+				fail(w, 400, "NAT64 prefix must be an IPv6 /96, for example 64:ff9b::/96")
+				return
+			}
+			v = p.Masked().String()
+		}
+		b["nat64_prefix"] = v
 	}
 	if v, ok := b["block_sites"]; ok {
 		rules, bad := cleanBlockRules(v)
@@ -1414,6 +1434,16 @@ func cleanBlockRules(text string) (rules, bad []string) {
 func (s *Server) blockRules() []string {
 	rules, _ := cleanBlockRules(s.Store.GetSetting("block_sites", ""))
 	return rules
+}
+
+// handleConnLog asks the proxy's node for its recent connection attempts.
+func (s *Server) handleConnLog(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Store.GetProxy(pathID(r))
+	if err != nil || (isCustomer(r) && p.OwnerID != currentUser(r).ID) {
+		fail(w, 404, "proxy not found")
+		return
+	}
+	writeJSON(w, 200, s.queueCommand(p.NodeID, proto.Command{Type: "conn_log", ProxyID: p.ID}))
 }
 
 // handleTestSite asks the proxy's node why a website does or does not open
