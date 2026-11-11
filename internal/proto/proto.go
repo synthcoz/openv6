@@ -104,6 +104,11 @@ type SyncResponse struct {
 	Bypass     bool        `json:"bypass"`   // keep proxy traffic on the physical NIC when a VPN is active
 	DNS        []string    `json:"dns"`      // resolvers used by proxies; empty = system resolver
 	UPnP       bool        `json:"upnp"`     // map Internet-scoped proxy ports on the router
+	// Block is the dashboard's blocked-sites list (domains, IPs, CIDRs).
+	Block []string `json:"block,omitempty"`
+	// SecureDNS: when a site's normal DNS answer has no IPv6 address, ask
+	// DNS-over-HTTPS over IPv6 too (ISP/VPN resolvers that drop AAAA).
+	SecureDNS bool `json:"secure_dns"`
 	// RelayServer is set on a public node that relays proxies of NAT'ed nodes.
 	RelayServer *RelayServerSpec `json:"relay_server,omitempty"`
 	// RelayClients are public nodes this node publishes proxies through.
@@ -171,6 +176,7 @@ type UPnPState struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// Command types: test_proxy | test_v6 | test_site | update | restart | fix | reapply
 type Command struct {
 	ID      string `json:"id"`
 	Type    string `json:"type"` // test_proxy | test_v6 | update
@@ -178,4 +184,5 @@ type Command struct {
 	Version string `json:"version,omitempty"` // update: expected version
 	URL     string `json:"url,omitempty"`     // update: binary download URL
 	Fix     string `json:"fix,omitempty"`     // fix: id of the system check to repair
+	Host    string `json:"host,omitempty"`    // test_site: website to test through ProxyID
 }

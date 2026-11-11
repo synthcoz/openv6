@@ -269,11 +269,13 @@ func (s *Server) desiredState(node *store.Node) (*proto.SyncResponse, error) {
 	}
 	pm := map[int64]*store.Pool{}
 	resp := &proto.SyncResponse{NodeID: node.ID, NodeName: node.Name, Iface: node.Iface, Interval: 5,
-		Firewall: s.Store.GetSetting("auto_firewall", "1") == "1",
-		Bypass:   node.Bypass,
-		DNS:      dnsServers(node.DNS),
-		UPnP:     node.UPnP,
-		Pools:    []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
+		Firewall:  s.Store.GetSetting("auto_firewall", "1") == "1",
+		Bypass:    node.Bypass,
+		DNS:       dnsServers(node.DNS),
+		UPnP:      node.UPnP,
+		Block:     s.blockRules(),
+		SecureDNS: s.Store.GetSetting("secure_dns", "1") == "1",
+		Pools:     []proto.PoolSpec{}, Proxies: []proto.ProxySpec{}, Commands: []proto.Command{}}
 	for _, p := range pools {
 		pm[p.ID] = p
 		resp.Pools = append(resp.Pools, proto.PoolSpec{ID: p.ID, CIDR: p.CIDR, Mode: p.Mode, Auto: p.Auto})

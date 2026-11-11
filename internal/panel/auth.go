@@ -84,6 +84,7 @@ func (s *Server) auth(h http.HandlerFunc) http.Handler {
 var customerRoutes = map[string]bool{
 	"GET /api/proxies": true, "POST /api/proxies/export": true, "POST /api/proxies/action": true,
 	"GET /api/commands/{id}": true, "POST /api/account/password": true, "GET /api/proxies/{id}/checks": true,
+	"POST /api/proxies/{id}/test-site": true,
 }
 
 func isCustomer(r *http.Request) bool {

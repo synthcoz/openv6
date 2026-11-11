@@ -745,6 +745,28 @@ async function pollCommand(id) {
   return { done: true, ok: false, output: 'timeout' };
 }
 
+// Result of a "test a website" command: verdict, what to do, and the details.
+function siteReport(c) {
+  let r;
+  try { r = JSON.parse(c.output); } catch (e) { return alertBox('err', esc(c.output === 'timeout' ? t('site_timeout') : c.output || t('site_timeout'))); }
+  const v = r.verdict || 'other';
+  const kind = v === 'ok' ? 'ok' : (v === 'dns_hides_ipv6' && r.secure_dns) ? 'ok' : v === 'blocked_rule' ? 'info' : 'warn';
+  let fix = t('sitefix_' + v);
+  if (v === 'dns_hides_ipv6') fix = r.secure_dns ? t('sitefix_dns_hides_ipv6_on') : t('sitefix_dns_hides_ipv6_off');
+  if (v === 'ipv4_only' && r.ipv4_fallback) fix = t('sitefix_ipv4_only_fallback');
+  const list = (a) => (a && a.length ? a.map(esc).join(', ') : `<span class="muted">${t('site_none')}</span>`);
+  const box = kind === 'ok' ? `<div class="alert ok">${icon('check')}<div><b>${t('site_' + v, { host: esc(r.host) })}</b><div>${fix}</div></div></div>`
+    : alertBox(kind === 'info' ? 'info' : 'warn', `<b>${t('site_' + v, { host: esc(r.host) })}</b><div>${fix}</div>`);
+  return `${box}
+    <div class="kv small" style="margin-top:10px">
+      <div>${t('site_dns_normal')}</div><div class="mono">IPv6: ${list(r.sys_aaaa)}<br>IPv4: ${list(r.sys_a)}${r.sys_err ? `<br><span class="muted">${esc(r.sys_err)}</span>` : ''}</div>
+      <div>${t('site_dns_secure')}</div><div class="mono">IPv6: ${list(r.doh_aaaa)}<br>IPv4: ${list(r.doh_a)}${r.doh_err ? `<br><span class="muted">${esc(r.doh_err)}</span>` : ''}</div>
+      ${r.tried ? `<div>${t('site_connect')}</div><div class="mono">[${esc(r.tried)}]:443 → ${r.connect === 'ok' ? 'OK' : esc(r.connect)}${r.http ? ` · HTTP ${r.http}` : ''}</div>` : ''}
+      ${r.detail ? `<div>${t('details')}</div><div class="mono">${esc(r.detail)}</div>` : ''}
+      <div>${t('site_time')}</div><div>${r.ms} ms</div>
+    </div>`;
+}
+
 async function testProxies(ids, btn) {
   let old;
   if (btn) { btn.disabled = true; old = btn.innerHTML; btn.innerHTML = '<span class="dot pending"></span>'; }
@@ -926,6 +948,11 @@ async function openProxyDrawer(id, tab = 'info') {
           <div style="flex:1">${checkCell(p)}</div><button class="small" id="dTest">${icon('pulse', 'sm')} ${t('test')}</button></div>
         <div class="bars" id="dBars"></div>
         <div id="dHist" class="timeline small" style="margin-top:12px"><div class="skel"></div></div>
+        <h3>${t('site_test')}</h3>
+        <p class="hint" style="margin-top:0">${t('site_test_hint')}</p>
+        <form class="row" id="stf"><input name="host" placeholder="example.com" autocomplete="off" spellcheck="false" style="flex:1;min-width:160px" required>
+          <button type="submit">${icon('pulse', 'sm')} ${t('site_test_btn')}</button></form>
+        <div id="stRes" style="margin-top:10px"></div>
       </div>
       <div data-pane="edit" hidden><form id="ef" class="stack">
         <div class="form-grid">
@@ -974,6 +1001,17 @@ async function openProxyDrawer(id, tab = 'info') {
       $('#dBars', d).innerHTML = recent.map((c) => `<span class="${c.ok ? '' : 'bad'}" style="height:${c.ok ? Math.max(8, c.latency / max * 100) : 100}%" title="${fmtTime(c.at)} · ${c.ok ? c.latency + ' ms' : esc(c.error)}"></span>`).join('');
       $('#dHist', d).innerHTML = h.length ? h.slice(0, 15).map((c) => `<div class="ev"><div class="when">${fmtTime(c.at)}</div>
         <div class="wrap">${c.ok ? `<span style="color:var(--ok)">${icon('check', 'sm')}</span> ${c.latency} ms · ${esc(c.ip)}` : `<span style="color:var(--err)">${icon('x', 'sm')}</span> ${errInfo(c.code, c.error)}`}</div></div>`).join('') : `<p class="muted">${t('never')}</p>`;
+    };
+    $('#stf', d).onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = $('button', e.target), out = $('#stRes', d);
+      btn.disabled = true;
+      out.innerHTML = `<p class="small muted"><span class="dot pending"></span> ${t('site_testing')}</p>`;
+      try {
+        const c = await api('POST', `/api/proxies/${p.id}/test-site`, { host: e.target.host.value });
+        out.innerHTML = siteReport(await pollCommand(c.id));
+      } catch (err) { out.innerHTML = alertBox('err', esc(err.message)); }
+      btn.disabled = false;
     };
     const test = (b) => testProxies([p.id], b).then(() => openProxyDrawer(p.id, 'health'));
     $('#dTest', d).onclick = (e) => test(e.currentTarget);
@@ -1519,6 +1557,15 @@ async function pageSettings() {
       <p class="hint">${t('panel_url_hint')}</p>
       <button class="primary" type="submit">${t('save')}</button></form>
 
+    <form class="card" id="blkf"><h2>${t('block_title')}</h2>
+      <p class="hint" style="margin-top:0">${t('block_hint')}</p>
+      <textarea name="block_sites" rows="6" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="facebook.com&#10;*.doubleclick.net&#10;203.0.113.0/24">${esc(s.block_sites || '')}</textarea>
+      <p class="hint">${t('block_rules_help')}</p>
+      <h3>${t('secure_dns_title')}</h3>
+      <label class="check"><input type="checkbox" name="secure_dns" ${s.secure_dns === '1' ? 'checked' : ''}> ${t('secure_dns')}</label>
+      <p class="hint">${t('secure_dns_hint')}</p>
+      <button class="primary" type="submit">${t('save')}</button></form>
+
     <div class="card"><h2>${t('backup')}</h2>
       <p class="small muted" style="margin-top:0">${t('backup_hint')}</p>
       <div class="row"><a class="btn primary" href="/api/backup" download>${t('download_backup')}</a>
@@ -1569,6 +1616,14 @@ async function pageSettings() {
   $('#opf').onsubmit = (e) => {
     e.preventDefault(); const f = e.target;
     save({ check_interval_min: f.check_interval_min.value, auto_firewall: f.auto_firewall.checked ? '1' : '0', instance_name: f.instance_name.value, panel_url: f.panel_url.value });
+  };
+  $('#blkf').onsubmit = async (e) => {
+    e.preventDefault(); const f = e.target;
+    try {
+      const r = await api('PUT', '/api/settings', { block_sites: f.block_sites.value, secure_dns: f.secure_dns.checked ? '1' : '0' });
+      f.block_sites.value = r.block_sites || '';
+      toast(t('saved'));
+    } catch (err) { toast(err.message, true); }
   };
   $('#btnUpdCheck').onclick = async () => { await api('GET', '/api/update?refresh=1').catch(() => {}); renderPage(); };
   if ($('#btnUpd')) $('#btnUpd').onclick = async (e) => {

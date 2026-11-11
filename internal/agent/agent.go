@@ -63,6 +63,8 @@ type Agent struct {
 	errors   []string
 	running  map[string]bool // command ids in progress
 	specs    map[int64]proto.ProxySpec
+	pcfgs    map[int64]proxy.Config // running proxy configs (for site tests)
+	doh      *proxy.DoH             // encrypted DNS shared by all proxies
 
 	pubV4   string
 	pubV4At time.Time
@@ -106,6 +108,7 @@ func New(cfg Config) *Agent {
 		client:    &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureTLS}}},
 		net:       n,
 		proxies:   proxy.NewManager(),
+		doh:       proxy.NewDoH(),
 		relaySrv:  relay.NewServer(cfg.DataDir),
 		relayCl:   relay.NewClient(),
 		upnp:      upnp.New(),
@@ -297,6 +300,11 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	applied := map[int64]proto.Applied{}
 	var cfgs []proxy.Config
 	specs := map[int64]proto.ProxySpec{}
+	block := proxy.ParseBlocklist(r.Block)
+	var doh *proxy.DoH
+	if r.SecureDNS {
+		doh = a.doh
+	}
 	for _, s := range r.Proxies {
 		specs[s.ID] = s
 		ip, err := netip.ParseAddr(s.IP)
@@ -322,7 +330,8 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			}
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps}
+			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps,
+			Block: block, DoH: doh}
 		if len(r.DNS) > 0 {
 			c.Resolver = proxy.NewResolver(r.DNS, ip, pBind)
 		}
@@ -383,6 +392,10 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	}
 	a.proxies.SetAllow(allow)
 	listenErrs := a.proxies.Apply(ok)
+	pcfgs := map[int64]proxy.Config{}
+	for _, c := range ok {
+		pcfgs[c.ID] = c
+	}
 	// sharing over the Internet: relay (public node <-> NAT'ed node) and UPnP
 	for _, e := range a.relaySrv.Apply(r.RelayServer) {
 		errs = append(errs, fmt.Errorf("%s", e))
@@ -440,6 +453,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	a.applied = applied
 	a.errors = errStrs
 	a.specs = specs
+	a.pcfgs = pcfgs
 	a.bindIf = bindIf
 	a.netCache, a.netAt, a.netIface = st, time.Now(), r.Iface
 	a.mu.Unlock()
@@ -545,6 +559,22 @@ func (a *Agent) runCommand(c proto.Command) {
 					res.Code = "wrong_ip"
 				}
 			}
+		}
+		<-a.testSem
+	case "test_site": // why does (or doesn't) a website open through this proxy?
+		a.testSem <- struct{}{}
+		a.mu.Lock()
+		cfg, ok := a.pcfgs[c.ProxyID]
+		a.mu.Unlock()
+		if !ok {
+			res.Output, res.Code = "proxy not running on this node", "not_running"
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			rep := proxy.Diagnose(ctx, &cfg, net.DefaultResolver, a.doh, c.Host)
+			cancel()
+			b, _ := json.Marshal(rep)
+			res.OK, res.Output, res.Code = rep.Verdict == "ok", string(b), rep.Verdict
+			log.Printf("agent: site test %s via proxy %d: %s", rep.Host, c.ProxyID, rep.Verdict)
 		}
 		<-a.testSem
 	case "test_v6":

@@ -15,6 +15,7 @@ import (
 
 	"openv6/internal/license"
 	"openv6/internal/proto"
+	"openv6/internal/proxy"
 	"openv6/internal/store"
 	"openv6/internal/v6"
 )
@@ -1331,11 +1332,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
-	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name"}
+	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name",
+	"block_sites", "secure_dns"}
 
 var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
 	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
-	"lang": "vi"}
+	"lang": "vi", "secure_dns": "1"}
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"detected_url": s.panelURL(r)}
@@ -1359,6 +1361,18 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if v, ok := b["block_sites"]; ok {
+		rules, bad := cleanBlockRules(v)
+		if len(bad) > 0 {
+			fail(w, 400, "not a domain, IP or IP range: "+strings.Join(bad, ", "))
+			return
+		}
+		if len(rules) > 5000 {
+			fail(w, 400, "at most 5000 blocked sites")
+			return
+		}
+		b["block_sites"] = strings.Join(rules, "\n")
+	}
 	for _, k := range settingKeys {
 		if v, ok := b[k]; ok {
 			_ = s.Store.SetSetting(k, strings.TrimSpace(v))
@@ -1371,4 +1385,58 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		_ = s.Store.SetSetting("telegram_token", strings.TrimSpace(v))
 	}
 	s.handleGetSettings(w, r)
+}
+
+// cleanBlockRules normalises the blocked-sites list (one rule per line;
+// URLs are reduced to their host) and returns the entries it cannot read.
+func cleanBlockRules(text string) (rules, bad []string) {
+	seen := map[string]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		if i := strings.Index(line, "#"); i >= 0 && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			line = line[:i] // comment
+		}
+		for _, f := range strings.FieldsFunc(line, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\r' }) {
+			r := proxy.NormalizeRule(f)
+			if r == "" {
+				bad = append(bad, f)
+				continue
+			}
+			if !seen[r] {
+				seen[r] = true
+				rules = append(rules, r)
+			}
+		}
+	}
+	return rules, bad
+}
+
+// blockRules is the saved blocked-sites list as sent to the nodes.
+func (s *Server) blockRules() []string {
+	rules, _ := cleanBlockRules(s.Store.GetSetting("block_sites", ""))
+	return rules
+}
+
+// handleTestSite asks the proxy's node why a website does or does not open
+// through that proxy (DNS, IPv6 reachability, blocked list).
+func (s *Server) handleTestSite(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Store.GetProxy(pathID(r))
+	if err != nil || (isCustomer(r) && p.OwnerID != currentUser(r).ID) {
+		fail(w, 404, "proxy not found")
+		return
+	}
+	var b struct {
+		Host string `json:"host"`
+	}
+	if err := readJSON(r, &b); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	host := proxy.NormalizeRule(b.Host)
+	host = strings.TrimPrefix(host, "*.")
+	if host == "" || strings.Contains(host, "/") {
+		fail(w, 400, "enter a website, for example example.com")
+		return
+	}
+	st := s.queueCommand(p.NodeID, proto.Command{Type: "test_site", ProxyID: p.ID, Host: host})
+	writeJSON(w, 200, st)
 }

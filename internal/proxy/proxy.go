@@ -41,6 +41,11 @@ type Config struct {
 	// BindIf, when > 0, pins outgoing sockets to this interface index
 	// (Windows/macOS VPN bypass; ignored on Linux).
 	BindIf int
+	// Block lists destinations this proxy refuses (dashboard: Blocked sites).
+	Block *Blocklist
+	// DoH, when set, is asked for the IPv6 address of a site whose normal
+	// DNS answer has none (ISP/VPN resolvers that drop AAAA records).
+	DoH *DoH
 }
 
 // Dialer returns a net.Dialer for this proxy's outbound connections.
@@ -322,20 +327,21 @@ func filterTargets(out netip.Addr, addrs []netip.Addr) ([]netip.Addr, bool) {
 func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int) (net.Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if cfg.Block.Host(host) {
+		return nil, ErrBlockedByRule
+	}
 	var addrs []netip.Addr
 	if a, err := netip.ParseAddr(host); err == nil {
 		addrs = []netip.Addr{a.Unmap()}
 	} else {
-		res := l.m.Resolver
-		if cfg.Resolver != nil {
-			res = cfg.Resolver
-		}
-		ips, err := res.LookupNetIP(ctx, "ip", host)
-		if err != nil {
+		var err error
+		if addrs, err = l.m.resolve(ctx, cfg, host); err != nil {
 			return nil, err
 		}
-		for _, ip := range ips {
-			addrs = append(addrs, ip.Unmap())
+	}
+	for _, a := range addrs {
+		if cfg.Block.Addr(a) {
+			return nil, ErrBlockedByRule
 		}
 	}
 	addrs, dropped := filterTargets(cfg.OutIP, addrs)
@@ -376,6 +382,34 @@ func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int)
 		}
 	}
 	return nil, lastErr
+}
+
+// resolve looks a host up with the proxy's resolver. When the answer has no
+// IPv6 address (or the lookup fails) and encrypted DNS is enabled, it asks
+// DNS-over-HTTPS for the AAAA record too: many ISP routers and VPN resolvers
+// drop AAAA answers for sites that do have IPv6.
+func (m *Manager) resolve(ctx context.Context, cfg *Config, host string) ([]netip.Addr, error) {
+	res := m.Resolver
+	if cfg.Resolver != nil {
+		res = cfg.Resolver
+	}
+	ips, err := res.LookupNetIP(ctx, "ip", host)
+	var addrs []netip.Addr
+	has6 := false
+	for _, ip := range ips {
+		ip = ip.Unmap()
+		addrs = append(addrs, ip)
+		has6 = has6 || ip.Is6()
+	}
+	if cfg.DoH != nil && cfg.OutIP.Is6() && !has6 {
+		if v6, derr := cfg.DoH.Lookup(ctx, host, TypeAAAA, cfg.OutIP, cfg.BindIf); derr == nil && len(v6) > 0 {
+			return append(v6, addrs...), nil
+		}
+	}
+	if err != nil && len(addrs) == 0 {
+		return nil, err
+	}
+	return addrs, nil
 }
 
 // pipe copies in both directions and updates counters.

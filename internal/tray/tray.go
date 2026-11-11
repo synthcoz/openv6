@@ -128,29 +128,88 @@ func onReady() {
 
 	var cur status
 	var curOK bool
+	// Every Set* call redraws the icon or menu in the taskbar, and doing that
+	// every few seconds makes the Windows tray icon flicker. The ui helpers
+	// only touch what actually changed.
+	var mu sync.Mutex
+	lastIcon, lastTip := icon.State(-1), ""
+	titles := map[*systray.MenuItem]string{}
+	shown := map[*systray.MenuItem]bool{}
+	enabled := map[*systray.MenuItem]bool{}
+	setIcon := func(st icon.State) {
+		if st != lastIcon {
+			lastIcon = st
+			systray.SetIcon(iconFor(st))
+		}
+	}
+	setTip := func(s string) {
+		if s != lastTip {
+			lastTip = s
+			systray.SetTooltip(s)
+		}
+	}
+	setTitle := func(m *systray.MenuItem, s string) {
+		if titles[m] != s {
+			titles[m] = s
+			m.SetTitle(s)
+		}
+	}
+	setShown := func(m *systray.MenuItem, on bool) {
+		if v, ok := shown[m]; !ok || v != on {
+			shown[m] = on
+			if on {
+				m.Show()
+			} else {
+				m.Hide()
+			}
+		}
+	}
+	setEnabled := func(m *systray.MenuItem, on bool) {
+		if v, ok := enabled[m]; !ok || v != on {
+			enabled[m] = on
+			if on {
+				m.Enable()
+			} else {
+				m.Disable()
+			}
+		}
+	}
+	lastIcon = icon.StateBrand
+	for _, m := range []*systray.MenuItem{mProblem, mStart, mInstall, mUpdate} {
+		shown[m] = false
+	}
+	failures := 0 // consecutive failed status calls
 	labels := func() {
-		mOpen.SetTitle(tr("open"))
-		mCheck.SetTitle(tr("check"))
-		mReapply.SetTitle(tr("reapply"))
-		mStart.SetTitle(tr("start_service"))
-		mInstall.SetTitle(tr("install"))
-		mLog.SetTitle(tr("view_log"))
-		mReport.SetTitle(tr("report"))
-		mAuto.SetTitle(tr("autostart"))
-		mLang.SetTitle(tr("language"))
-		mQuit.SetTitle(tr("quit"))
+		setTitle(mOpen, tr("open"))
+		setTitle(mCheck, tr("check"))
+		setTitle(mReapply, tr("reapply"))
+		setTitle(mStart, tr("start_service"))
+		setTitle(mInstall, tr("install"))
+		setTitle(mLog, tr("view_log"))
+		setTitle(mReport, tr("report"))
+		setTitle(mAuto, tr("autostart"))
+		setTitle(mLang, tr("language"))
+		setTitle(mQuit, tr("quit"))
 		if cur.Paused {
-			mPause.SetTitle(tr("resume"))
+			setTitle(mPause, tr("resume"))
 		} else {
-			mPause.SetTitle(tr("pause"))
+			setTitle(mPause, tr("pause"))
 		}
 	}
 	refresh := func() {
+		mu.Lock()
+		defer mu.Unlock()
 		var s status
 		err := c.call("GET", "/api/tray/status", &s)
 		var diagKey, diagDetail string
 		if err != nil {
+			failures++
+			if curOK && failures < 3 {
+				return // one slow answer (busy service, sleep/resume) is not an outage: keep the icon
+			}
 			diagKey, diagDetail = diagnose(err)
+		} else {
+			failures = 0
 		}
 		curOK = err == nil
 		if err == nil {
@@ -172,62 +231,58 @@ func onReady() {
 		switch {
 		case !curOK:
 			st, line = icon.StateError, tr(diagKey)
-			mStart.Hide()
-			mInstall.Hide()
+			setShown(mStart, false)
+			setShown(mInstall, false)
 			switch diagKey {
 			case "diag_not_installed":
-				mInstall.Show()
+				setShown(mInstall, true)
 			case "diag_stopped", "diag_no_answer", "diag_no_info", "diag_unknown":
-				mStart.Show()
+				setShown(mStart, true)
 			}
 		case cur.Paused:
 			st, line = icon.StatePaused, tr("paused", cur.Total)
-			mStart.Hide()
+			setShown(mStart, false)
 		case cur.Problem != "" || !cur.Online:
 			st, line = icon.StateError, tr("problem", cur.OK, cur.Total)
-			mStart.Hide()
+			setShown(mStart, false)
 		case cur.Failing > 0 || cur.Errors > 0:
 			st, line = icon.StateWarn, tr("some_failing", cur.OK, cur.Total)
-			mStart.Hide()
+			setShown(mStart, false)
 		default:
 			st, line = icon.StateOK, tr("all_ok", cur.OK, cur.Total)
-			mStart.Hide()
+			setShown(mStart, false)
 		}
-		systray.SetIcon(iconFor(st))
-		systray.SetTooltip("openv6 — " + line)
-		mStatus.SetTitle(line)
+		setIcon(st)
+		setTip("openv6 — " + line)
+		setTitle(mStatus, line)
 		if curOK && cur.Prefix != "" {
-			mPrefix.SetTitle("IPv6: " + cur.Prefix)
-			mPrefix.Show()
+			setTitle(mPrefix, "IPv6: "+cur.Prefix)
+			setShown(mPrefix, true)
 		} else {
-			mPrefix.Hide()
+			setShown(mPrefix, false)
 		}
 		switch {
 		case curOK && cur.Problem != "":
-			mProblem.SetTitle("⚠ " + tr("see_dashboard"))
-			mProblem.Show()
+			setTitle(mProblem, "⚠ "+tr("see_dashboard"))
+			setShown(mProblem, true)
 		case !curOK && diagDetail != "":
 			d := diagDetail
 			if len(d) > 70 {
 				d = d[:70] + "…"
 			}
-			mProblem.SetTitle(d)
-			mProblem.Show()
+			setTitle(mProblem, d)
+			setShown(mProblem, true)
 		default:
-			mProblem.Hide()
+			setShown(mProblem, false)
 		}
 		for _, m := range []*systray.MenuItem{mPause, mCheck, mReapply} {
-			if curOK {
-				m.Enable()
-			} else {
-				m.Disable()
-			}
+			setEnabled(m, curOK)
 		}
 		if curOK && cur.NewVersion != "" {
-			mUpdate.SetTitle(tr("update", cur.NewVersion))
-			mUpdate.Show()
+			setTitle(mUpdate, tr("update", cur.NewVersion))
+			setShown(mUpdate, true)
 		} else {
-			mUpdate.Hide()
+			setShown(mUpdate, false)
 		}
 	}
 	refresh()
@@ -239,10 +294,13 @@ func onReady() {
 
 	openDashboard := func(page string) { _ = OpenDashboard(page) }
 	action := func(name string) {
-		if err := c.call("POST", "/api/tray/"+name, nil); err != nil {
-			systray.SetTooltip("openv6 — " + err.Error())
-		}
+		err := c.call("POST", "/api/tray/"+name, nil)
 		refresh()
+		if err != nil {
+			mu.Lock()
+			setTip("openv6 — " + err.Error())
+			mu.Unlock()
+		}
 	}
 
 	go func() {
@@ -300,14 +358,37 @@ func onReady() {
 			case <-mQuit.ClickedCh:
 				// Quit stops everything: proxies, the service and the icon.
 				// Opening openv6 again (or the next boot) starts it again.
-				if curOK {
-					_ = c.call("POST", "/api/tray/shutdown", nil)
-				}
+				mu.Lock()
+				setTitle(mStatus, tr("stopping"))
+				setTip("openv6 — " + tr("stopping"))
+				mu.Unlock()
+				quitAll(c)
 				systray.Quit()
 				return
 			}
 		}
 	}()
+}
+
+// quitAll asks the service to stop (proxies included) and waits until it has,
+// so "Quit" never leaves proxies running without an icon. It tries even when
+// the last status call failed: a slow answer is not a stopped service.
+func quitAll(c *client) {
+	for i := 0; i < 3; i++ {
+		if err := c.call("POST", "/api/tray/shutdown", nil); err == nil {
+			break
+		}
+		if st := service.Status(); st == "stopped" || st == "not_installed" {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	for i := 0; i < 20; i++ { // up to ~10 s for proxies to close
+		if st := service.Status(); st != "running" && st != "starting" && st != "stopping" {
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func detectLang() string {
@@ -326,7 +407,7 @@ var texts = map[string]map[string]string{
 	"vi": {
 		"open": "Mở bảng điều khiển", "pause": "Tạm dừng tất cả proxy", "resume": "Tiếp tục chạy proxy",
 		"check": "Kiểm tra tất cả proxy", "reapply": "Áp dụng lại mạng", "start_service": "Khởi động dịch vụ openv6",
-		"autostart": "Tự chạy khi đăng nhập", "language": "Ngôn ngữ", "quit": "Thoát openv6 (tắt proxy)",
+		"autostart": "Tự chạy khi đăng nhập", "language": "Ngôn ngữ", "quit": "Thoát openv6 (tắt proxy)", "stopping": "Đang tắt openv6…",
 		"service_down": "Dịch vụ openv6 chưa chạy", "paused": "Đã tạm dừng %d proxy",
 		"diag_not_installed": "openv6 chưa được cài đặt", "diag_stopped": "Dịch vụ openv6 đang dừng",
 		"diag_starting": "Dịch vụ openv6 đang khởi động…", "diag_no_info": "Không đọc được thông tin kết nối của dịch vụ",
@@ -338,7 +419,7 @@ var texts = map[string]map[string]string{
 	"en": {
 		"open": "Open dashboard", "pause": "Pause all proxies", "resume": "Resume proxies",
 		"check": "Check all proxies", "reapply": "Re-apply network", "start_service": "Start the openv6 service",
-		"autostart": "Start at login", "language": "Language", "quit": "Quit openv6 (stops proxies)",
+		"autostart": "Start at login", "language": "Language", "quit": "Quit openv6 (stops proxies)", "stopping": "Stopping openv6…",
 		"service_down": "openv6 service is not running", "paused": "%d proxies paused",
 		"diag_not_installed": "openv6 is not installed", "diag_stopped": "openv6 service is stopped",
 		"diag_starting": "openv6 service is starting…", "diag_no_info": "Cannot read the service connection info",

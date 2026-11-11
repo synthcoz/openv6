@@ -18,6 +18,8 @@ func Classify(err error) string {
 	}
 	var dnsErr *net.DNSError
 	switch {
+	case errors.Is(err, ErrBlockedByRule):
+		return "blocked_rule"
 	case errors.Is(err, ErrNoIPv6):
 		return "no_ipv6_target"
 	case errors.Is(err, syscall.EADDRINUSE):
