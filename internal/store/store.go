@@ -117,6 +117,10 @@ var migrations = []string{
 	`ALTER TABLE proxies ADD COLUMN owner_id INTEGER NOT NULL DEFAULT 0;`,
 	// 7: network card per proxy ("" = node default)
 	`ALTER TABLE proxies ADD COLUMN iface TEXT NOT NULL DEFAULT '';`,
+	// 8: where the proxy's IP is (time zone, city, "lat,long") for anti-detect profiles
+	`ALTER TABLE proxies ADD COLUMN check_tz TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE proxies ADD COLUMN check_city TEXT NOT NULL DEFAULT '';
+	 ALTER TABLE proxies ADD COLUMN check_loc TEXT NOT NULL DEFAULT '';`,
 }
 
 // migrate brings the schema up to date. Each statement runs on its own and

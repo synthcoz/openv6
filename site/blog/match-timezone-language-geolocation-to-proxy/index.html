@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers | openv6</title>
+<meta name="description" content="A profile whose time zone or language disagrees with its proxy IP stands out. Which settings to match, where to find the right values, and how to fill them for many profiles at once.">
+<link rel="canonical" href="https://thephuc.xyz/openv6/blog/match-timezone-language-geolocation-to-proxy/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="openv6">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers | openv6">
+<meta property="og:description" content="A profile whose time zone or language disagrees with its proxy IP stands out. Which settings to match, where to find the right values, and how to fill them for many profiles at once.">
+<meta property="og:url" content="https://thephuc.xyz/openv6/blog/match-timezone-language-geolocation-to-proxy/">
+<meta property="og:image" content="https://thephuc.xyz/openv6/assets/og/match-timezone-language-geolocation-to-proxy.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers | openv6">
+<meta name="twitter:description" content="A profile whose time zone or language disagrees with its proxy IP stands out. Which settings to match, where to find the right values, and how to fill them for many profiles at once.">
+<meta name="twitter:image" content="https://thephuc.xyz/openv6/assets/og/match-timezone-language-geolocation-to-proxy.jpg">
+<meta property="article:published_time" content="2026-11-11">
+<meta property="article:modified_time" content="2026-11-11">
+<meta name="keywords" content="anti-detect browser timezone, match timezone to proxy, browser language proxy, geolocation spoofing proxy, WebRTC leak, proxy location mismatch">
+<link rel="alternate" type="application/rss+xml" title="openv6 blog" href="https://thephuc.xyz/openv6/blog/feed.xml">
+<link rel="icon" href="../../assets/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../../assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem('ov6_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) { /* storage blocked */ }</script>
+<link rel="stylesheet" href="../../assets/site.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers","description":"A profile whose time zone or language disagrees with its proxy IP stands out. Which settings to match, where to find the right values, and how to fill them for many profiles at once.","image":"https://thephuc.xyz/openv6/assets/og/match-timezone-language-geolocation-to-proxy.jpg","datePublished":"2026-11-11","dateModified":"2026-11-11","author":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"publisher":{"@type":"Organization","name":"openv6","url":"https://thephuc.xyz/openv6/","logo":"https://thephuc.xyz/openv6/assets/logo-256.png"},"mainEntityOfPage":"https://thephuc.xyz/openv6/blog/match-timezone-language-geolocation-to-proxy/","keywords":"anti-detect browser timezone, match timezone to proxy, browser language proxy, geolocation spoofing proxy, WebRTC leak, proxy location mismatch","wordCount":605,"inLanguage":"en","about":{"@type":"SoftwareApplication","name":"openv6","url":"https://thephuc.xyz/openv6/"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"openv6","item":"https://thephuc.xyz/openv6/"},{"@type":"ListItem","position":2,"name":"Blog","item":"https://thephuc.xyz/openv6/blog/"},{"@type":"ListItem","position":3,"name":"Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers","item":"https://thephuc.xyz/openv6/blog/match-timezone-language-geolocation-to-proxy/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Do I have to match the browser language exactly?","acceptedAnswer":{"@type":"Answer","text":"Matching the country's usual language (for example vi-VN for Vietnam, de-DE for Germany) is the safe default. Plenty of real users have another language, so a mismatch alone is not proof of anything, but it adds to the score together with other signals."}},{"@type":"Question","name":"Where do I get the right time zone for a proxy?","acceptedAnswer":{"@type":"Answer","text":"Look the IP up through the proxy itself, not from your own connection. openv6's check does that and shows the IANA time zone, such as Asia/Ho_Chi_Minh, which is the format anti-detect browsers use."}},{"@type":"Question","name":"Most anti-detect browsers can fill these automatically. Do I still need this?","acceptedAnswer":{"@type":"Answer","text":"Automatic mode works when the browser can look the IP up through the proxy. If its lookup fails, it may fall back to your real location, so check the values once, especially for new proxies."}},{"@type":"Question","name":"Does the geolocation need to be exact?","acceptedAnswer":{"@type":"Answer","text":"No. Use the city coordinates the IP lookup returns. Websites only see geolocation if they ask for permission, and they compare it with the IP's rough location, not with a street address."}}]}</script>
+</head>
+<body>
+<header id="hdr"><div class="wrap"><div class="nav">
+  <a class="brand" href="../../"><img src="../../assets/logo.svg" alt="" width="30" height="30">openv6</a>
+  <nav class="links"><a href="../../#how">How it works</a><a href="../../#pricing">Pricing</a><a href="../../blog/">Blog</a><a href="../../#faq">FAQ</a></nav>
+  <div class="sp"></div>
+  <button class="icon-btn" id="theme" type="button" title="Switch light / dark" aria-label="Switch light / dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+  <a class="btn sm primary dl" href="../../#download">Download</a>
+</div></div></header>
+<main class="wrap post">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="../../">openv6</a><span>›</span><a href="../">Blog</a></nav>
+  <article>
+    <h1>Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers</h1>
+    <p class="pmeta"><time datetime="2026-11-11">November 11, 2026</time> · 3 min read</p>
+    <div class="tldr"><b>In short</b><p>Set each anti-detect profile's time zone, browser language and geolocation to the location of its proxy IP, and keep WebRTC from showing your real address. Get the values from an IP lookup made through the proxy itself. openv6 shows them for every proxy after a check and includes them in the CSV/JSON export.</p></div>
+    <nav class="toc" aria-label="Contents"><b>Contents</b><ol><li><a href="#what-to-match">What to match</a></li><li><a href="#get-values">Get the right values</a></li><li><a href="#many-profiles">Doing it for many profiles</a></li><li><a href="#language">Picking the language</a></li><li><a href="#checklist">Checklist</a></li></ol></nav>
+    <div class="prose">
+<p>An anti-detect browser makes each profile look like a different device. A proxy makes each profile come from a different IP. But the profile also tells websites <em>where</em> it thinks it is: its time zone, its language, sometimes its GPS position. When those disagree with the IP, the profile tells two different stories, and that is easy to spot.</p>
+<p>A typical example: an IP in Vietnam, a browser clock on <code>America/New_York</code>, and <code>en-US</code> as the only language. Any site can read all three with a few lines of JavaScript.</p>
+
+<h2 id="what-to-match">What to match</h2>
+<div class="tbl"><table>
+<thead><tr><th>Setting</th><th>What websites read</th><th>Match it to</th></tr></thead>
+<tbody>
+<tr><td><strong>Time zone</strong></td><td><code>Intl.DateTimeFormat().resolvedOptions().timeZone</code>, the clock offset</td><td>The IANA time zone of the proxy IP, e.g. <code>Europe/Berlin</code></td></tr>
+<tr><td><strong>Language</strong></td><td><code>navigator.languages</code> and the <code>Accept-Language</code> header</td><td>The usual language of the IP's country, e.g. <code>de-DE</code></td></tr>
+<tr><td><strong>Geolocation</strong></td><td>The Geolocation API (only after the user allows it)</td><td>The latitude and longitude of the IP's city</td></tr>
+<tr><td><strong>WebRTC</strong></td><td>Local and public addresses exposed by WebRTC</td><td>The proxy IP, or disabled. Never your real IP.</td></tr>
+</tbody>
+</table></div>
+<p>Other locale details (date format, number format, fonts) follow the language in most anti-detect browsers. Screen size, GPU and similar fingerprint values are about the device, not the location, so they don't need to match the proxy.</p>
+
+<h2 id="get-values">Get the right values</h2>
+<p>The values must come from the IP the website will see, so look it up <strong>through the proxy</strong>. A lookup from your own connection gives your own location.</p>
+<p>By hand:</p>
+<pre><code>curl -x socks5h://user:pass@host:port https://ipinfo.io/json</code></pre>
+<p>The answer has <code>timezone</code>, <code>country</code>, <code>city</code> and <code>loc</code> (latitude, longitude). The language you pick from the country.</p>
+<p>In <a href="../../">openv6</a>, every proxy check does this lookup through the proxy. Open the proxy and the <strong>Profile settings to match this IP</strong> section shows the time zone, the suggested language and the location, each with a copy button. Before the first check it tells you to run one.</p>
+
+<h2 id="many-profiles">Doing it for many profiles</h2>
+<p>Copying three values into fifty profiles is tedious and error-prone. Two ways around it:</p>
+<ol>
+<li><strong>Let the browser fill them from the IP.</strong> Most anti-detect browsers have an "auto from IP" or "based on proxy" option for time zone, language and geolocation. It works when the browser can reach its own IP-lookup service through the proxy. Check one profile after the first launch: if the lookup failed, some browsers silently fall back to your real location.</li>
+<li><strong>Import the values with the proxies.</strong> openv6's CSV and JSON export include <code>country</code>, <code>timezone</code>, <code>language</code>, <code>city</code>, <code>latitude</code> and <code>longitude</code> next to each proxy. Use them in a spreadsheet, a script, or your browser's API to set each profile.</li>
+</ol>
+<p>If the browser's own IP lookup keeps failing with IPv6 proxies, its lookup service is probably IPv4-only. See <a href="../websites-that-fail-over-ipv6-proxies/">why some sites fail over IPv6 proxies</a> for a fix that doesn't expose your IPv4.</p>
+
+<h2 id="language">Picking the language</h2>
+<p>Use the country's most common browser language as the first entry, for example:</p>
+<div class="tbl"><table>
+<thead><tr><th>Country</th><th>Language</th><th>Country</th><th>Language</th></tr></thead>
+<tbody>
+<tr><td>United States</td><td><code>en-US</code></td><td>Vietnam</td><td><code>vi-VN</code></td></tr>
+<tr><td>United Kingdom</td><td><code>en-GB</code></td><td>Japan</td><td><code>ja-JP</code></td></tr>
+<tr><td>Germany</td><td><code>de-DE</code></td><td>Brazil</td><td><code>pt-BR</code></td></tr>
+<tr><td>France</td><td><code>fr-FR</code></td><td>Indonesia</td><td><code>id-ID</code></td></tr>
+</tbody>
+</table></div>
+<p>Adding English as a second language (<code>vi-VN, en-US</code>) is normal and common. What stands out is a language list that has nothing to do with the IP's country at all.</p>
+
+<h2 id="checklist">Checklist</h2>
+<ol>
+<li>One profile, one fixed proxy (<a href="../proxies-for-anti-detect-browsers/">why</a>).</li>
+<li>Check the proxy, then set time zone, language and geolocation from that check.</li>
+<li>Set WebRTC to use the proxy IP, or disable it.</li>
+<li>Open an IP-check page inside the profile once and confirm everything shows the same country.</li>
+<li>If you ever replace the proxy, run the check again and update the profile: a new address can be in another city.</li>
+</ol>
+    </div>
+    <section class="faqs" id="faq"><h2>Frequently asked questions</h2><details><summary>Do I have to match the browser language exactly?</summary><p>Matching the country's usual language (for example vi-VN for Vietnam, de-DE for Germany) is the safe default. Plenty of real users have another language, so a mismatch alone is not proof of anything, but it adds to the score together with other signals.</p></details><details><summary>Where do I get the right time zone for a proxy?</summary><p>Look the IP up through the proxy itself, not from your own connection. openv6's check does that and shows the IANA time zone, such as Asia/Ho_Chi_Minh, which is the format anti-detect browsers use.</p></details><details><summary>Most anti-detect browsers can fill these automatically. Do I still need this?</summary><p>Automatic mode works when the browser can look the IP up through the proxy. If its lookup fails, it may fall back to your real location, so check the values once, especially for new proxies.</p></details><details><summary>Does the geolocation need to be exact?</summary><p>No. Use the city coordinates the IP lookup returns. Websites only see geolocation if they ask for permission, and they compare it with the IP's rough location, not with a street address.</p></details></section>
+  </article>
+  <aside class="cta-card">
+    <div><h2>Run your own static IPv6 proxies</h2><p>openv6 turns your home ISP or VPS IPv6 into fixed HTTP + SOCKS5 proxies for anti-detect browsers. Windows, macOS and Linux. Free for 3 proxies.</p></div>
+    <div class="cta"><a class="btn primary" href="../../#download">Download free</a><a class="btn" href="../../#pricing">See Pro</a></div>
+  </aside>
+  <section class="related"><h2>Keep reading</h2><div class="pgrid"><a class="pcard" href="../../blog/websites-that-fail-over-ipv6-proxies/"><h3>Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4)</h3><p>A site fails through your IPv6 proxy. Is it DNS hiding the IPv6 record, an IPv4-only site, or a site refusing your range? How to tell, and fixes that keep your real IPv4 hidden.</p><span class="pmeta">November 11, 2026 · 5 min read</span></a><a class="pcard" href="../../blog/proxies-for-anti-detect-browsers/"><h3>Proxy Setup for Anti-Detect Browsers: Multilogin, GoLogin, Dolphin Anty, AdsPower, ixBrowser</h3><p>Which proxy format each anti-detect browser expects, HTTP vs SOCKS5, remote DNS, and the rules that keep profiles separate: one fixed proxy per profile, no IPv4 fallback, matching time zones.</p><span class="pmeta">November 10, 2026 · 3 min read</span></a><a class="pcard" href="../../blog/anti-detect-browser-proxy-check-failed/"><h3>Anti-Detect Browser Says “Proxy Check Failed”? Causes and Fixes</h3><p>The proxy works in one anti-detect browser and fails the check in another. Where the check really runs, the usual causes (scope, credentials, format, IPv4-only check services) and how to find which one.</p><span class="pmeta">November 11, 2026 · 3 min read</span></a></div></section>
+</main>
+<footer><div class="wrap">
+  <div class="fl"><a class="brand" href="../../" style="font-size:15px"><img src="../../assets/logo.svg" alt="" width="22" height="22" style="width:22px;height:22px">openv6</a>
+  <span>© 2026 openv6</span></div>
+  <nav class="fr"><a href="../../blog/">Blog</a><a href="https://labs.thephuc.xyz/">Labs</a><a href="https://github.com/thephux/openv6-releases">GitHub</a><a href="../../#download">Downloads</a></nav>
+</div></footer>
+<script>
+document.getElementById('theme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t; try { localStorage.setItem('ov6_theme', t); } catch (e) { /* ignore */ }
+};
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), { passive: true });
+</script>
+</body>
+</html>

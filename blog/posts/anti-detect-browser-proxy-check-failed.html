@@ -1,0 +1,62 @@
+<!--
+{
+  "title": "Anti-Detect Browser Says “Proxy Check Failed”? Causes and Fixes",
+  "description": "The proxy works in one anti-detect browser and fails the check in another. Where the check really runs, the usual causes (scope, credentials, format, IPv4-only check services) and how to find which one.",
+  "order": 10,
+  "date": "2026-11-11",
+  "keywords": ["proxy check failed", "Multilogin proxy check failed", "anti-detect browser proxy error", "proxy works in Dolphin not Multilogin", "proxy connection failed", "IPv6 proxy check"],
+  "tldr": "A proxy check can fail because the check runs from the browser vendor's servers (and your proxy only accepts your LAN), because the username or password didn't import, because the protocol or format is wrong, or because the vendor's IP-check service is IPv4-only. Look at the proxy's connection log to see which: openv6 shows the last 60 connections with the reason each one failed.",
+  "faq": [
+    ["Why does the same proxy work in Dolphin Anty but fail in Multilogin?", "The browsers check proxies differently. Some check from your computer, some from their own servers on the Internet, and they use different IP-check services, some of them IPv4-only. A proxy shared only on your LAN passes the first kind and fails the second."],
+    ["Can I use the proxy even if the check fails?", "Sometimes. If the check fails only because the vendor's check service can't reach the proxy, the profile itself may still work once launched. But then the browser can't fill time zone and location automatically, so set them yourself."],
+    ["Should I open my proxy to the Internet so the check passes?", "Only with a username and password, and only if you need to. A check from the vendor's servers needs the proxy to be reachable from the Internet, which for a home machine also means port forwarding or UPnP."],
+    ["What does “outside the sharing scope” mean in openv6?", "The connection came from an address the proxy is not shared with. For example, the proxy is set to LAN, and the connection came from an Internet IP. That is typical of a check run from the browser vendor's servers."]
+  ]
+}
+-->
+<p>You paste a proxy into a new profile, click <strong>Check proxy</strong>, and get "Proxy check failed" or "Connection error". The same proxy works fine in another anti-detect browser. That's a strong hint: the proxy is fine, but this browser checks it in a different way.</p>
+
+<h2 id="where-check-runs">First: where does the check run?</h2>
+<p>An anti-detect browser checks a proxy in one of two places:</p>
+<ul>
+<li><strong>From your computer.</strong> The app connects to the proxy from your machine and fetches an IP-check page through it. If the proxy works in a normal browser on that computer, this check passes.</li>
+<li><strong>From the vendor's servers.</strong> The app asks the vendor's cloud to test the proxy. The connection then comes from an Internet IP you don't control, not from your computer.</li>
+</ul>
+<p>The second kind is the usual reason a proxy "works in one browser and not the other". A proxy that only accepts connections from your home network (LAN) will refuse the vendor's servers, and the check fails. Launching the profile may still work, because the profile itself runs on your computer.</p>
+
+<h2 id="causes">The usual causes</h2>
+<table>
+<thead><tr><th>Cause</th><th>What you see</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><strong>Check comes from outside your network</strong></td><td>Works in other browsers; fails here. The proxy sees a connection from an unknown Internet IP.</td><td>Share the proxy on the Internet with a password, or skip the check and set time zone/location yourself.</td></tr>
+<tr><td><strong>Username or password missing</strong></td><td>The proxy sees connections with no credentials, or wrong ones.</td><td>Re-paste the proxy line in the format this browser expects.</td></tr>
+<tr><td><strong>Wrong format</strong></td><td>Host and port end up in the wrong fields, or the password is read as part of the port.</td><td>Use the export preset for this browser (see the <a href="../proxies-for-anti-detect-browsers/">format table</a>).</td></tr>
+<tr><td><strong>Wrong protocol</strong></td><td>HTTP selected for a SOCKS-only proxy, or the reverse.</td><td>Pick the protocol the proxy speaks. openv6 ports speak both.</td></tr>
+<tr><td><strong>Check service is IPv4-only</strong></td><td>The proxy accepts the connection, but the destination has no IPv6.</td><td>Allow just that check service over IPv4, ideally through NAT64. See below.</td></tr>
+<tr><td><strong>Can't reach the proxy at all</strong></td><td>Nothing arrives at the proxy machine.</td><td>Wrong IP or port, firewall, or a VPN on your computer that blocks the LAN.</td></tr>
+</tbody>
+</table>
+
+<h2 id="connection-log">Find the cause with the connection log</h2>
+<p>Guessing between six causes is slow. It's faster to look at what actually reached the proxy.</p>
+<p>In <a href="../../">openv6</a>, open the proxy and click <strong>Check proxy</strong> in the anti-detect browser, then click <strong>Show recent connections</strong>. You see the last 60 connections to that proxy: where each came from, the protocol, the destination, how it left (IPv6, NAT64 or IPv4) and the result. Each failure type comes with a hint:</p>
+<ul>
+<li><strong>Refused: outside the sharing scope</strong> from an Internet IP: the browser checks from its own servers. Change the proxy's sharing to <em>Internet (password required)</em> if you want the check to pass, or ignore it.</li>
+<li><strong>No username/password sent</strong> or <strong>Wrong username or password</strong>: the credentials didn't import. Over HTTP, one attempt without credentials followed by one with them is normal.</li>
+<li><strong>Wrong protocol</strong>: change HTTP/SOCKS5 in the profile.</li>
+<li>The destination is IPv4-only: click <strong>Allow over IPv4</strong> on that line. See the next section first.</li>
+<li><strong>Nothing at all</strong>: the connection never reached the proxy machine. Either the address is wrong, a firewall drops it, or the check runs from the vendor's servers and can't reach your home network.</li>
+</ul>
+
+<h2 id="ipv4-check-service">When the check service is IPv4-only</h2>
+<p>Some browsers check proxies against an IP-lookup service that has no IPv6. An IPv6-only proxy can't reach it, so the check fails even though the proxy is fine for sites that do have IPv6.</p>
+<p>The quick fix, "turn on IPv4 fallback", has a cost: those connections leave from the proxy machine's real IPv4, the same one for every profile. For a check service that's not the end of the world, but the habit spreads to real sites. The cleaner fix:</p>
+<ol>
+<li>Keep IPv4 fallback off on the proxies.</li>
+<li>Add only the check service's domain to <strong>Sites allowed over IPv4</strong>.</li>
+<li>In <em>Settings → Website access</em>, send IPv4 through a <strong>NAT64 gateway</strong> on a VPS, so even the check service sees the VPS's IPv4, never your home IP.</li>
+</ol>
+<p>The details are in <a href="../websites-that-fail-over-ipv6-proxies/">why some websites won't open through an IPv6 proxy</a>.</p>
+
+<h2 id="after">After the check passes</h2>
+<p>A passing check usually also fills in the profile's time zone, language and geolocation from the proxy IP. If you skipped the check, set them yourself: <a href="../match-timezone-language-geolocation-to-proxy/">how to match them to the proxy</a>.</p>

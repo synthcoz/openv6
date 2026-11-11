@@ -13,6 +13,297 @@ openv6 turns the IPv6 prefix that a home internet connection or a VPS already ha
 
 ---
 
+# Why Some Websites Won't Open Through an IPv6 Proxy (and Fixes That Don't Leak IPv4)
+
+URL: https://thephuc.xyz/openv6/blog/websites-that-fail-over-ipv6-proxies/
+Published: 2026-11-11
+
+In short: A site fails through an IPv6 proxy for one of three reasons: your DNS hides its IPv6 record, the site has no IPv6 at all, or the site refuses connections from your IPv6 range. Fix the first with encrypted DNS lookups, the second with a NAT64 gateway on a VPS (not your home IPv4), and the third with a proxy on another network. openv6's “Test a website” tells you which one it is.
+
+You set up IPv6 proxies, most sites work, and then one site simply won't load: a timeout, a 502, or the anti-detect browser saying the connection failed. The same site opens fine in your normal browser. What's going on?
+
+Your normal browser has both IPv4 and IPv6 and quietly uses whichever works. A pure IPv6 proxy has only IPv6. So when a site fails, it is almost always one of three things, and each has a different fix. Some "fixes" you will find online expose your real IPv4, which defeats the point of using separate proxies at all. This guide sticks to fixes that don't.
+
+## The three causes
+
+| Cause | What happens | How common |
+
+| DNS hides the IPv6 record | The site has IPv6, but your router, ISP or VPN DNS does not return its AAAA record, so the proxy thinks there is no IPv6. | Common on some home routers and VPN DNS |
+
+| The site is IPv4-only | The site has no IPv6 address at all. No IPv6 proxy can reach it directly. | Common: many smaller sites, some APIs, some proxy-check services |
+
+| The site refuses your IPv6 | The site has IPv6 but blocks your range, or the IPv6 path to it is broken. | Rare, mostly anti-bot systems and some hosting providers |
+
+## Find out which one it is
+
+You can check by hand. Ask a public resolver directly whether the site has IPv6:
+
+```
+nslookup -type=AAAA example.com 1.1.1.1
+```
+
+Then ask your normal DNS the same question (drop the 1.1.1.1 ). If the public resolver returns an IPv6 address and your own DNS doesn't, it is cause 1. If neither returns one, it is cause 2. If both return an address but this still fails:
+
+```
+curl -6 -I https://example.com
+```
+
+then the site is refusing your IPv6 or the path is broken: cause 3.
+
+In openv6 you don't have to do this by hand. Open a proxy, go to Test a website , type the domain, and click Test . The proxy machine runs the checks above, from the proxy's own IPv6, and shows the verdict with the addresses it found and the fix.
+
+## Fix 1: DNS hides IPv6, use encrypted DNS
+
+When the router or VPN DNS strips AAAA records, the site is reachable over IPv6; the proxy just can't find the address. The fix is to look the name up somewhere that tells the truth.
+
+openv6 does this automatically with Encrypted DNS fallback ( Settings → Website access , on by default). When normal DNS returns no IPv6, the proxy asks Cloudflare or Google over DNS-over-HTTPS, connecting to them over the proxy's own IPv6. Nothing goes over IPv4, and the ISP does not see the query. The site then opens over IPv6 like any other.
+
+If you run your own proxy software instead, point its resolver at a public DNS server that returns AAAA records, and make sure that lookup goes over IPv6 too.
+
+## Fix 2: IPv4-only sites, use NAT64, not your home IPv4
+
+An IPv4-only site needs an IPv4 address on the other end. You have three choices, and they differ a lot in what the site sees:
+
+| Choice (openv6 setting) | What the site sees | Verdict |
+
+| Never use IPv4 (default) | Nothing. The site does not open. | Safest. Fine if you don't need those sites. |
+
+| Through a NAT64 gateway | The IPv4 of your NAT64 gateway, usually a cheap VPS. | Recommended when you need IPv4. Your home IP stays hidden. |
+
+| This machine's IPv4 | The real IPv4 of the proxy machine: your home IP, shared by every proxy that uses it. | Avoid for account work. It links every account to one IP. |
+
+The last option is what most "IPv4 fallback" switches do, and it is the leak to watch for. Every profile that reaches an IPv4-only site through it shows up from the same address: your real one. Anti-fraud systems link accounts on exactly that.
+
+NAT64 avoids it. A NAT64 gateway takes connections to a special IPv6 prefix (a /96 , such as 64:ff9b::/96 ) and forwards them to the IPv4 address embedded in it. Run one on a VPS (Jool is the usual choice on Linux), enter its prefix in openv6, and IPv4-only sites go out over IPv6 to the VPS, which connects to them over its own IPv4. The site sees the VPS. The proxy machine never uses its own IPv4. If the gateway is down or the prefix is wrong, those sites fail to open; they never fall back to your home IP.
+
+Two things to keep in mind:
+
+- Every proxy that reaches IPv4-only sites through the gateway shares the gateway's IPv4. That is fine for things like a proxy-check service or a CDN, but don't log in to accounts on IPv4-only sites from many profiles through one gateway.
+
+- You don't have to send every IPv4-only site through it. openv6's Sites allowed over IPv4 list lets you name just the ones you need (for example the IP-check service of your anti-detect browser), while IPv4 fallback stays off on the proxies themselves.
+
+The setup steps are in docs/NAT64.md in the openv6 repository.
+
+## Fix 3: The site refuses your IPv6
+
+If the site has IPv6 and a direct curl -6 fails or returns 403, the site (or its CDN) doesn't like your range, or the route to it is broken. Your options:
+
+- Get a new address inside your prefix (openv6: New IPv6 ). If the site blocks a single address, this helps; if it blocks the whole /64, it won't.
+
+- Use a proxy on another network: another ISP at home, or a VPS with its own IPv6 range .
+
+- Check the network. A VPN or firewall with an IPv6 kill switch on the proxy machine can break IPv6 to some destinations only.
+
+## Bonus: the site is blocked on purpose
+
+If you added the site to openv6's Blocked sites list, the proxy refuses it with a 403 (HTTP) or "not allowed" (SOCKS5). "Test a website" says so explicitly, so you don't waste time looking for a network problem.
+
+## Summary
+
+- Test the site from the proxy and find out which of the three causes it is.
+
+- Hidden IPv6 record: turn on encrypted DNS lookups.
+
+- IPv4-only site: send it through a NAT64 gateway on a VPS, and only the sites you need. Don't use the machine's own IPv4.
+
+- Refused IPv6: new address, or a proxy on another network.
+
+New to IPv6 proxies? Start with what an IPv6 proxy is and how to set them up in anti-detect browsers .
+
+## FAQ
+
+**Why does a site open in my normal browser but not through the IPv6 proxy?**
+Your normal browser falls back to IPv4 silently. An IPv6 proxy has no IPv4 to fall back to unless you give it one, so an IPv4-only site, or a site whose IPv6 record your DNS hides, fails.
+
+**Is turning on IPv4 fallback safe?**
+Not for account work. Fallback sends IPv4-only sites out through the proxy machine's real IPv4, which every proxy with fallback shares. The sites then see your home IP and can link the accounts.
+
+**What is NAT64 and why is it safer?**
+A NAT64 gateway turns an IPv6 connection into an IPv4 one. Run it on a cheap VPS and IPv4-only sites see the VPS's IPv4, never your home IP, while the proxy itself still only speaks IPv6.
+
+**Does encrypted DNS leak anything?**
+openv6 sends DNS-over-HTTPS queries to Cloudflare or Google from the proxy's own IPv6. No IPv4 is used, and your ISP cannot see which names are looked up.
+
+---
+
+# Match Time Zone, Language and Geolocation to Your Proxy in Anti-Detect Browsers
+
+URL: https://thephuc.xyz/openv6/blog/match-timezone-language-geolocation-to-proxy/
+Published: 2026-11-11
+
+In short: Set each anti-detect profile's time zone, browser language and geolocation to the location of its proxy IP, and keep WebRTC from showing your real address. Get the values from an IP lookup made through the proxy itself. openv6 shows them for every proxy after a check and includes them in the CSV/JSON export.
+
+An anti-detect browser makes each profile look like a different device. A proxy makes each profile come from a different IP. But the profile also tells websites where it thinks it is: its time zone, its language, sometimes its GPS position. When those disagree with the IP, the profile tells two different stories, and that is easy to spot.
+
+A typical example: an IP in Vietnam, a browser clock on America/New_York , and en-US as the only language. Any site can read all three with a few lines of JavaScript.
+
+## What to match
+
+| Setting | What websites read | Match it to |
+
+| Time zone | Intl.DateTimeFormat().resolvedOptions().timeZone , the clock offset | The IANA time zone of the proxy IP, e.g. Europe/Berlin |
+
+| Language | navigator.languages and the Accept-Language header | The usual language of the IP's country, e.g. de-DE |
+
+| Geolocation | The Geolocation API (only after the user allows it) | The latitude and longitude of the IP's city |
+
+| WebRTC | Local and public addresses exposed by WebRTC | The proxy IP, or disabled. Never your real IP. |
+
+Other locale details (date format, number format, fonts) follow the language in most anti-detect browsers. Screen size, GPU and similar fingerprint values are about the device, not the location, so they don't need to match the proxy.
+
+## Get the right values
+
+The values must come from the IP the website will see, so look it up through the proxy . A lookup from your own connection gives your own location.
+
+By hand:
+
+```
+curl -x socks5h://user:pass@host:port https://ipinfo.io/json
+```
+
+The answer has timezone , country , city and loc (latitude, longitude). The language you pick from the country.
+
+In openv6 , every proxy check does this lookup through the proxy. Open the proxy and the Profile settings to match this IP section shows the time zone, the suggested language and the location, each with a copy button. Before the first check it tells you to run one.
+
+## Doing it for many profiles
+
+Copying three values into fifty profiles is tedious and error-prone. Two ways around it:
+
+- Let the browser fill them from the IP. Most anti-detect browsers have an "auto from IP" or "based on proxy" option for time zone, language and geolocation. It works when the browser can reach its own IP-lookup service through the proxy. Check one profile after the first launch: if the lookup failed, some browsers silently fall back to your real location.
+
+- Import the values with the proxies. openv6's CSV and JSON export include country , timezone , language , city , latitude and longitude next to each proxy. Use them in a spreadsheet, a script, or your browser's API to set each profile.
+
+If the browser's own IP lookup keeps failing with IPv6 proxies, its lookup service is probably IPv4-only. See why some sites fail over IPv6 proxies for a fix that doesn't expose your IPv4.
+
+## Picking the language
+
+Use the country's most common browser language as the first entry, for example:
+
+| Country | Language | Country | Language |
+
+| United States | en-US | Vietnam | vi-VN |
+
+| United Kingdom | en-GB | Japan | ja-JP |
+
+| Germany | de-DE | Brazil | pt-BR |
+
+| France | fr-FR | Indonesia | id-ID |
+
+Adding English as a second language ( vi-VN, en-US ) is normal and common. What stands out is a language list that has nothing to do with the IP's country at all.
+
+## Checklist
+
+- One profile, one fixed proxy ( why ).
+
+- Check the proxy, then set time zone, language and geolocation from that check.
+
+- Set WebRTC to use the proxy IP, or disable it.
+
+- Open an IP-check page inside the profile once and confirm everything shows the same country.
+
+- If you ever replace the proxy, run the check again and update the profile: a new address can be in another city.
+
+## FAQ
+
+**Do I have to match the browser language exactly?**
+Matching the country's usual language (for example vi-VN for Vietnam, de-DE for Germany) is the safe default. Plenty of real users have another language, so a mismatch alone is not proof of anything, but it adds to the score together with other signals.
+
+**Where do I get the right time zone for a proxy?**
+Look the IP up through the proxy itself, not from your own connection. openv6's check does that and shows the IANA time zone, such as Asia/Ho_Chi_Minh, which is the format anti-detect browsers use.
+
+**Most anti-detect browsers can fill these automatically. Do I still need this?**
+Automatic mode works when the browser can look the IP up through the proxy. If its lookup fails, it may fall back to your real location, so check the values once, especially for new proxies.
+
+**Does the geolocation need to be exact?**
+No. Use the city coordinates the IP lookup returns. Websites only see geolocation if they ask for permission, and they compare it with the IP's rough location, not with a street address.
+
+---
+
+# Anti-Detect Browser Says “Proxy Check Failed”? Causes and Fixes
+
+URL: https://thephuc.xyz/openv6/blog/anti-detect-browser-proxy-check-failed/
+Published: 2026-11-11
+
+In short: A proxy check can fail because the check runs from the browser vendor's servers (and your proxy only accepts your LAN), because the username or password didn't import, because the protocol or format is wrong, or because the vendor's IP-check service is IPv4-only. Look at the proxy's connection log to see which: openv6 shows the last 60 connections with the reason each one failed.
+
+You paste a proxy into a new profile, click Check proxy , and get "Proxy check failed" or "Connection error". The same proxy works fine in another anti-detect browser. That's a strong hint: the proxy is fine, but this browser checks it in a different way.
+
+## First: where does the check run?
+
+An anti-detect browser checks a proxy in one of two places:
+
+- From your computer. The app connects to the proxy from your machine and fetches an IP-check page through it. If the proxy works in a normal browser on that computer, this check passes.
+
+- From the vendor's servers. The app asks the vendor's cloud to test the proxy. The connection then comes from an Internet IP you don't control, not from your computer.
+
+The second kind is the usual reason a proxy "works in one browser and not the other". A proxy that only accepts connections from your home network (LAN) will refuse the vendor's servers, and the check fails. Launching the profile may still work, because the profile itself runs on your computer.
+
+## The usual causes
+
+| Cause | What you see | Fix |
+
+| Check comes from outside your network | Works in other browsers; fails here. The proxy sees a connection from an unknown Internet IP. | Share the proxy on the Internet with a password, or skip the check and set time zone/location yourself. |
+
+| Username or password missing | The proxy sees connections with no credentials, or wrong ones. | Re-paste the proxy line in the format this browser expects. |
+
+| Wrong format | Host and port end up in the wrong fields, or the password is read as part of the port. | Use the export preset for this browser (see the format table ). |
+
+| Wrong protocol | HTTP selected for a SOCKS-only proxy, or the reverse. | Pick the protocol the proxy speaks. openv6 ports speak both. |
+
+| Check service is IPv4-only | The proxy accepts the connection, but the destination has no IPv6. | Allow just that check service over IPv4, ideally through NAT64. See below. |
+
+| Can't reach the proxy at all | Nothing arrives at the proxy machine. | Wrong IP or port, firewall, or a VPN on your computer that blocks the LAN. |
+
+## Find the cause with the connection log
+
+Guessing between six causes is slow. It's faster to look at what actually reached the proxy.
+
+In openv6 , open the proxy and click Check proxy in the anti-detect browser, then click Show recent connections . You see the last 60 connections to that proxy: where each came from, the protocol, the destination, how it left (IPv6, NAT64 or IPv4) and the result. Each failure type comes with a hint:
+
+- Refused: outside the sharing scope from an Internet IP: the browser checks from its own servers. Change the proxy's sharing to Internet (password required) if you want the check to pass, or ignore it.
+
+- No username/password sent or Wrong username or password : the credentials didn't import. Over HTTP, one attempt without credentials followed by one with them is normal.
+
+- Wrong protocol : change HTTP/SOCKS5 in the profile.
+
+- The destination is IPv4-only: click Allow over IPv4 on that line. See the next section first.
+
+- Nothing at all : the connection never reached the proxy machine. Either the address is wrong, a firewall drops it, or the check runs from the vendor's servers and can't reach your home network.
+
+## When the check service is IPv4-only
+
+Some browsers check proxies against an IP-lookup service that has no IPv6. An IPv6-only proxy can't reach it, so the check fails even though the proxy is fine for sites that do have IPv6.
+
+The quick fix, "turn on IPv4 fallback", has a cost: those connections leave from the proxy machine's real IPv4, the same one for every profile. For a check service that's not the end of the world, but the habit spreads to real sites. The cleaner fix:
+
+- Keep IPv4 fallback off on the proxies.
+
+- Add only the check service's domain to Sites allowed over IPv4 .
+
+- In Settings → Website access , send IPv4 through a NAT64 gateway on a VPS, so even the check service sees the VPS's IPv4, never your home IP.
+
+The details are in why some websites won't open through an IPv6 proxy .
+
+## After the check passes
+
+A passing check usually also fills in the profile's time zone, language and geolocation from the proxy IP. If you skipped the check, set them yourself: how to match them to the proxy .
+
+## FAQ
+
+**Why does the same proxy work in Dolphin Anty but fail in Multilogin?**
+The browsers check proxies differently. Some check from your computer, some from their own servers on the Internet, and they use different IP-check services, some of them IPv4-only. A proxy shared only on your LAN passes the first kind and fails the second.
+
+**Can I use the proxy even if the check fails?**
+Sometimes. If the check fails only because the vendor's check service can't reach the proxy, the profile itself may still work once launched. But then the browser can't fill time zone and location automatically, so set them yourself.
+
+**Should I open my proxy to the Internet so the check passes?**
+Only with a username and password, and only if you need to. A check from the vendor's servers needs the proxy to be reachable from the Internet, which for a home machine also means port forwarding or UPnP.
+
+**What does “outside the sharing scope” mean in openv6?**
+The connection came from an address the proxy is not shared with. For example, the proxy is set to LAN, and the connection came from an Internet IP. That is typical of a check run from the browser vendor's servers.
+
+---
+
 # What Is an IPv6 Proxy? A Plain-English Guide for Multi-Account Work
 
 URL: https://thephuc.xyz/openv6/blog/what-is-an-ipv6-proxy/

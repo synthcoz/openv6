@@ -2,6 +2,7 @@
 
 ## v0.7.1
 
+- **Cài đặt profile cho khớp IP** (chi tiết proxy): sau mỗi lần kiểm tra, dashboard cho biết múi giờ, ngôn ngữ và vị trí (vĩ độ, kinh độ) của IP proxy, có nút sao chép để đặt profile anti-detect cho khớp. File xuất CSV / JSON có thêm cột country, timezone, language, city, latitude, longitude.
 - **Chặn trang web:** *Cài đặt → Chặn trang web*, mỗi dòng một mục. `facebook.com` chặn cả trang và mọi tên miền con; `*.ads.com` chỉ chặn tên miền con; nhập được IP, dải IP, hoặc dán cả link. Áp dụng cho mọi proxy trên mọi máy. Trình duyệt nhận lỗi 403 (HTTP) hoặc “not allowed” (SOCKS5).
 - **DNS mã hoá dự phòng (mặc định bật):** khi DNS thường không trả về IPv6 (modem, nhà mạng hay VPN giấu bản ghi AAAA), proxy hỏi thêm Cloudflare / Google qua DNS-over-HTTPS bằng chính IPv6 của proxy. Không dùng IPv4, nhà mạng không thấy truy vấn.
 - **Kiểm tra một trang web** (chi tiết proxy → *Kiểm tra*): cho biết trang vào được không và vì sao. Các kết luận: trang chỉ có IPv4, DNS giấu IPv6, trang không nhận kết nối từ IPv6 này, trang trả 403, hoặc trang đang bị chặn. Kèm IP từ DNS thường và DNS mã hoá, kết quả kết nối IPv6 và cách sửa.

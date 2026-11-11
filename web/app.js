@@ -745,6 +745,18 @@ async function pollCommand(id) {
   return { done: true, ok: false, output: 'timeout' };
 }
 
+// Settings an anti-detect profile should use so it matches where the proxy's
+// IP is (time zone, language, geolocation). Filled by the last IP check.
+function profileGeo(p) {
+  if (!p.check_tz && !p.check_loc) return `<h3>${t('geo_title')}</h3><p class="hint" style="margin-top:0">${t('geo_none')}</p>`;
+  const row = (label, v) => v ? `<div class="copy-line"><span class="lbl">${esc(label)}</span><code>${esc(v)}</code>
+      <button class="small" data-copyline="${esc(v)}">${icon('copy', 'sm')}</button></div>` : '';
+  const [lat, lon] = (p.check_loc || '').split(',');
+  return `<h3>${t('geo_title')}</h3>
+    <p class="hint" style="margin-top:0">${t('geo_hint', { where: esc([p.check_city, p.check_country].filter(Boolean).join(', ')) })}</p>
+    ${row(t('geo_tz'), p.check_tz)}${row(t('geo_lang'), p.check_lang)}${row(t('geo_loc'), lat && lon ? `${lat.trim()}, ${lon.trim()}` : '')}`;
+}
+
 // What "IPv4 fallback" really does under the current IPv4 setting.
 function fallbackHint() {
   const m = state.v4mode || 'off';
@@ -956,6 +968,7 @@ async function openProxyDrawer(id, tab = 'info') {
         ${lines.map(([lbl, k]) => `<div class="copy-line"><span class="lbl">${esc(lbl.split('://')[0] === lbl ? lbl : lbl.split('://')[0].toUpperCase())}</span><code>${esc(lineFor(k))}</code>
           <button class="small" data-copyline="${esc(lineFor(k))}">${icon('copy', 'sm')}</button></div>`).join('')}
         ${otherEndpoints(p)}
+        ${profileGeo(p)}
         <h3>${t('details')}</h3>
         <div class="kv">
           <div>${t('ipv6_out')}</div><div class="mono small">${esc(p.ip || '—')}</div>

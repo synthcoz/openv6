@@ -752,3 +752,37 @@ func TestIPv4ModeSafeDefault(t *testing.T) {
 		t.Fatalf("explicit off %q", resp.IPv4Mode)
 	}
 }
+
+func TestProxyGeoForProfiles(t *testing.T) {
+	e := newEnv(t)
+	var node struct{ ID int64 }
+	e.call("POST", "/api/nodes", map[string]string{"name": "home"}, &node, 200)
+	var inst struct{ Token string }
+	e.call("GET", fmt.Sprintf("/api/nodes/%d/install", node.ID), nil, &inst, 200)
+	net := homeNet("2405:4802:1:2::/64")
+	e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", node.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random"}, nil, 200)
+	var list []struct {
+		ID                           int64
+		CheckTZ, CheckLang, CheckLoc string `json:"-"`
+	}
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	e.srv.onCheckResult(node.ID, list[0].ID, proto.CommandResult{OK: true, IP: "2405:4802:1:2::9", Latency: 30,
+		Country: "VN", Org: "AS18403 FPT", Timezone: "Asia/Ho_Chi_Minh", City: "Hanoi", Loc: "21.0245,105.8412"})
+	var got []map[string]any
+	e.call("GET", "/api/proxies", nil, &got, 200)
+	if got[0]["check_tz"] != "Asia/Ho_Chi_Minh" || got[0]["check_lang"] != "vi-VN" || got[0]["check_loc"] != "21.0245,105.8412" || got[0]["check_city"] != "Hanoi" {
+		t.Fatalf("geo fields %v %v %v %v", got[0]["check_tz"], got[0]["check_lang"], got[0]["check_loc"], got[0]["check_city"])
+	}
+	var ex struct{ Text string }
+	e.call("POST", "/api/proxies/export", map[string]any{"ids": []int64{list[0].ID}, "format": "csv"}, &ex, 200)
+	if !strings.Contains(ex.Text, "timezone,language,city,latitude,longitude") || !strings.Contains(ex.Text, "VN,Asia/Ho_Chi_Minh,vi-VN,Hanoi,21.0245,105.8412") {
+		t.Fatalf("csv export:\n%s", ex.Text)
+	}
+	e.call("POST", "/api/proxies/export", map[string]any{"ids": []int64{list[0].ID}, "format": "json"}, &ex, 200)
+	if !strings.Contains(ex.Text, `"timezone": "Asia/Ho_Chi_Minh"`) || !strings.Contains(ex.Text, `"language": "vi-VN"`) {
+		t.Fatalf("json export:\n%s", ex.Text)
+	}
+}
