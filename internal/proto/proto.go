@@ -87,7 +87,12 @@ type CommandResult struct {
 	Latency int    `json:"latency,omitempty"` // ms
 	Country string `json:"country,omitempty"`
 	Org     string `json:"org,omitempty"`
-	Code    string `json:"code,omitempty"` // error code for failed tests
+	// Where the IP is, as the echo service sees it (for matching anti-detect
+	// profile settings): IANA time zone, city and "lat,long".
+	Timezone string `json:"timezone,omitempty"`
+	City     string `json:"city,omitempty"`
+	Loc      string `json:"loc,omitempty"`
+	Code     string `json:"code,omitempty"` // error code for failed tests
 }
 
 // SyncResponse carries the desired state for the node.

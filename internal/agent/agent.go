@@ -553,6 +553,7 @@ func (a *Agent) runCommand(c proto.Command) {
 				res.Output, res.Code = err.Error(), proxy.Classify(err)
 			} else {
 				res.IP, res.Latency, res.Country, res.Org = info.IP, info.Latency, info.Country, info.Org
+				res.Timezone, res.City, res.Loc = info.Timezone, info.City, info.Loc
 				res.OK = info.IP == ip.String()
 				res.Output = info.IP
 				if !res.OK {
@@ -653,10 +654,13 @@ func (a *Agent) runCommand(c proto.Command) {
 
 // IPInfo is what an external echo service saw.
 type IPInfo struct {
-	IP      string
-	Country string
-	Org     string // e.g. "AS18403 FPT Telecom Company"
-	Latency int    // ms for the whole request
+	IP       string
+	Country  string
+	Org      string // e.g. "AS18403 FPT Telecom Company"
+	Latency  int    // ms for the whole request
+	Timezone string // IANA, e.g. "Asia/Ho_Chi_Minh"
+	City     string
+	Loc      string // "lat,long"
 }
 
 // CheckIP asks IPv6-only echo services which address they see. If src is
@@ -681,11 +685,12 @@ func CheckIP(src netip.Addr, bindIf int, timeout time.Duration) (IPInfo, error) 
 	// ipinfo gives country + ASN; ipify is a plain fallback
 	start := time.Now()
 	if res, err := cl.Get("https://v6.ipinfo.io/json"); err == nil {
-		var j struct{ IP, Country, Org string }
+		var j struct{ IP, Country, Org, Timezone, City, Loc string }
 		derr := json.NewDecoder(io.LimitReader(res.Body, 8192)).Decode(&j)
 		res.Body.Close()
 		if ip, err := netip.ParseAddr(j.IP); derr == nil && res.StatusCode == 200 && err == nil {
-			return IPInfo{IP: ip.String(), Country: j.Country, Org: j.Org, Latency: int(time.Since(start).Milliseconds())}, nil
+			return IPInfo{IP: ip.String(), Country: j.Country, Org: j.Org, Latency: int(time.Since(start).Milliseconds()),
+				Timezone: j.Timezone, City: j.City, Loc: j.Loc}, nil
 		}
 		lastErr = fmt.Errorf("ipinfo: %s", res.Status)
 	} else {

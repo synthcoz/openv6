@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Cài đặt profile cho khớp IP** (chi tiết proxy): sau mỗi lần kiểm tra, dashboard cho biết múi giờ, ngôn ngữ và vị trí (vĩ độ, kinh độ) của IP proxy, có nút sao chép để đặt profile anti-detect cho khớp. File xuất CSV / JSON có thêm cột country, timezone, language, city, latitude, longitude.
+
 ## v0.7.1
 
 - **Chặn trang web:** *Cài đặt → Chặn trang web*, mỗi dòng một mục. `facebook.com` chặn cả trang và mọi tên miền con; `*.ads.com` chỉ chặn tên miền con; nhập được IP, dải IP, hoặc dán cả link. Áp dụng cho mọi proxy trên mọi máy. Trình duyệt nhận lỗi 403 (HTTP) hoặc “not allowed” (SOCKS5).

@@ -327,9 +327,17 @@ type Proxy struct {
 	RelayPort    int    `json:"relay_port"`    // port opened on the relay node
 	OwnerID      int64  `json:"owner_id"`      // customer account (reseller mode), 0 = none
 	Iface        string `json:"iface"`         // network card for this proxy, "" = node default
+	CheckTZ      string `json:"check_tz"`      // IANA time zone of the IP (last check)
+	CheckCity    string `json:"check_city"`
+	CheckLoc     string `json:"check_loc"` // "lat,long"
 }
 
-const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port,owner_id,iface`
+// Geo is where a checked IP is located.
+type Geo struct {
+	Country, Org, Timezone, City, Loc string
+}
+
+const proxyCols = `id,node_id,pool_id,port,protocol,auth_user,auth_pass,subnet,suffix,ipv4_fallback,enabled,note,tag,expires_at,created_at,bytes_up,bytes_down,conns_total,check_at,check_result,check_ok,check_latency,check_country,check_org,fail_streak,label,scope,check_code,max_conns,rate_kbps,relay_node_id,relay_port,owner_id,iface,check_tz,check_city,check_loc`
 
 func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var p Proxy
@@ -337,7 +345,7 @@ func scanProxy(r interface{ Scan(...any) error }) (*Proxy, error) {
 	var subnet int64
 	if err := r.Scan(&p.ID, &p.NodeID, &p.PoolID, &p.Port, &p.Protocol, &p.AuthUser, &p.AuthPass, &subnet, &p.Suffix, &fb, &en,
 		&p.Note, &p.Tag, &p.ExpiresAt, &p.CreatedAt, &p.BytesUp, &p.BytesDown, &p.ConnsTotal, &p.CheckAt, &p.CheckResult,
-		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort, &p.OwnerID, &p.Iface); err != nil {
+		&p.CheckOK, &p.CheckLatency, &p.CheckCountry, &p.CheckOrg, &p.FailStreak, &p.Label, &p.Scope, &p.CheckCode, &p.MaxConns, &p.RateKBps, &p.RelayNodeID, &p.RelayPort, &p.OwnerID, &p.Iface, &p.CheckTZ, &p.CheckCity, &p.CheckLoc); err != nil {
 		return nil, err
 	}
 	p.Subnet = uint64(subnet)
@@ -504,7 +512,7 @@ type CheckRecord struct {
 
 // RecordCheck stores a health-check result and returns the proxy's fail
 // streak before and after, so callers can detect state transitions.
-func (s *Store) RecordCheck(id int64, c CheckRecord, country, org string) (before, after int, err error) {
+func (s *Store) RecordCheck(id int64, c CheckRecord, g Geo) (before, after int, err error) {
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return 0, 0, err
@@ -520,8 +528,8 @@ func (s *Store) RecordCheck(id int64, c CheckRecord, country, org string) (befor
 		result = "FAIL " + c.Error
 	}
 	if c.OK {
-		_, err = tx.Exec(`UPDATE proxies SET check_at=?,check_result=?,check_ok=1,check_latency=?,check_country=?,check_org=?,fail_streak=0,check_code='' WHERE id=?`,
-			c.At, result, c.Latency, country, org, id)
+		_, err = tx.Exec(`UPDATE proxies SET check_at=?,check_result=?,check_ok=1,check_latency=?,check_country=?,check_org=?,fail_streak=0,check_code='',check_tz=?,check_city=?,check_loc=? WHERE id=?`,
+			c.At, result, c.Latency, g.Country, g.Org, g.Timezone, g.City, g.Loc, id)
 	} else {
 		_, err = tx.Exec(`UPDATE proxies SET check_at=?,check_result=?,check_ok=0,check_latency=0,fail_streak=?,check_code=? WHERE id=?`, c.At, result, after, c.Code, id)
 	}

@@ -428,6 +428,8 @@ type proxyView struct {
 	RelayUp   bool   `json:"relay_up,omitempty"`
 	TSHost    string `json:"ts_host,omitempty"`
 	WANHost   string `json:"wan_host,omitempty"`
+	// suggested browser language for an anti-detect profile on this IP
+	Lang string `json:"check_lang,omitempty"`
 }
 
 func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
@@ -459,7 +461,7 @@ func (s *Server) proxyViews(f store.ProxyFilter) ([]proxyView, error) {
 	now := time.Now().Unix()
 	out := make([]proxyView, 0, len(ps))
 	for _, p := range ps {
-		v := proxyView{Proxy: p, Host: hosts[p.NodeID]}
+		v := proxyView{Proxy: p, Host: hosts[p.NodeID], Lang: langFor(p.CheckCountry)}
 		if p.Scope == "local" {
 			v.Host = "127.0.0.1"
 		}
@@ -1208,9 +1210,12 @@ func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string,
 	switch format {
 	case "csv":
 		cw := csv.NewWriter(&sb)
-		_ = cw.Write([]string{"name", "host", "port", "user", "pass", "protocol", "ipv6", "tag", "note"})
+		_ = cw.Write([]string{"name", "host", "port", "user", "pass", "protocol", "ipv6", "tag", "note",
+			"country", "timezone", "language", "city", "latitude", "longitude"})
 		for _, v := range vs {
-			_ = cw.Write([]string{v.Label, hostFor(v, hostOverride), strconv.Itoa(v.Port), v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+			lat, long := splitLoc(v.CheckLoc)
+			_ = cw.Write([]string{v.Label, hostFor(v, hostOverride), strconv.Itoa(v.Port), v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note,
+				v.CheckCountry, v.CheckTZ, langFor(v.CheckCountry), v.CheckCity, lat, long})
 		}
 		cw.Flush()
 		return sb.String(), nil
@@ -1225,10 +1230,19 @@ func exportProxies(vs []proxyView, format, scheme, hostOverride string) (string,
 			IPv6     string `json:"ipv6"`
 			Tag      string `json:"tag,omitempty"`
 			Note     string `json:"note,omitempty"`
+			// where the IP is, to match the anti-detect profile
+			Country   string `json:"country,omitempty"`
+			Timezone  string `json:"timezone,omitempty"`
+			Language  string `json:"language,omitempty"`
+			City      string `json:"city,omitempty"`
+			Latitude  string `json:"latitude,omitempty"`
+			Longitude string `json:"longitude,omitempty"`
 		}
 		items := []item{}
 		for _, v := range vs {
-			items = append(items, item{v.Label, hostFor(v, hostOverride), v.Port, v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note})
+			lat, long := splitLoc(v.CheckLoc)
+			items = append(items, item{v.Label, hostFor(v, hostOverride), v.Port, v.AuthUser, v.AuthPass, v.Protocol, v.IP, v.Tag, v.Note,
+				v.CheckCountry, v.CheckTZ, langFor(v.CheckCountry), v.CheckCity, lat, long})
 		}
 		bs, _ := json.MarshalIndent(items, "", "  ")
 		return string(bs), nil

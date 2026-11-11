@@ -137,7 +137,7 @@ func (s *Server) onCheckResult(nodeID, proxyID int64, res proto.CommandResult) {
 	if !res.OK {
 		rec.Error = res.Output
 	}
-	before, after, err := s.Store.RecordCheck(proxyID, rec, res.Country, res.Org)
+	before, after, err := s.Store.RecordCheck(proxyID, rec, store.Geo{Country: res.Country, Org: res.Org, Timezone: res.Timezone, City: res.City, Loc: res.Loc})
 	if err != nil {
 		return
 	}
