@@ -9,6 +9,7 @@
 - **Kết nối gần đây** (chi tiết proxy → *Kiểm tra*): 60 kết nối mới nhất của proxy, gồm IP nguồn, giao thức, đích, kết quả và đi bằng IPv6, IPv4 hay NAT64. Lỗi nào cũng kèm cách sửa: ngoài phạm vi chia sẻ (ví dụ Multilogin kiểm tra proxy từ máy chủ của họ), thiếu hoặc sai mật khẩu, trang chỉ có IPv4. Dòng trang chỉ có IPv4 có nút *Cho đi IPv4*.
 - **Trang được đi bằng IPv4:** danh sách trang chỉ có IPv4 vẫn mở được qua mọi proxy, kể cả khi “Dự phòng IPv4” đang tắt.
 - **Cổng NAT64:** điền prefix /96 thì trang chỉ có IPv4 đi qua NAT64 (ví dụ trên VPS của bạn), không dùng IPv4 nhà. Xem `docs/NAT64.md`.
+- **Một lựa chọn rõ ràng cho trang chỉ có IPv4** (*Cài đặt → Truy cập trang web*): *Không cho đi IPv4* (an toàn nhất, mặc định cho bản cài mới), *Đi qua cổng NAT64* (nên dùng nếu cần IPv4) hoặc *Dùng IPv4 của máy này* (lộ IP thật, phải xác nhận). Mỗi lựa chọn ghi rõ trang sẽ thấy IP nào. Ô “Dự phòng IPv4” giải thích đúng tác dụng theo lựa chọn đang dùng. Proxy đang lộ IPv4 thật có nhãn ⚠ trong danh sách. Chọn NAT64 mà prefix sai hoặc thiếu thì node tắt IPv4 chứ không quay về IPv4 của máy. Bản đang có proxy bật dự phòng giữ hành vi cũ cho tới khi bạn đổi.
 - **CI tốn ít phút GitHub Actions hơn:** PR chỉ chạy job Linux, gồm test và build chéo mọi nền tảng. Windows, macOS và script cài chạy khi ra bản. Không build bộ cài ở mỗi PR nữa.
 - **Thoát từ icon khay luôn tắt hẳn openv6:** gửi lệnh tắt cả khi lần kiểm tra trước thất bại, thử lại nếu cần, rồi chờ dịch vụ dừng hẳn mới đóng icon.
 

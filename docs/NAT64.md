@@ -12,10 +12,17 @@ Với NAT64, proxy **vẫn đi bằng IPv6** (từ chính IPv6 của proxy) tớ
 
 ## Cài đặt trong openv6
 
-*Cài đặt → Truy cập trang web*:
+*Cài đặt → Truy cập trang web → Khi trang chỉ có IPv4* có ba lựa chọn:
 
-1. **Prefix NAT64 (/96)**: prefix của cổng NAT64, ví dụ `2001:db8:64:64::/96`.
-2. **Trang được đi bằng IPv4**: các trang chỉ có IPv4 mà bạn muốn mở (ví dụ trang kiểm tra IP của anti-detect). Proxy bật “Dự phòng IPv4” cũng sẽ đi qua NAT64.
+| Lựa chọn | Trang chỉ có IPv4 | Lộ IP thật? |
+|---|---|---|
+| **Không cho đi IPv4** (mặc định cho bản cài mới) | Không mở được | Không bao giờ |
+| **Đi qua cổng NAT64** | Thấy IPv4 của cổng NAT64 | Không. Nếu prefix sai hoặc cổng tắt, trang không mở được nhưng vẫn không lộ IP |
+| **Dùng IPv4 của máy này** | Thấy IPv4 thật của máy chạy proxy, mọi proxy dùng chung | **Có**, không nên dùng với anti-detect |
+
+Lựa chọn này áp dụng cho proxy bật “Dự phòng IPv4” và cho danh sách **Trang được đi bằng IPv4** (ví dụ trang kiểm tra IP của anti-detect). Khi chọn NAT64, điền **Prefix NAT64 (/96)** của cổng, ví dụ `2001:db8:64:64::/96`.
+
+Bản đang có proxy bật “Dự phòng IPv4” từ trước sẽ giữ “Dùng IPv4 của máy này” cho tới khi bạn đổi, để không âm thầm thay đổi hành vi. Danh sách proxy hiện nhãn **⚠ IPv4 thật** trên những proxy đang lộ IP.
 
 Kiểm tra: chi tiết proxy → *Kiểm tra* → **Kết nối gần đây**. Kết nối thành công tới trang IPv4 sẽ ghi `NAT64`.
 

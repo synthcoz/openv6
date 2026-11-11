@@ -524,8 +524,8 @@ async function loadProxies() {
     state.nodes = []; state.users = [];
     state.proxies = await api('GET', '/api/proxies');
   } else {
-    const [nodes, proxies, users] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies'), api('GET', '/api/users').catch(() => [])]);
-    state.nodes = nodes; state.proxies = proxies; state.users = users;
+    const [nodes, proxies, users, st] = await Promise.all([api('GET', '/api/nodes'), api('GET', '/api/proxies'), api('GET', '/api/users').catch(() => []), api('GET', '/api/settings').catch(() => ({}))]);
+    state.nodes = nodes; state.proxies = proxies; state.users = users; state.v4mode = st.ipv4_mode || 'off';
   }
   const proxies = state.proxies;
   const ids = new Set(proxies.map((p) => p.id));
@@ -671,7 +671,7 @@ function drawProxyRows() {
       <th class="hide-sm">${t('health')}</th><th class="hide-sm hide-md">${t('traffic')}</th><th></th></tr></thead>
     <tbody>${list.map((p) => `<tr class="clickable ${state.selected.has(p.id) ? 'selected' : ''}" data-id="${p.id}">
       <td class="ck"><input type="checkbox" class="sel" ${state.selected.has(p.id) ? 'checked' : ''}></td>
-      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.iface ? ` · <span class="badge neutral">${icon(ifaceKind(p.iface) === 'wifi' ? 'wifi' : 'ethernet', 'sm')} ${esc(ifaceLabel(p.iface))}</span>` : ''}${p.owner_id && !isCustomerUser() ? ` · <span class="badge neutral">${icon('key', 'sm')} ${esc(ownerName(p.owner_id))}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
+      <td class="nm"><div class="name">${esc(p.label || ':' + p.port)}</div><div class="sub">${p.label ? ':' + p.port + ' · ' : ''}${esc(p.node_name)}${p.tag ? ` · <span class="badge neutral">${esc(p.tag)}</span>` : ''}${p.ipv4_fallback && state.v4mode === 'direct' ? ` · <span class="badge warn" title="${esc(t('v4_row_leak_tip'))}">⚠ ${t('v4_row_leak')}</span>` : ''}${p.iface ? ` · <span class="badge neutral">${icon(ifaceKind(p.iface) === 'wifi' ? 'wifi' : 'ethernet', 'sm')} ${esc(ifaceLabel(p.iface))}</span>` : ''}${p.owner_id && !isCustomerUser() ? ` · <span class="badge neutral">${icon('key', 'sm')} ${esc(ownerName(p.owner_id))}</span>` : ''}${p.relay_name ? ` · <span class="badge ${p.relay_up ? 'accent' : 'warn'}" title="${esc(t('relay_via', { n: p.relay_name }))}">${icon('globe', 'sm')} ${esc(p.relay_host)}:${p.relay_port}</span>` : ''}</div></td>
       <td class="cn"><span class="copyable mono" data-copy="${esc(proxyLine(p))}" title="${t('click_copy_line')}">${esc(hostPort(p))}${icon('copy', 'sm')}</span>
         <div class="sub">${p.auth_user ? `${icon('key', 'sm')} ${esc(p.auth_user)}` : t('no_auth')} · ${esc(t('scope_short_' + p.scope))}</div></td>
       <td class="hide-sm hide-lg mono small"><span class="copyable" data-copy="${esc(p.ip)}">${esc(p.ip || '—')}${p.ip ? icon('copy', 'sm') : ''}</span></td>
@@ -743,6 +743,12 @@ async function pollCommand(id) {
     if (c.done) return c;
   }
   return { done: true, ok: false, output: 'timeout' };
+}
+
+// What "IPv4 fallback" really does under the current IPv4 setting.
+function fallbackHint() {
+  const m = state.v4mode || 'off';
+  return m === 'direct' ? `<b style="color:var(--warn)">⚠ ${t('fallback_hint_direct')}</b>` : t('fallback_hint_' + m);
 }
 
 // Recent connection attempts of a proxy, with what each failure means.
@@ -999,7 +1005,7 @@ async function openProxyDrawer(id, tab = 'info') {
         <label class="field">${t('ipv6_out')}<input name="ip" class="mono" value="${esc(p.ip)}"><span class="hint">${t('ip_edit_hint')}</span></label>
         <label class="field">${t('note')}<textarea name="note" rows="2">${esc(p.note)}</textarea></label>
         <label class="check"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''}> ${t('enabled')}</label>
-        <label class="check"><input type="checkbox" name="ipv4_fallback" ${p.ipv4_fallback ? 'checked' : ''}><span>${t('ipv4_fallback')}<span class="hint" style="display:block">${t('fallback_hint')}</span></span></label>
+        <label class="check"><input type="checkbox" name="ipv4_fallback" ${p.ipv4_fallback ? 'checked' : ''}><span>${t('ipv4_fallback')}<span class="hint" style="display:block">${fallbackHint()}</span></span></label>
         <div id="efErr"></div>
         <div><button class="primary" type="submit">${icon('check', 'sm')} ${t('save')}</button></div>
       </form></div>
@@ -1046,6 +1052,8 @@ async function openProxyDrawer(id, tab = 'info') {
         const c = await pollCommand((await api('POST', `/api/proxies/${p.id}/conn-log`, {})).id);
         out.innerHTML = connReport(c, p);
         for (const b of $$('[data-allow4]', out)) b.onclick = async () => {
+          if (state.v4mode === 'off' || !state.v4mode) { toast(t('v4_allow_off'), { ms: 8000, action: { label: t('nav_settings'), fn: () => { location.hash = 'settings'; } } }); return; }
+          if (state.v4mode === 'direct' && !(await confirmBox(t('v4_allow_direct_confirm', { host: b.dataset.allow4 }), { danger: true, title: t('v4_leak_title'), ok: t('v4_leak_ok') }))) return;
           try {
             const st = await api('GET', '/api/settings');
             const list = (st.ipv4_sites || '').split('\n').filter(Boolean);
@@ -1134,7 +1142,7 @@ function openCreate() {
     <div id="spreadWrap"><label class="check"><input type="checkbox" name="spread" checked> ${t('spread')}</label>
     <p class="hint">${t('spread_hint')}</p></div>
     <label class="check"><input type="checkbox" name="ipv4_fallback"> ${t('ipv4_fallback')}</label>
-    <p class="hint">${t('fallback_hint')}</p>
+    <p class="hint">${fallbackHint()}</p>
     <p class="hint" id="authHint">${t('auth_none_hint')}</p>
     <p class="hint" id="scopeHint"></p>
     <div id="cfErr"></div>
@@ -1606,12 +1614,21 @@ async function pageSettings() {
       <p class="hint" style="margin-top:0">${t('block_hint')}</p>
       <textarea name="block_sites" rows="6" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="facebook.com&#10;*.doubleclick.net&#10;203.0.113.0/24">${esc(s.block_sites || '')}</textarea>
       <p class="hint">${t('block_rules_help')}</p>
+      <h3>${t('v4_title')}</h3>
+      <p class="hint" style="margin-top:0">${t('v4_intro')}</p>
+      <div class="v4opts">
+        <label class="v4opt"><input type="radio" name="ipv4_mode" value="off" ${s.ipv4_mode === 'off' ? 'checked' : ''}>
+          <div><b>${t('v4_off')}</b> <span class="badge ok">${t('v4_safest')}</span><p>${t('v4_off_desc')}</p></div></label>
+        <label class="v4opt"><input type="radio" name="ipv4_mode" value="nat64" ${s.ipv4_mode === 'nat64' ? 'checked' : ''}>
+          <div><b>${t('v4_nat64')}</b> <span class="badge accent">${t('v4_recommended')}</span><p>${t('v4_nat64_desc')}</p>
+            <label class="field">${t('nat64_prefix')}<input name="nat64_prefix" value="${esc(s.nat64_prefix || '')}" placeholder="2001:db8:64:64::/96" spellcheck="false"></label></div></label>
+        <label class="v4opt warnopt"><input type="radio" name="ipv4_mode" value="direct" ${s.ipv4_mode === 'direct' ? 'checked' : ''}>
+          <div><b>${t('v4_direct')}</b> <span class="badge warn">${t('v4_leaks')}</span><p>${t('v4_direct_desc')}</p></div></label>
+      </div>
+      <div id="v4sees" style="margin-top:10px"></div>
       <h3>${t('v4sites_title')}</h3>
       <p class="hint" style="margin-top:0">${t('v4sites_hint')}</p>
       <textarea name="ipv4_sites" rows="3" spellcheck="false" style="width:100%;font-family:var(--mono);font-size:13px" placeholder="check.example.com">${esc(s.ipv4_sites || '')}</textarea>
-      <h3>${t('nat64_title')}</h3>
-      <label class="field">${t('nat64_prefix')}<input name="nat64_prefix" value="${esc(s.nat64_prefix || '')}" placeholder="2001:db8:64:64::/96" spellcheck="false"></label>
-      <p class="hint">${t('nat64_hint')}</p>
       <h3>${t('secure_dns_title')}</h3>
       <label class="check"><input type="checkbox" name="secure_dns" ${s.secure_dns === '1' ? 'checked' : ''}> ${t('secure_dns')}</label>
       <p class="hint">${t('secure_dns_hint')}</p>
@@ -1668,10 +1685,19 @@ async function pageSettings() {
     e.preventDefault(); const f = e.target;
     save({ check_interval_min: f.check_interval_min.value, auto_firewall: f.auto_firewall.checked ? '1' : '0', instance_name: f.instance_name.value, panel_url: f.panel_url.value });
   };
+  const v4sees = () => {
+    const m = ($('#blkf input[name=ipv4_mode]:checked') || {}).value || 'off';
+    $('#v4sees').innerHTML = alertBox(m === 'direct' ? 'warn' : m === 'nat64' ? 'info' : 'ok', t('v4_sees_' + m));
+  };
+  for (const r of $$('#blkf input[name=ipv4_mode]')) r.onchange = v4sees;
+  v4sees();
   $('#blkf').onsubmit = async (e) => {
     e.preventDefault(); const f = e.target;
+    const mode = f.ipv4_mode.value || 'off';
+    if (mode === 'direct' && s.ipv4_mode !== 'direct' && !(await confirmBox(t('v4_direct_confirm'), { danger: true, title: t('v4_leak_title'), ok: t('v4_leak_ok') }))) return;
     try {
-      const r = await api('PUT', '/api/settings', { block_sites: f.block_sites.value, secure_dns: f.secure_dns.checked ? '1' : '0', ipv4_sites: f.ipv4_sites.value, nat64_prefix: f.nat64_prefix.value });
+      const r = await api('PUT', '/api/settings', { block_sites: f.block_sites.value, secure_dns: f.secure_dns.checked ? '1' : '0', ipv4_sites: f.ipv4_sites.value, nat64_prefix: f.nat64_prefix.value, ipv4_mode: mode });
+      s.ipv4_mode = r.ipv4_mode;
       f.block_sites.value = r.block_sites || ''; f.ipv4_sites.value = r.ipv4_sites || ''; f.nat64_prefix.value = r.nat64_prefix || '';
       toast(t('saved'));
     } catch (err) { toast(err.message, true); }
