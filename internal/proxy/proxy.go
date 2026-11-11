@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -319,20 +320,60 @@ func publicAddr(a netip.Addr) bool {
 	return true
 }
 
-// filterTargets drops non-public destinations when the proxy itself goes out
-// on a public address (always the case in production; tests and lab setups
-// that use private outbound addresses are left alone).
-func filterTargets(out netip.Addr, addrs []netip.Addr) ([]netip.Addr, bool) {
-	if !publicAddr(out) {
-		return addrs, false
+// wellKnownNAT64 is the RFC 6052 prefix many networks and DNS64 resolvers use.
+var wellKnownNAT64 = netip.MustParsePrefix("64:ff9b::/96")
+
+// embeddedV4 returns the IPv4 address carried in a NAT64 address (the
+// well-known prefix or the configured one).
+func (c *Config) embeddedV4(a netip.Addr) (netip.Addr, bool) {
+	if !a.Is6() || !(wellKnownNAT64.Contains(a) || (c.NAT64.IsValid() && c.NAT64.Contains(a))) {
+		return netip.Addr{}, false
 	}
+	b := a.As16()
+	return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
+}
+
+// allowPrivateTargets lets tests reach loopback servers; never set in production.
+var allowPrivateTargets = false
+
+// targetAllowed reports whether the proxy may connect to a. A NAT64 address
+// is judged by the IPv4 inside it: the gateway would otherwise carry clients
+// to its own loopback, its LAN or a cloud metadata service. Checks are strict
+// when the proxy goes out on a public address (always in production); lab
+// setups with private outbound addresses are left alone.
+func (c *Config) targetAllowed(a netip.Addr) bool {
+	a = a.Unmap()
+	if a.Zone() != "" {
+		return false
+	}
+	if allowPrivateTargets || !publicAddr(c.OutIP) {
+		return true
+	}
+	if v4, ok := c.embeddedV4(a); ok {
+		return publicAddr(v4)
+	}
+	return publicAddr(a)
+}
+
+// filterTargets keeps the destinations this proxy may connect to.
+func (c *Config) filterTargets(addrs []netip.Addr) ([]netip.Addr, bool) {
 	var keep []netip.Addr
 	for _, a := range addrs {
-		if publicAddr(a) {
+		if c.targetAllowed(a) {
 			keep = append(keep, a)
 		}
 	}
 	return keep, len(keep) < len(addrs)
+}
+
+// blockedAddr checks the blocked-sites list, including the IPv4 inside a
+// NAT64 address.
+func (c *Config) blockedAddr(a netip.Addr) bool {
+	if c.Block.Addr(a) {
+		return true
+	}
+	v4, ok := c.embeddedV4(a)
+	return ok && c.Block.Addr(v4)
 }
 
 func (l *listener) dial(ctx context.Context, cfg *Config, host string, port int) (net.Conn, error) {
@@ -353,6 +394,9 @@ func nat64Addr(p netip.Prefix, v4 netip.Addr) netip.Addr {
 func (l *listener) dialVia(ctx context.Context, cfg *Config, host string, port int) (net.Conn, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if strings.Contains(host, "%") { // IPv6 zone: would slip past range checks
+		return nil, "", ErrBlocked
+	}
 	if cfg.Block.Host(host) {
 		return nil, "", ErrBlockedByRule
 	}
@@ -366,11 +410,11 @@ func (l *listener) dialVia(ctx context.Context, cfg *Config, host string, port i
 		}
 	}
 	for _, a := range addrs {
-		if cfg.Block.Addr(a) {
+		if cfg.blockedAddr(a) {
 			return nil, "", ErrBlockedByRule
 		}
 	}
-	addrs, dropped := filterTargets(cfg.OutIP, addrs)
+	addrs, dropped := cfg.filterTargets(addrs)
 	if len(addrs) == 0 && dropped {
 		return nil, "", ErrBlocked
 	}
@@ -405,6 +449,12 @@ func (l *listener) dialVia(ctx context.Context, cfg *Config, host string, port i
 	if cfg.OutIP.Is6() {
 		for _, a := range other {
 			if !a.Is4() || !(v4ok || cfg.IPv4Sites.Addr(a)) {
+				continue
+			}
+			// leaves from the machine's IPv4 or the NAT64 gateway: never to a
+			// local destination, whatever the proxy's own address is
+			if !publicAddr(a) && !allowPrivateTargets {
+				lastErr = ErrBlocked
 				continue
 			}
 			var c net.Conn

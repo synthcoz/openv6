@@ -205,6 +205,8 @@ func TestNAT64Addr(t *testing.T) {
 // An IPv6 proxy reaches an IPv4-only site only when the site is on the
 // IPv4 list (or fallback is on), and the connection log says how it left.
 func TestIPv4SitesAndConnLog(t *testing.T) {
+	allowPrivateTargets = true // the IPv4 "site" here is a loopback test server
+	t.Cleanup(func() { allowPrivateTargets = false })
 	ts := target(t)
 	ap := netip.MustParseAddrPort(ts.Listener.Addr().String())
 	m := NewManager()
@@ -252,5 +254,30 @@ func TestIPv4SitesAndConnLog(t *testing.T) {
 	}
 	if got := cl.list(); len(got) != connLogSize || got[0].Result != fmt.Sprint(connLogSize+4) {
 		t.Fatalf("ring buffer: %d events, newest %s", len(got), got[0].Result)
+	}
+}
+
+// The DoH cache and client set stay bounded however many names are asked.
+func TestDoHBounded(t *testing.T) {
+	d := NewDoH()
+	past := time.Now().Add(-time.Minute)
+	for i := 0; i < dohMaxCache+50; i++ {
+		d.cache.Store(fmt.Sprintf("28|n%d.example", i), dohEntry{exp: past})
+		d.nCache.Add(1)
+	}
+	d.sweep()
+	if n := d.nCache.Load(); n != 0 {
+		t.Fatalf("expired answers kept: %d", n)
+	}
+	for i := 0; i < dohMaxClients+10; i++ {
+		d.client(DefaultDoH[0], netip.MustParseAddr(fmt.Sprintf("2001:db8::%x", i+1)), 0)
+	}
+	if n := d.nClient.Load(); n > dohMaxClients+10 {
+		t.Fatalf("client count not tracked: %d", n)
+	}
+	d.clients.Range(func(_, v any) bool { v.(*dohClient).used.Store(0); return true }) // all idle
+	d.sweep()
+	if n := d.nClient.Load(); n != 0 {
+		t.Fatalf("idle clients kept: %d", n)
 	}
 }

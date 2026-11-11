@@ -50,6 +50,9 @@ func Diagnose(ctx context.Context, cfg *Config, sys *net.Resolver, doh *DoH, hos
 	}
 	r := SiteReport{Host: h, SecureDNS: cfg.DoH != nil, Fallback: cfg.IPv4Fallback, SysA: []string{}, SysAAAA: []string{}, DoHA: []string{}, DoHAAAA: []string{}}
 	defer func() { r.Ms = int(time.Since(start).Milliseconds()) }()
+	if strings.Contains(h, "%") {
+		h = ""
+	}
 	if h == "" {
 		r.Verdict, r.Detail = "no_dns", "not a valid host name"
 		return r
@@ -99,10 +102,16 @@ func Diagnose(ctx context.Context, cfg *Config, sys *net.Resolver, doh *DoH, hos
 		return r
 	}
 	for _, a := range v6 {
-		if cfg.Block.Addr(a) {
+		if cfg.blockedAddr(a) {
 			r.Verdict = "blocked_rule"
 			return r
 		}
+	}
+	// the same destination rules as real proxy traffic: no loopback, LAN,
+	// link-local or metadata targets (directly or through NAT64)
+	if v6, _ = cfg.filterTargets(v6); len(v6) == 0 {
+		r.Verdict, r.Detail = "not_public", "the site resolves only to local or private addresses"
+		return r
 	}
 	// connect over IPv6 from the proxy's address
 	target := v6[0]

@@ -120,7 +120,7 @@ func (b *Blocklist) Addr(a netip.Addr) bool {
 	if b == nil {
 		return false
 	}
-	a = a.Unmap()
+	a = a.Unmap().WithZone("")
 	for _, p := range b.nets {
 		if p.Contains(a) {
 			return true

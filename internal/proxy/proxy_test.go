@@ -279,19 +279,35 @@ func TestLimits(t *testing.T) {
 }
 
 func TestBlockPrivateTargets(t *testing.T) {
-	out := netip.MustParseAddr("2a01:4f8::10")
-	for _, s := range []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "169.254.169.254", "fd00:ec2::254", "fe80::1", "100.64.1.1", "::ffff:127.0.0.1", "0.0.0.0"} {
-		if got, _ := filterTargets(out, []netip.Addr{netip.MustParseAddr(s)}); len(got) != 0 {
+	cfg := &Config{OutIP: netip.MustParseAddr("2a01:4f8::10"), NAT64: netip.MustParsePrefix("2001:db8:64:64::/96")}
+	blocked := []string{"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "169.254.169.254", "fd00:ec2::254", "fe80::1", "100.64.1.1", "::ffff:127.0.0.1", "0.0.0.0",
+		// NAT64 addresses are judged by the IPv4 inside them
+		"64:ff9b::a9fe:a9fe", "64:ff9b::7f00:1", "64:ff9b::c0a8:101", "2001:db8:64:64::a00:1", "2001:db8:64:64::7f00:1"}
+	for _, s := range blocked {
+		if got, _ := cfg.filterTargets([]netip.Addr{netip.MustParseAddr(s)}); len(got) != 0 {
 			t.Errorf("%s not blocked", s)
 		}
 	}
-	for _, s := range []string{"2606:4700::1111", "1.1.1.1", "2001:4860:4860::8888"} {
-		if got, _ := filterTargets(out, []netip.Addr{netip.MustParseAddr(s)}); len(got) != 1 {
+	for _, s := range []string{"2606:4700::1111", "1.1.1.1", "2001:4860:4860::8888", "64:ff9b::101:101", "2001:db8:64:64::808:808"} {
+		if got, _ := cfg.filterTargets([]netip.Addr{netip.MustParseAddr(s)}); len(got) != 1 {
 			t.Errorf("%s blocked", s)
 		}
 	}
+	// a zone would slip past range checks: always refused
+	if cfg.targetAllowed(netip.MustParseAddr("2606:4700::1111%eth0")) {
+		t.Error("zoned address allowed")
+	}
 	// lab setups with a private outbound address are not filtered
-	if got, _ := filterTargets(netip.MustParseAddr("127.0.0.1"), []netip.Addr{netip.MustParseAddr("127.0.0.1")}); len(got) != 1 {
+	lab := &Config{OutIP: netip.MustParseAddr("127.0.0.1")}
+	if got, _ := lab.filterTargets([]netip.Addr{netip.MustParseAddr("127.0.0.1")}); len(got) != 1 {
 		t.Error("loopback lab setup filtered")
+	}
+	// the blocked list also matches the IPv4 inside a NAT64 address
+	bl := &Config{Block: ParseBlocklist([]string{"203.0.113.0/24"}), NAT64: netip.MustParsePrefix("2001:db8:64:64::/96")}
+	if !bl.blockedAddr(netip.MustParseAddr("2001:db8:64:64::cb00:7101")) || !bl.blockedAddr(netip.MustParseAddr("64:ff9b::cb00:7101")) {
+		t.Error("blocked IPv4 reachable through NAT64")
+	}
+	if !ParseBlocklist([]string{"2001:db8::/32"}).Addr(netip.MustParseAddr("2001:db8::1%x")) {
+		t.Error("zone slips past an IP-range rule")
 	}
 }
