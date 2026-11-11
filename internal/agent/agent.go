@@ -301,11 +301,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 	var cfgs []proxy.Config
 	specs := map[int64]proto.ProxySpec{}
 	block := proxy.ParseBlocklist(r.Block)
-	v4sites := proxy.ParseBlocklist(r.IPv4Sites)
-	var nat64 netip.Prefix
-	if p, err := netip.ParsePrefix(r.NAT64); err == nil && p.Addr().Is6() && p.Bits() == 96 {
-		nat64 = p.Masked()
-	}
+	v4sites, nat64, v4off := ipv4Policy(r)
 	var doh *proxy.DoH
 	if r.SecureDNS {
 		doh = a.doh
@@ -335,7 +331,7 @@ func (a *Agent) apply(r *proto.SyncResponse) {
 			}
 		}
 		c := proxy.Config{ID: s.ID, Port: s.Port, Protocol: s.Protocol, User: s.User, Pass: s.Pass, OutIP: ip,
-			IPv4Fallback: s.IPv4Fallback, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps,
+			IPv4Fallback: s.IPv4Fallback && !v4off, Scope: s.Scope, BindIf: pBind, MaxConns: s.MaxConns, RateKBps: s.RateKBps,
 			Block: block, DoH: doh, IPv4Sites: v4sites, NAT64: nat64}
 		if len(r.DNS) > 0 {
 			c.Resolver = proxy.NewResolver(r.DNS, ip, pBind)
@@ -837,4 +833,28 @@ func (a *Agent) proxyRunning(id int64) bool {
 	defer a.mu.Unlock()
 	_, ok := a.pcfgs[id]
 	return ok
+}
+
+// ipv4Policy turns the panel's IPv4 settings into what the proxies get: the
+// sites allowed over IPv4, the NAT64 prefix to reach them through (zero =
+// the machine's own IPv4) and whether IPv4 is off entirely. The machine's
+// own IPv4 is used only when the panel says "direct" (or is too old to know
+// the setting); "nat64" without a usable prefix turns IPv4 off rather than
+// leaking it.
+func ipv4Policy(r *proto.SyncResponse) (*proxy.Blocklist, netip.Prefix, bool) {
+	var nat64 netip.Prefix
+	if p, err := netip.ParsePrefix(r.NAT64); err == nil && p.Addr().Is6() && p.Bits() == 96 {
+		nat64 = p.Masked()
+	}
+	switch r.IPv4Mode {
+	case "off":
+		return nil, netip.Prefix{}, true
+	case "nat64":
+		if !nat64.IsValid() {
+			return nil, netip.Prefix{}, true
+		}
+	case "direct":
+		nat64 = netip.Prefix{}
+	}
+	return proxy.ParseBlocklist(r.IPv4Sites), nat64, false
 }

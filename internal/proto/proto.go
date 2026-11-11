@@ -115,6 +115,11 @@ type SyncResponse struct {
 	// NAT64 is a /96 prefix of a NAT64 gateway: IPv4 destinations are then
 	// reached through it over IPv6 instead of the node's own IPv4.
 	NAT64 string `json:"nat64,omitempty"`
+	// IPv4Mode decides how IPv4-only sites are reached (IPv4 fallback and
+	// IPv4Sites): "off" = never (nothing can leak the machine's IPv4),
+	// "nat64" = only through the NAT64 gateway, "direct" = the machine's own
+	// IPv4. Empty (older panels) behaves like "direct".
+	IPv4Mode string `json:"ipv4_mode,omitempty"`
 	// RelayServer is set on a public node that relays proxies of NAT'ed nodes.
 	RelayServer *RelayServerSpec `json:"relay_server,omitempty"`
 	// RelayClients are public nodes this node publishes proxies through.

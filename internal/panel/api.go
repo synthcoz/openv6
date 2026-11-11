@@ -1333,7 +1333,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 var settingKeys = []string{"panel_url", "default_scheme", "check_interval_min", "auto_firewall", "telegram_chat",
 	"notify_node_offline", "notify_proxy_fail", "notify_prefix_change", "notify_update", "lang", "instance_name",
-	"block_sites", "secure_dns", "ipv4_sites", "nat64_prefix"}
+	"block_sites", "secure_dns", "ipv4_sites", "nat64_prefix", "ipv4_mode"}
 
 var settingDefaults = map[string]string{"default_scheme": "http", "check_interval_min": "10", "auto_firewall": "1",
 	"notify_node_offline": "1", "notify_proxy_fail": "1", "notify_prefix_change": "1", "notify_update": "1",
@@ -1344,6 +1344,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	for _, k := range settingKeys {
 		out[k] = s.Store.GetSetting(k, settingDefaults[k])
 	}
+	out["ipv4_mode"] = s.ipv4Mode()
 	// never send the bot token back to the browser
 	out["telegram_token_set"] = s.Store.GetSetting("telegram_token", "") != ""
 	writeJSON(w, 200, out)
@@ -1380,6 +1381,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			v = p.Masked().String()
 		}
 		b["nat64_prefix"] = v
+	}
+	if v, ok := b["ipv4_mode"]; ok {
+		switch v {
+		case "off", "direct":
+		case "nat64":
+			prefix, ok := b["nat64_prefix"]
+			if !ok {
+				prefix = s.Store.GetSetting("nat64_prefix", "")
+			}
+			if strings.TrimSpace(prefix) == "" {
+				fail(w, 400, "enter the NAT64 prefix of your gateway first")
+				return
+			}
+		default:
+			fail(w, 400, "ipv4_mode must be off, nat64 or direct")
+			return
+		}
 	}
 	if v, ok := b["block_sites"]; ok {
 		rules, bad := cleanBlockRules(v)
@@ -1428,6 +1446,23 @@ func cleanBlockRules(text string) (rules, bad []string) {
 		}
 	}
 	return rules, bad
+}
+
+// ipv4Mode is how IPv4-only sites are reached: off | nat64 | direct. A new
+// install starts at "off" (no way to leak the machine's IPv4); an install
+// that already has proxies with IPv4 fallback keeps "direct" until the
+// admin chooses, so nothing changes behind their back.
+func (s *Server) ipv4Mode() string {
+	if v := s.Store.GetSetting("ipv4_mode", ""); v != "" {
+		return v
+	}
+	ps, _ := s.Store.ListProxies(store.ProxyFilter{})
+	for _, p := range ps {
+		if p.IPv4Fallback {
+			return "direct"
+		}
+	}
+	return "off"
 }
 
 // blockRules is the saved blocked-sites list as sent to the nodes.

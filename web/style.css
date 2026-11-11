@@ -612,3 +612,12 @@ label.field > select, label.field > input { width: 100%; min-width: 0; }
 .nav a .count:empty { display: none; }
 
 .brand .logo svg { display: block; }
+
+/* IPv4 choice (Settings → Website access) */
+.v4opts { display: grid; gap: 8px; }
+.v4opt { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+.v4opt:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.v4opt.warnopt:has(input:checked) { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
+.v4opt input[type=radio] { margin-top: 3px; }
+.v4opt p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.v4opt .field { margin-top: 8px; }

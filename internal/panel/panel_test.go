@@ -704,3 +704,41 @@ func TestIPv4SitesNAT64AndConnLog(t *testing.T) {
 		t.Fatalf("conn_log command %+v %+v", cmd, resp.Commands)
 	}
 }
+
+func TestIPv4ModeSafeDefault(t *testing.T) {
+	e := newEnv(t)
+	var node struct{ ID int64 }
+	e.call("POST", "/api/nodes", map[string]string{"name": "home"}, &node, 200)
+	var inst struct{ Token string }
+	e.call("GET", fmt.Sprintf("/api/nodes/%d/install", node.ID), nil, &inst, 200)
+	net := homeNet("2405:4802:1:2::/64")
+	e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	var pools []store.Pool
+	e.call("GET", fmt.Sprintf("/api/pools?node_id=%d", node.ID), nil, &pools, 200)
+	e.call("POST", "/api/proxies/bulk", map[string]any{"node_id": node.ID, "pool_id": pools[0].ID, "count": 1, "auth": "random"}, nil, 200)
+
+	var st map[string]any
+	e.call("GET", "/api/settings", nil, &st, 200)
+	if st["ipv4_mode"] != "off" { // fresh install: nothing can reach IPv4
+		t.Fatalf("default mode %v", st["ipv4_mode"])
+	}
+	// an install that already uses IPv4 fallback keeps working as before
+	var list []struct{ ID int64 }
+	e.call("GET", "/api/proxies", nil, &list, 200)
+	e.call("POST", "/api/proxies/action", map[string]any{"ids": []int64{list[0].ID}, "action": "fallback_on"}, nil, 200)
+	e.call("GET", "/api/settings", nil, &st, 200)
+	if st["ipv4_mode"] != "direct" {
+		t.Fatalf("mode with a fallback proxy %v", st["ipv4_mode"])
+	}
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "nat64"}, nil, 400) // no prefix yet
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "sometimes"}, nil, 400)
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "nat64", "nat64_prefix": "64:ff9b::/96"}, &st, 200)
+	resp := e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net})
+	if resp.IPv4Mode != "nat64" || resp.NAT64 != "64:ff9b::/96" {
+		t.Fatalf("desired %q %q", resp.IPv4Mode, resp.NAT64)
+	}
+	e.call("PUT", "/api/settings", map[string]string{"ipv4_mode": "off"}, nil, 200)
+	if resp = e.sync(inst.Token, proto.SyncRequest{AgentVersion: proto.Version, Net: net}); resp.IPv4Mode != "off" {
+		t.Fatalf("explicit off %q", resp.IPv4Mode)
+	}
+}
